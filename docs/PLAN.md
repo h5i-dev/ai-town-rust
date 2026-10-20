@@ -38,7 +38,7 @@ through `Kernel::stamp`, never through a client field.
 | `engine/schema.ts` inputs and generation numbers | shell idempotency keys and a single sim task | h5i-app already serializes one tenant. A second step cannot overlap |
 | `messages.ts` | `kernel` `Message` | Posting checks membership. Text is not a game-rule by itself, but the check is |
 | `music.ts`, `world.ts` queries, `init.ts` | shell routes and startup | Map JSON, session tokens, seeding agents |
-| `src/` | `frontend/` | Same Pixi scene. `src/api/client.ts` replaces `useQuery` and `useMutation` |
+| `src/` | `frontend/` | Same Pixi scene. `frontend/src/api.ts` replaces `useQuery` and `useMutation` |
 
 The kernel crate depends on `h5i-app-schema` and `h5i-app-sql` 0.1.2 only, so
 extraction never sees tokio or axum. The server depends on
@@ -104,10 +104,11 @@ holds the kernel tables. The sim loop and the agent worker call
 
 ## Frontend
 
-`frontend/` is the PixiJS town. `useServerGame` and `useSendInput` read a
-small client instead of Convex. The map file is the original gentle tileset,
-converted to JSON so both the shell (collision mask) and the canvas (tiles)
-share it.
+`frontend/` is the PixiJS town. `useTown` and `rpc` in `frontend/src/api.ts`
+replace the Convex hooks. Positions in a snapshot are milli-tiles; the canvas
+divides by 1000 and interpolates `PathNode` timestamps. The map file is the
+original gentle tileset, converted to JSON so both the shell (collision mask)
+and the canvas (tiles) share it.
 
 ## Benchmarks and the GPU
 
