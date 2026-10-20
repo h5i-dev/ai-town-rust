@@ -1,0 +1,12 @@
+# Postgres for the town. The data directory is on tmpfs, outside the repo.
+services:
+  postgres:
+    image: postgres:17
+    environment:
+      POSTGRES_USER: h5i
+      POSTGRES_PASSWORD: h5i
+      POSTGRES_DB: h5i
+    ports:
+      - "127.0.0.1:55432:5432"
+    volumes:
+      - /dev/shm/ai-town-rust/pgdata:/var/lib/postgresql/data
