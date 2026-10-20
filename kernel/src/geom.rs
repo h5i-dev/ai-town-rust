@@ -1,0 +1,368 @@
+//! Integer geometry and the min-heap used by pathfinding.
+//!
+//! Positions are milli-tiles. A tile is [`MILLI`] units. Squared distance
+//! avoids a square root on the collision check. The heap is the 1-indexed
+//! algorithm from `convex/util/minheap.ts`.
+
+use crate::{PathNode, FACE_BIAS, MILLI, SPEED};
+
+pub fn abs_diff(a: u32, b: u32) -> u64 {
+    if a >= b {
+        (a - b) as u64
+    } else {
+        (b - a) as u64
+    }
+}
+
+/// Squared distance. Saturates when a coordinate delta is absurd, so the
+/// multiply cannot wrap.
+pub fn dist_sq(ax: u32, ay: u32, bx: u32, by: u32) -> u64 {
+    let dx = abs_diff(ax, bx);
+    let dy = abs_diff(ay, by);
+    if dx > 2_000_000 || dy > 2_000_000 {
+        return u64::MAX;
+    }
+    dx * dx + dy * dy
+}
+
+pub fn manhattan(ax: u32, ay: u32, bx: u32, by: u32) -> u32 {
+    let d = abs_diff(ax, bx) + abs_diff(ay, by);
+    if d > u32::MAX as u64 {
+        u32::MAX
+    } else {
+        d as u32
+    }
+}
+
+pub fn isqrt(n: u64) -> u64 {
+    if n == 0 {
+        return 0;
+    }
+    let mut x = n;
+    let mut y = x / 2 + 1;
+    while y < x {
+        x = y;
+        y = (x + n / x) / 2;
+    }
+    x
+}
+
+pub fn face_zero() -> u32 {
+    FACE_BIAS
+}
+
+pub fn face_east() -> u32 {
+    FACE_BIAS + 1000
+}
+
+pub fn face_west() -> u32 {
+    FACE_BIAS - 1000
+}
+
+pub fn face_south() -> u32 {
+    FACE_BIAS + 1000
+}
+
+pub fn face_north() -> u32 {
+    FACE_BIAS - 1000
+}
+
+/// Unit facing from `a` to `b`, stored as component + [`FACE_BIAS`].
+pub fn face_toward(ax: u32, ay: u32, bx: u32, by: u32) -> (u32, u32) {
+    let dx = abs_diff(ax, bx);
+    let dy = abs_diff(ay, by);
+    let len = isqrt(dx * dx + dy * dy);
+    if len == 0 {
+        return (face_zero(), face_zero());
+    }
+    let mx = (dx * 1000 / len) as u32;
+    let my = (dy * 1000 / len) as u32;
+    let fdx = if bx >= ax { FACE_BIAS + mx } else { FACE_BIAS - mx };
+    let fdy = if by >= ay { FACE_BIAS + my } else { FACE_BIAS - my };
+    (fdx, fdy)
+}
+
+pub fn tile_of(milli: u32) -> u32 {
+    milli / MILLI
+}
+
+/// Milliseconds to travel `milli` at [`SPEED`] milli-tiles per second.
+pub fn travel_ms(milli: u32) -> u64 {
+    (milli as u64) * 1000 / SPEED as u64
+}
+
+pub fn lerp(a: u32, b: u32, u: u64, dt: u64) -> u32 {
+    if dt == 0 {
+        return a;
+    }
+    if b >= a {
+        (a as u64 + (b - a) as u64 * u / dt) as u32
+    } else {
+        (a as u64 - (a - b) as u64 * u / dt) as u32
+    }
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub struct Pose {
+    pub x: u32,
+    pub y: u32,
+    pub face_dx: u32,
+    pub face_dy: u32,
+    pub speed: u32,
+}
+
+/// Position along a path at `now`. `None` when the path has fewer than two points.
+pub fn path_pose(path: &[PathNode], now: u64) -> Option<Pose> {
+    if path.len() < 2 {
+        return None;
+    }
+    let first = &path[0];
+    if now < first.t {
+        return Some(Pose { x: first.x, y: first.y, face_dx: first.face_dx, face_dy: first.face_dy, speed: 0 });
+    }
+    let last = &path[path.len() - 1];
+    if now > last.t {
+        return Some(Pose { x: last.x, y: last.y, face_dx: last.face_dx, face_dy: last.face_dy, speed: 0 });
+    }
+    let mut i = 0;
+    while i + 1 < path.len() {
+        let a = &path[i];
+        let b = &path[i + 1];
+        if a.t <= now && now <= b.t {
+            let dt = b.t - a.t;
+            let u = now - a.t;
+            let x = lerp(a.x, b.x, u, dt);
+            let y = lerp(a.y, b.y, u, dt);
+            let speed = if dt == 0 {
+                0
+            } else {
+                let d = isqrt(dist_sq(a.x, a.y, b.x, b.y));
+                (d * 1000 / dt) as u32
+            };
+            return Some(Pose { x, y, face_dx: a.face_dx, face_dy: a.face_dy, speed });
+        }
+        i += 1;
+    }
+    None
+}
+
+fn between(a: u32, b: u32, c: u32) -> bool {
+    if a <= c {
+        a <= b && b <= c
+    } else {
+        c <= b && b <= a
+    }
+}
+
+/// True when `b` lies on the segment `a`–`c` and the facing does not change.
+pub fn colinear(a: &PathNode, b: &PathNode, c: &PathNode) -> bool {
+    if a.face_dx != b.face_dx || a.face_dy != b.face_dy || b.face_dx != c.face_dx || b.face_dy != c.face_dy {
+        return false;
+    }
+    let abx = abs_diff(a.x, b.x);
+    let aby = abs_diff(a.y, b.y);
+    let acx = abs_diff(a.x, c.x);
+    let acy = abs_diff(a.y, c.y);
+    if abx * acy != aby * acx {
+        return false;
+    }
+    // Same direction: each axis of `b - a` agrees with `c - a`.
+    let same_x = (b.x >= a.x) == (c.x >= a.x) || b.x == a.x;
+    let same_y = (b.y >= a.y) == (c.y >= a.y) || b.y == a.y;
+    same_x && same_y && between(a.x, b.x, c.x) && between(a.y, b.y, c.y)
+}
+
+/// Drop waypoints that interpolate between their neighbors. Same idea as
+/// `compressPath` in the original geometry module.
+pub fn compress(path: &Vec<PathNode>) -> Vec<PathNode> {
+    if path.len() <= 2 {
+        return path.clone();
+    }
+    let mut out = Vec::new();
+    out.push(path[0].clone());
+    let mut last = 0;
+    let mut candidate: Option<usize> = None;
+    let mut i = 1;
+    while i < path.len() {
+        if candidate.is_none() {
+            candidate = Some(i);
+            i += 1;
+            continue;
+        }
+        let c = match candidate {
+            Some(c) => c,
+            None => {
+                i += 1;
+                continue;
+            }
+        };
+        if colinear(&path[last], &path[c], &path[i]) {
+            candidate = Some(i);
+            i += 1;
+            continue;
+        }
+        out.push(path[c].clone());
+        last = c;
+        candidate = Some(i);
+        i += 1;
+    }
+    if let Some(c) = candidate {
+        out.push(path[c].clone());
+    }
+    out
+}
+
+/// 1-indexed binary heap of `u64`, smallest on top. `compare(a, b)` in the
+/// original is `a > b`.
+#[derive(Clone, Debug)]
+pub struct MinHeap {
+    tree: Vec<u64>,
+}
+
+impl MinHeap {
+    pub fn new() -> Self {
+        let mut tree = Vec::new();
+        tree.push(0);
+        MinHeap { tree }
+    }
+
+    pub fn len(&self) -> usize {
+        self.tree.len() - 1
+    }
+
+    pub fn peek(&self) -> Option<u64> {
+        if self.tree.len() <= 1 {
+            None
+        } else {
+            Some(self.tree[1])
+        }
+    }
+
+    pub fn push(&mut self, new_value: u64) {
+        self.tree.push(new_value);
+        let mut destination = self.tree.len() - 1;
+        while destination > 1 {
+            let parent = destination >> 1;
+            let existing = self.tree[parent];
+            if new_value > existing {
+                break;
+            }
+            self.tree[destination] = existing;
+            destination = parent;
+        }
+        self.tree[destination] = new_value;
+    }
+
+    pub fn pop(&mut self) -> Option<u64> {
+        if self.tree.len() <= 1 {
+            return None;
+        }
+        let value = self.tree[1];
+        let last = match self.tree.pop() {
+            Some(v) => v,
+            None => return Some(value),
+        };
+        if self.tree.len() == 1 {
+            return Some(value);
+        }
+        let last_value = last;
+        let mut destination = 1;
+        let end = self.tree.len();
+        while (destination << 1) < end {
+            let mut child = destination << 1;
+            if child + 1 < end && self.tree[child] > self.tree[child + 1] {
+                child += 1;
+            }
+            let existing = self.tree[child];
+            if existing > last_value {
+                break;
+            }
+            self.tree[destination] = existing;
+            destination = child;
+        }
+        self.tree[destination] = last_value;
+        Some(value)
+    }
+}
+
+/// Heap of search-node indices. `cost[node]` decides the order. Index 0 of
+/// `tree` is unused.
+pub fn idx_push(tree: &mut Vec<u32>, cost: &[u32], node: u32) {
+    tree.push(node);
+    let mut destination = tree.len() - 1;
+    while destination > 1 {
+        let parent = destination >> 1;
+        let existing = tree[parent];
+        if cost[node as usize] > cost[existing as usize] {
+            break;
+        }
+        tree[destination] = existing;
+        destination = parent;
+    }
+    tree[destination] = node;
+}
+
+pub fn idx_pop(tree: &mut Vec<u32>, cost: &[u32]) -> Option<u32> {
+    if tree.len() <= 1 {
+        return None;
+    }
+    let value = tree[1];
+    let last = match tree.pop() {
+        Some(v) => v,
+        None => return None,
+    };
+    if tree.len() == 1 {
+        return Some(value);
+    }
+    let last_value = last;
+    let mut destination = 1;
+    let end = tree.len();
+    while (destination << 1) < end {
+        let mut child = destination << 1;
+        if child + 1 < end && cost[tree[child] as usize] > cost[tree[child + 1] as usize] {
+            child += 1;
+        }
+        let existing = tree[child];
+        if cost[existing as usize] > cost[last_value as usize] {
+            break;
+        }
+        tree[destination] = existing;
+        destination = child;
+    }
+    tree[destination] = last_value;
+    Some(value)
+}
+
+/// Bit `tx * height + ty` of the walk mask. Set means blocked.
+pub fn mask_blocked(mask: &[u8], width: u32, height: u32, x: u32, y: u32) -> bool {
+    if width == 0 || height == 0 {
+        return true;
+    }
+    let tx = tile_of(x);
+    let ty = tile_of(y);
+    if tx >= width || ty >= height {
+        return true;
+    }
+    let i = (tx as usize) * (height as usize) + (ty as usize);
+    let byte = i / 8;
+    let bit = i % 8;
+    if byte >= mask.len() {
+        return true;
+    }
+    ((mask[byte] >> bit) & 1) == 1
+}
+
+pub fn set_blocked(mask: &mut Vec<u8>, width: u32, height: u32, tx: u32, ty: u32) {
+    let cells = (width as usize) * (height as usize);
+    let bytes = cells.div_ceil(8);
+    while mask.len() < bytes {
+        mask.push(0);
+    }
+    if tx >= width || ty >= height {
+        return;
+    }
+    let i = (tx as usize) * (height as usize) + (ty as usize);
+    let byte = i / 8;
+    let bit = i % 8;
+    mask[byte] |= 1 << bit;
+}
