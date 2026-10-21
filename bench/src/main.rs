@@ -69,12 +69,20 @@ fn map_side(n: usize) -> u32 {
     side
 }
 
+fn tick_sizes() -> Vec<usize> {
+    match std::env::var("AI_TOWN_TICK_AGENTS") {
+        Ok(raw) => raw.split(',').filter_map(|part| part.trim().parse().ok()).collect(),
+        Err(_) => vec![1, 8, 16, 32, 64, 128, 512, 1024, 4096, 10_000],
+    }
+}
+
 fn tick_rows() -> Vec<String> {
     let mut rows = Vec::new();
-    for n in [1usize, 8, 16, 32, 64, 128, 512, 1024, 4096, 10_000] {
+    for n in tick_sizes() {
         let side = map_side(n);
         let mut s = open_map(side);
         let mut now = 1_000u64;
+        let setup_started = Instant::now();
         let mut owners = Vec::new();
         for i in 0..n {
             let cmd = Command::CreateAgent {
@@ -93,6 +101,8 @@ fn tick_rows() -> Vec<String> {
             }
         }
         let placed = owners.len();
+        let place_ms = setup_started.elapsed().as_secs_f64() * 1_000.0;
+        let move_started = Instant::now();
         let span = side - 2;
         for (k, owner) in owners.iter().enumerate() {
             let tx = 1 + (k as u32) % span;
@@ -105,6 +115,8 @@ fn tick_rows() -> Vec<String> {
         if let Ok((next, _)) = run(&s, ENGINE, now, Command::Step) {
             s = next;
         }
+        let move_ms = move_started.elapsed().as_secs_f64() * 1_000.0;
+        let setup_ms = setup_started.elapsed().as_secs_f64() * 1_000.0;
         let steps = 4u32;
         let started = Instant::now();
         let mut ticks = 0u64;
@@ -123,7 +135,7 @@ fn tick_rows() -> Vec<String> {
         let rate = ticks as f64 / seconds;
         let step_ms = seconds * 1_000.0 / f64::from(steps);
         rows.push(format!("{placed},{steps},{ticks},{seconds:.6},{rate:.1},{step_ms:.3}"));
-        println!("ticks agents={placed} ticks/s={rate:.0} step_ms={step_ms:.2}");
+        println!("ticks agents={placed} place_ms={place_ms:.0} move_ms={move_ms:.0} setup_ms={setup_ms:.0} ticks/s={rate:.0} step_ms={step_ms:.2}");
     }
     rows
 }

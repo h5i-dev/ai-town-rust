@@ -3,6 +3,8 @@
 
 mod agent;
 mod cast;
+#[cfg(feature = "gpu")]
+mod gpu_move;
 mod http;
 mod map;
 mod world;

@@ -6,7 +6,12 @@ license = "Apache-2.0"
 version = "0.1.0"
 publish = false
 
+[features]
+default = []
+gpu = ["dep:ai-town-gpu"]
+
 [dependencies]
+ai-town-gpu = { path = "../gpu", optional = true }
 ai-town-kernel = { path = "../kernel" }
 axum = { version = "0.8", features = ["ws", "json"] }
 h5i-app = { version = "=0.1.2", features = ["http", "postgres"] }

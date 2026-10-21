@@ -50,17 +50,90 @@ pub async fn serve(url: &str, secret: &str, addr: &str, provider: Provider) -> R
     axum::serve(listener, router).await.map_err(|e| e.to_string())
 }
 
+fn gpu_requested() -> bool {
+    std::env::var("AI_TOWN_MOVE").ok().as_deref() == Some("gpu")
+}
+
+/// The pipe bench sets this so a crowd of idle agents is not also pathfinding.
+fn drain_enabled() -> bool {
+    std::env::var("AI_TOWN_DRAIN").ok().as_deref() != Some("off")
+}
+
+async fn cpu_step(engine: &Engine<Town, TownStore>) {
+    match engine.execute(&crate::user_actor(ENGINE), &Command::Step).await {
+        Ok(Ok(_)) => {}
+        Ok(Err(e)) => tracing::warn!(?e, "step refused"),
+        Err(_) => tracing::error!("step failed"),
+    }
+}
+
+#[cfg(feature = "gpu")]
+async fn gpu_step(engine: &Engine<Town, TownStore>, mover: &std::sync::mpsc::Sender<crate::gpu_move::MoveReq>) -> bool {
+    let snap = match engine.snapshot(h5i_app::TenantId(TENANT)).await {
+        Ok(snap) => snap,
+        Err(_) => return false,
+    };
+    if snap.meta.width == 0 {
+        return false;
+    }
+    let (xs, ys, txs, tys, moving) = crate::gpu_move::columns(&snap);
+    let (reply_tx, reply_rx) = tokio::sync::oneshot::channel();
+    let req = crate::gpu_move::MoveReq {
+        xs,
+        ys,
+        txs,
+        tys,
+        moving,
+        mask: snap.terrain.mask.clone(),
+        width: snap.meta.width,
+        height: snap.meta.height,
+        reply: reply_tx,
+    };
+    if mover.send(req).is_err() {
+        return false;
+    }
+    let positions = match tokio::time::timeout(Duration::from_secs(60), reply_rx).await {
+        Ok(Ok(Some(pos))) => pos,
+        _ => return false,
+    };
+    match engine.execute(&crate::user_actor(ENGINE), &Command::Relocate { x: positions.0, y: positions.1 }).await {
+        Ok(Ok(_)) => true,
+        _ => false,
+    }
+}
+
 async fn sim_loop(engine: Arc<Engine<Town, TownStore>>, events: tokio::sync::broadcast::Sender<String>, provider: Arc<Provider>) {
+    #[cfg(feature = "gpu")]
+    let mover = if gpu_requested() { Some(crate::gpu_move::spawn_mover()) } else { None };
+    #[cfg(not(feature = "gpu"))]
+    if gpu_requested() {
+        tracing::error!("gpu seek unavailable");
+    }
+    #[cfg(feature = "gpu")]
+    let mut gpu_warned = false;
     let busy = Arc::new(AtomicBool::new(false));
     loop {
         let started = std::time::Instant::now();
-        match engine.execute(&crate::user_actor(ENGINE), &Command::Step).await {
-            Ok(Ok(_)) => {}
-            Ok(Err(e)) => tracing::warn!(?e, "step refused"),
-            Err(_) => tracing::error!("step failed"),
+        #[cfg(feature = "gpu")]
+        let mut used_gpu = false;
+        #[cfg(not(feature = "gpu"))]
+        let used_gpu = false;
+        #[cfg(feature = "gpu")]
+        if let Some(mover) = &mover {
+            if gpu_step(&engine, mover).await {
+                used_gpu = true;
+            } else if !gpu_warned {
+                tracing::error!("gpu step failed");
+                gpu_warned = true;
+            }
         }
+        if !used_gpu {
+            cpu_step(&engine).await;
+        }
+        let ms = started.elapsed().as_secs_f64() * 1_000.0;
+        tracing::info!(ms, "sim tick");
         publish(&engine, &events).await;
-        if busy.compare_exchange(false, true, Ordering::AcqRel, Ordering::Acquire).is_ok() {
+        if drain_enabled() && busy.compare_exchange(false, true, Ordering::AcqRel, Ordering::Acquire).is_ok() {
             let engine = engine.clone();
             let provider = provider.clone();
             let events = events.clone();
