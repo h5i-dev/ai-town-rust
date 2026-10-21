@@ -17,6 +17,7 @@ The design map from each Convex module to kernel, shell, or worker is
 | `server/` | h5i-app 0.1.2 with the `http` and `postgres` features, sim loop, NIM or stub agents |
 | `frontend/` | PixiJS town. A small HTTP and WebSocket client replaces the Convex hooks |
 | `proofs/` | Lean 4 postconditions: `dispatch_start` exclusivity and membership, `occupied`, and `own_player`. See `docs/PLAN.md` |
+| `gpu/` | Optional CUDA seek, outside the workspace. PTX is `kernel`'s `seek_one`; `seek.cu` is the cubin baseline |
 | `assets/gentle.json` | The gentle map. The shell reads the collision mask. The client draws the tiles |
 
 ## Run
@@ -65,13 +66,51 @@ cargo run --release -p ai-town-bench
 ```
 
 Results are CSV files under `/dev/shm/ai-town-rust/bench/`. The optional CUDA
-seek lives in `gpu/` and is excluded from the workspace, so `cargo test` does
-not need nvcc. Build it with a CUDA toolkit on `PATH` (the default arch is
-`sm_86`):
+package is `gpu/`, excluded from the workspace, so `cargo test` does not need
+nvcc. The hand-written cubin baseline, default arch `sm_86`:
 
 ```bash
 cargo test --manifest-path gpu/Cargo.toml
 cargo run --release --manifest-path gpu/Cargo.toml --bin seek-bench
 ```
 
-The numbers are in `docs/PLAN.md`. The game tick stays on the CPU spatial grid.
+The product GPU path compiles the same `kernel` `seek_one` to PTX with
+`rustc_codegen_nvvm` (rust-cuda `3a82c35`, nightly-2026-04-02). The toolchain,
+the LLVM download, and the device target stay under `/dev/shm/ai-town-rust`.
+One GPU:
+
+```bash
+gpu/nvvm/setup.sh
+gpu/nvvm/build-device.sh
+CUDA_VISIBLE_DEVICES=0 cargo run --release --manifest-path gpu/Cargo.toml --bin fair-bench
+```
+
+`fair-bench` times one CPU spatial-grid step against 60 rounds of that PTX
+seek, at 1,000, 10,000, and 50,000 agents. On this machine the 60-round device
+time was 7.43 ms, 72.36 ms, and 885 ms. The spatial-grid `run_ticks` time was
+9.06 ms, 97.35 ms, and 507 ms. Copies make the GPU wall time 157 ms, 222 ms,
+and 1,022 ms.
+
+The default server tick is that CPU step. `--features gpu` together with
+`AI_TOWN_MOVE=gpu` replaces it with the PTX seek and writes positions through
+`Command::Relocate`. Conversations and the clock advance on `Step`. End-to-end
+latency is the `pipe` binary (database `ai_town_pipe`, `AI_TOWN_DRAIN=off`):
+
+```bash
+AI_TOWN_DRAIN=off cargo run --release -p ai-town-bench --bin pipe
+AI_TOWN_MOVE=gpu AI_TOWN_DRAIN=off CUDA_VISIBLE_DEVICES=0 \
+  cargo run --release -p ai-town-bench --features gpu --bin pipe
+```
+
+From the `move_to` POST until a websocket snapshot showed the body move: CPU
+1.32 s at 1,000 agents and 14.9 s at 10,000; GPU 0.58 s and 1.86 s. The HTTP
+call itself was 37 ms and 262 ms on the CPU path, 43 ms and 230 ms on the GPU
+path. `Init` stops at 128 tiles on a side, so the 50,000-agent figure stays in
+the in-memory fair bench.
+
+Creating 10,000 agents on the spatial grid, then pathing them, took 22.3 s and
+49.6 s on an idle machine (71.9 s together). The step after that was 193 ms.
+
+A headless Chromium session opened the Vite page, rendered the town, and
+showed Lucky's NIM line in the sidebar. Screenshots are under
+`/dev/shm/ai-town-rust`. The full tables are in `docs/PLAN.md`.
