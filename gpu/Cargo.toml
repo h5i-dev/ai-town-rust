@@ -1,0 +1,10 @@
+[package]
+name = "ai-town-gpu"
+description = "Optional CUDA movement step. Checked against the CPU scalar seek. Not extracted to Lean."
+edition = "2024"
+license = "Apache-2.0"
+version = "0.1.0"
+publish = false
+
+[dependencies]
+ai-town-kernel = { path = "../kernel" }

@@ -63,6 +63,14 @@ mkdir -p /dev/shm/ai-town-rust/bench
 cargo run --release -p ai-town-bench
 ```
 
-Results are CSV files under `/dev/shm/ai-town-rust/bench/`. The optional GPU
-movement backend is described in `docs/PLAN.md`. The CPU batch step and its
-equivalence test are in the kernel.
+Results are CSV files under `/dev/shm/ai-town-rust/bench/`. The optional CUDA
+seek lives in `gpu/` and is excluded from the workspace, so `cargo test` does
+not need nvcc. Build it with a CUDA toolkit on `PATH` (the default arch is
+`sm_86`):
+
+```bash
+cargo test --manifest-path gpu/Cargo.toml
+cargo run --release --manifest-path gpu/Cargo.toml --bin seek-bench
+```
+
+The numbers are in `docs/PLAN.md`. The game tick stays on the CPU spatial grid.

@@ -142,6 +142,16 @@ An earlier 4-step run with every agent walking to the bottom row, on that same c
 
 The batch seek is the CPU side of an optional GPU step. `h5i-app-gpu` is not a crate on crates.io. The h5i GPU note describes an experimental search and push backend outside extraction, and it does not ship a production GPU executor. Lean covers the CPU kernel. GPU execution stays trusted.
 
+`gpu/` is that optional step. It is a separate package, excluded from the workspace, and it does not replace the CPU tick. `seek.cu` follows `scalar_seek`: move on x, then on y, then reject the whole step if the tile is blocked or another agent, at its original position, is inside the collision radius. `cargo test --manifest-path gpu/Cargo.toml` checks the device against the scalar oracle, including an empty input, a blocked tile, and agents inside and outside the radius. The release bench on this machine (sm_86) measured one seek at 1,000 / 10,000 / 50,000 agents:
+
+| Agents | CPU | GPU |
+|---:|---:|---:|
+| 1,000 | 1.54 ms (650,328/s) | 6.66 ms (150,085/s) |
+| 10,000 | 152.25 ms (65,682/s) | 12.82 ms (779,935/s) |
+| 50,000 | 3,980 ms (12,562/s) | 16.67 ms (2,999,238/s) |
+
+The coordinates matched at each size. At 1,000 agents the launch overhead is larger than the scan. From 10,000 up the device is faster.
+
 ## Trusted boundary
 
 The kernel does not see the clock, the network, or Postgres. Trusted pieces,
