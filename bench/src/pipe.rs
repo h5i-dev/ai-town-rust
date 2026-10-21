@@ -4,6 +4,15 @@
 //! selects the GPU tick when this package is built with `--features gpu`.
 //! The default build leaves that flag on the CPU path. `AI_TOWN_DRAIN=off`
 //! keeps the agent worker out of the measurement, so the crowd stays idle.
+//!
+//! On a packed map the first free tile in owner-id order can be enclosed.
+//! `begin_move` then returns success and leaves the player in place. The
+//! session id is the spawn salt, so this binary keeps minting sessions until
+//! that salt is a free tile with a free orthogonal step. The `move_to` target
+//! is that neighbor. A far tile can be unreachable from a one-tile pocket, and
+//! `begin_move` still returns success. After the position moves it sends
+//! `stop`, so that walker does not occupy the next crowd's exit. A join whose
+//! snapshot has no free step leaves and tries again.
 
 use ai_town_kernel::{Command, ENGINE};
 use futures_util::StreamExt;
@@ -126,59 +135,80 @@ async fn sample(database_url: &str, addr: &str, mode: &str) -> Result<(), String
     let mut rows = vec!["mode,agents,input_ms,push_ms".to_string()];
     for target in [1_000usize, 10_000] {
         grow_agents(&eng, target).await?;
-        let session: serde_json::Value = client
-            .post(format!("{base}/session"))
-            .send()
-            .await
-            .map_err(|_| "session request failed")?
-            .json()
-            .await
-            .map_err(|_| "session response was not json")?;
-        let token = session.get("token").and_then(|v| v.as_str()).ok_or("session did not return a token")?.to_string();
-        let user = session.get("user").and_then(|v| v.as_u64()).ok_or("session did not return a user")?;
-        let joined = client
-            .post(format!("{base}/rpc"))
-            .header("authorization", format!("Bearer {token}"))
-            .json(&serde_json::json!({"cmd": "join", "name": "Pipe", "character": 0}))
-            .send()
-            .await
-            .map_err(|_| "join request failed")?;
-        if !joined.status().is_success() {
-            return Err("join was refused".into());
-        }
-        let (socket, _) = tokio_tungstenite::connect_async(format!("ws://{addr}/ws")).await.map_err(|_| "websocket failed")?;
-        let (mut _write, mut read) = socket.split();
-        let first = next_text(&mut read, Duration::from_secs(8)).await.ok_or("websocket sent no snapshot")?;
-        let me = player_xy(&first, user).ok_or("joined player missing from snapshot")?;
-        let (tx, ty) = if me.0 / 1000 == 100 && me.1 / 1000 == 80 { (10u64, 10u64) } else { (100u64, 80u64) };
-        let started = Instant::now();
-        let moved = client
-            .post(format!("{base}/rpc"))
-            .header("authorization", format!("Bearer {token}"))
-            .json(&serde_json::json!({"cmd": "move_to", "x": tx, "y": ty}))
-            .send()
-            .await
-            .map_err(|_| "move request failed")?;
-        let input_ms = started.elapsed().as_secs_f64() * 1_000.0;
-        if !moved.status().is_success() {
-            return Err("move_to was refused".into());
-        }
-        let mut push_ms = None;
-        let deadline = Instant::now() + Duration::from_secs(60);
-        while Instant::now() < deadline {
-            let left = deadline.saturating_duration_since(Instant::now());
-            let Some(text) = next_text(&mut read, left).await else { break };
-            if let Some((x, y)) = player_xy(&text, user) {
-                if x != me.0 || y != me.1 {
-                    push_ms = Some(started.elapsed().as_secs_f64() * 1_000.0);
-                    break;
+        let mut attempt = 0u32;
+        loop {
+            attempt += 1;
+            if attempt > 8 {
+                return Err("joined player had no free step".into());
+            }
+            let (token, user) = session_on_open_tile(&client, &base).await?;
+            let joined = client
+                .post(format!("{base}/rpc"))
+                .header("authorization", format!("Bearer {token}"))
+                .json(&serde_json::json!({"cmd": "join", "name": "Pipe", "character": 0}))
+                .send()
+                .await
+                .map_err(|_| "join request failed")?;
+            if !joined.status().is_success() {
+                return Err("join was refused".into());
+            }
+            let (socket, _) = tokio_tungstenite::connect_async(format!("ws://{addr}/ws")).await.map_err(|_| "websocket failed")?;
+            let (mut _write, mut read) = socket.split();
+            let first = next_text(&mut read, Duration::from_secs(30)).await.ok_or("websocket sent no snapshot")?;
+            let me = player_xy(&first, user).ok_or("joined player missing from snapshot")?;
+            let Some((tx, ty)) = open_neighbor(&first, user) else {
+                let left = client
+                    .post(format!("{base}/rpc"))
+                    .header("authorization", format!("Bearer {token}"))
+                    .json(&serde_json::json!({"cmd": "leave"}))
+                    .send()
+                    .await
+                    .map_err(|_| "leave request failed")?;
+                if !left.status().is_success() {
+                    return Err("leave was refused".into());
+                }
+                continue;
+            };
+            let started = Instant::now();
+            let moved = client
+                .post(format!("{base}/rpc"))
+                .header("authorization", format!("Bearer {token}"))
+                .json(&serde_json::json!({"cmd": "move_to", "x": tx, "y": ty}))
+                .send()
+                .await
+                .map_err(|_| "move request failed")?;
+            let input_ms = started.elapsed().as_secs_f64() * 1_000.0;
+            if !moved.status().is_success() {
+                return Err("move_to was refused".into());
+            }
+            let mut push_ms = None;
+            let deadline = Instant::now() + Duration::from_secs(60);
+            while Instant::now() < deadline {
+                let left = deadline.saturating_duration_since(Instant::now());
+                let Some(text) = next_text(&mut read, left).await else { break };
+                if let Some((x, y)) = player_xy(&text, user) {
+                    if x != me.0 || y != me.1 {
+                        push_ms = Some(started.elapsed().as_secs_f64() * 1_000.0);
+                        break;
+                    }
                 }
             }
+            let push = push_ms.ok_or("position did not change on the websocket")?;
+            let agents = eng.snapshot(h5i_app::TenantId(ai_town_server::TENANT)).await.map_err(|_| "snapshot failed")?.agents.len();
+            println!("pipe mode={mode} agents={agents} input_ms={input_ms:.1} push_ms={push:.1}");
+            rows.push(format!("{mode},{agents},{input_ms:.3},{push:.3}"));
+            let stopped = client
+                .post(format!("{base}/rpc"))
+                .header("authorization", format!("Bearer {token}"))
+                .json(&serde_json::json!({"cmd": "stop"}))
+                .send()
+                .await
+                .map_err(|_| "stop request failed")?;
+            if !stopped.status().is_success() {
+                return Err("stop was refused".into());
+            }
+            break;
         }
-        let push = push_ms.ok_or("position did not change on the websocket")?;
-        let agents = eng.snapshot(h5i_app::TenantId(ai_town_server::TENANT)).await.map_err(|_| "snapshot failed")?.agents.len();
-        println!("pipe mode={mode} agents={agents} input_ms={input_ms:.1} push_ms={push:.1}");
-        rows.push(format!("{mode},{agents},{input_ms:.3},{push:.3}"));
     }
     let dir = std::env::var("AI_TOWN_BENCH_DIR").unwrap_or_else(|_| "/dev/shm/ai-town-rust/bench".into());
     std::fs::create_dir_all(&dir).map_err(|_| "could not create the bench directory")?;
@@ -199,6 +229,50 @@ where
     }
 }
 
+/// Tile coordinates of the first orthogonal neighbor whose center is outside
+/// the collision radius of every other player. `move_to` uses that tile.
+/// A farther tile can be unreachable from a one-tile pocket, and `begin_move`
+/// still returns success after it clears the path.
+fn open_neighbor(text: &str, owner: u64) -> Option<(u64, u64)> {
+    let value: serde_json::Value = serde_json::from_str(text).ok()?;
+    let width = value.get("width").and_then(|v| v.as_u64()).unwrap_or(0);
+    let height = value.get("height").and_then(|v| v.as_u64()).unwrap_or(0);
+    let (x, y) = player_xy(text, owner)?;
+    let players = value.get("players").and_then(|v| v.as_array())?;
+    let tx = x / 1000;
+    let ty = y / 1000;
+    let steps = [(1i64, 0i64), (-1, 0), (0, 1), (0, -1)];
+    let mut s = 0;
+    while s < steps.len() {
+        let nx = tx as i64 + steps[s].0;
+        let ny = ty as i64 + steps[s].1;
+        s += 1;
+        if nx < 0 || ny < 0 || (nx as u64) >= width || (ny as u64) >= height {
+            continue;
+        }
+        let cx = (nx as u64) * 1000;
+        let cy = (ny as u64) * 1000;
+        let mut blocked = false;
+        for player in players {
+            if player.get("owner").and_then(|v| v.as_u64()) == Some(owner) {
+                continue;
+            }
+            let px = player.get("x").and_then(|v| v.as_u64()).unwrap_or(0);
+            let py = player.get("y").and_then(|v| v.as_u64()).unwrap_or(0);
+            let ddx = px.abs_diff(cx);
+            let ddy = py.abs_diff(cy);
+            if ddx * ddx + ddy * ddy < 750 * 750 {
+                blocked = true;
+                break;
+            }
+        }
+        if !blocked {
+            return Some((nx as u64, ny as u64));
+        }
+    }
+    None
+}
+
 fn player_xy(text: &str, owner: u64) -> Option<(u64, u64)> {
     let value: serde_json::Value = serde_json::from_str(text).ok()?;
     let players = value.get("players")?.as_array()?;
@@ -208,6 +282,105 @@ fn player_xy(text: &str, owner: u64) -> Option<(u64, u64)> {
         }
     }
     None
+}
+
+/// Spawn salt whose tile is empty and has an empty orthogonal neighbor.
+/// `begin_move` reports success when the player cannot leave the start.
+async fn session_on_open_tile(client: &reqwest::Client, base: &str) -> Result<(String, u64), String> {
+    let snap: serde_json::Value = client
+        .get(format!("{base}/snapshot"))
+        .send()
+        .await
+        .map_err(|_| "snapshot request failed")?
+        .json()
+        .await
+        .map_err(|_| "snapshot response was not json")?;
+    let width = snap.get("width").and_then(|v| v.as_u64()).ok_or("snapshot has no width")?;
+    let height = snap.get("height").and_then(|v| v.as_u64()).ok_or("snapshot has no height")?;
+    let players = snap.get("players").and_then(|v| v.as_array()).ok_or("snapshot has no players")?;
+    let n = width.checked_mul(height).ok_or("map size overflowed")?;
+    if n == 0 || n > 128 * 128u64 {
+        return Err("map size is not usable".into());
+    }
+    let mut blocked = vec![false; n as usize];
+    for player in players {
+        let x = player.get("x").and_then(|v| v.as_u64()).ok_or("player x missing")?;
+        let y = player.get("y").and_then(|v| v.as_u64()).ok_or("player y missing")?;
+        let tx = x / 1000;
+        let ty = y / 1000;
+        let mut dx = -1i64;
+        while dx <= 1 {
+            let mut dy = -1i64;
+            while dy <= 1 {
+                let nx = tx as i64 + dx;
+                let ny = ty as i64 + dy;
+                if nx >= 0 && ny >= 0 && (nx as u64) < width && (ny as u64) < height {
+                    let cx = (nx as u64) * 1000;
+                    let cy = (ny as u64) * 1000;
+                    let ddx = x.abs_diff(cx);
+                    let ddy = y.abs_diff(cy);
+                    if ddx * ddx + ddy * ddy < 750 * 750 {
+                        blocked[(nx as u64 * height + ny as u64) as usize] = true;
+                    }
+                }
+                dy += 1;
+            }
+            dx += 1;
+        }
+    }
+    let mut good = vec![false; n as usize];
+    let mut found = false;
+    let mut tx = 0u64;
+    while tx < width {
+        let mut ty = 0u64;
+        while ty < height {
+            let i = (tx * height + ty) as usize;
+            if !blocked[i] && open_step(&blocked, width, height, tx, ty) {
+                good[i] = true;
+                found = true;
+            }
+            ty += 1;
+        }
+        tx += 1;
+    }
+    if !found {
+        return Err("no tile has a free step".into());
+    }
+    let mut tries = 0u64;
+    while tries < n {
+        let session: serde_json::Value = client
+            .post(format!("{base}/session"))
+            .send()
+            .await
+            .map_err(|_| "session request failed")?
+            .json()
+            .await
+            .map_err(|_| "session response was not json")?;
+        let token = session.get("token").and_then(|v| v.as_str()).ok_or("session did not return a token")?.to_string();
+        let user = session.get("user").and_then(|v| v.as_u64()).ok_or("session did not return a user")?;
+        if user != 0 && good[(user % n) as usize] {
+            return Ok((token, user));
+        }
+        tries += 1;
+    }
+    Err("no open seat in one pass over the map".into())
+}
+
+fn open_step(blocked: &[bool], width: u64, height: u64, tx: u64, ty: u64) -> bool {
+    let steps = [(1i64, 0i64), (-1, 0), (0, 1), (0, -1)];
+    let mut s = 0;
+    while s < steps.len() {
+        let nx = tx as i64 + steps[s].0;
+        let ny = ty as i64 + steps[s].1;
+        if nx >= 0 && ny >= 0 && (nx as u64) < width && (ny as u64) < height {
+            let j = (nx as u64 * height + ny as u64) as usize;
+            if !blocked[j] {
+                return true;
+            }
+        }
+        s += 1;
+    }
+    false
 }
 
 async fn grow_agents(eng: &h5i_app::pg::Engine<ai_town_server::Town, ai_town_server::TownStore>, target: usize) -> Result<(), String> {
