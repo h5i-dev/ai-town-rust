@@ -61,10 +61,18 @@ fn open_map(side: u32) -> Snapshot {
     s
 }
 
+fn map_side(n: usize) -> u32 {
+    let mut side = 48u32;
+    while (side as usize) * (side as usize) < n && side < MAX_DIM {
+        side = (side * 2).min(MAX_DIM);
+    }
+    side
+}
+
 fn tick_rows() -> Vec<String> {
     let mut rows = Vec::new();
-    for n in [1usize, 8, 16, 32, 64] {
-        let side = 48u32.min(MAX_DIM);
+    for n in [1usize, 8, 16, 32, 64, 128, 512, 1024, 4096, 10_000] {
+        let side = map_side(n);
         let mut s = open_map(side);
         let mut now = 1_000u64;
         let mut owners = Vec::new();
@@ -85,9 +93,10 @@ fn tick_rows() -> Vec<String> {
             }
         }
         let placed = owners.len();
+        let span = side - 2;
         for (k, owner) in owners.iter().enumerate() {
-            let tx = ((k as u32) * 3) % (side - 1);
-            let ty = side - 1;
+            let tx = 1 + (k as u32) % span;
+            let ty = 1 + ((k as u32) / span) % span;
             if let Ok((next, _)) = run(&s, *owner, now, Command::MoveTo { x: tx, y: ty }) {
                 s = next;
             }

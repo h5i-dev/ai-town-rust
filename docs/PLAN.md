@@ -117,14 +117,30 @@ and the canvas (tiles) share it.
 
 `ai-town-bench` writes under `/dev/shm/ai-town-rust/bench/`:
 
-- in-memory `Step` rate for 1, 8, 16, 32, and 64 agents (`ticks.csv`)
+- in-memory `Step` rate for 1, 8, 16, 32, 64, 128, 512, 1024, 4096, and 10000 agents (`ticks.csv`)
 - greedy batch seeks for 128, 1024, and 4096 agents, checked against the scalar scan (`batch.csv`)
 - HTTP `move_to` latency for 5, 16, and 32 agents on `127.0.0.1:18080` and database `ai_town_bench`, with the stub provider (`latency.csv`)
 
-The batch seek is the CPU side of a later GPU backend. A CUDA build is not
-part of this tree yet. The intended check is the same arrays on CPU and on one
-of the RTX 3090s, compared element-wise. Lean covers the extracted CPU kernel.
-GPU execution stays trusted, as in h5i's GPU note.
+The map side starts at 48 and doubles until it can hold the agents, capped at 128. Each agent walks to its own tile. One `Step` is 60 ticks of 16 ms, so real time is about 63 ticks/s.
+
+A tick used to scan every path and every player, and pathfinding asked every neighbor whether it overlapped every other player. The kernel now keeps a one-tile spatial grid (a collision check reads the 3 by 3 neighborhood; the largest step plus the collision radius stays under one tile), an index of each player's path span, a sorted diff, and, on the tick, a binary search for a player id. A miss scans. The membership proofs still unfold the full scan.
+
+Paired in-memory probe, two measured steps after one warmup step, spread destinations, release build. The before column is the kernel from the tick-benchmark commit. At 4096 and 10000 that kernel was still placing agents when the 300 s setup limit fired (3326 and 3346 placed).
+
+| Agents | Before ticks/s | After ticks/s | After step |
+|---:|---:|---:|---:|
+| 16 | 216,597 | 259,709 | 0.23 ms |
+| 32 | 80,906 | 154,894 | 0.39 ms |
+| 64 | 30,069 | 84,701 | 0.71 ms |
+| 128 | 9,314 | 38,425 | 1.56 ms |
+| 512 | 770 | 5,501 | 10.91 ms |
+| 1,024 | 203 | 2,747 | 21.84 ms |
+| 4,096 | setup stopped at 300 s | 654 | 91.80 ms |
+| 10,000 | setup stopped at 300 s | 260 | 230.78 ms |
+
+An earlier 4-step run with every agent walking to the bottom row, on that same committed kernel, measured 5,604,858 / 473,107 / 203,943 / 40,147 / 21,246 ticks/s at 1 / 8 / 16 / 32 / 64 agents. `ai-town-bench` now uses the spread placement, 4 steps, and the longer size list. On this kernel it measured 399,080 / 185,196 / 116,873 / 48,418 / 37,875 / 23,654 / 4,026 / 2,218 / 457 / 315 ticks/s at 1 / 8 / 16 / 32 / 64 / 128 / 512 / 1,024 / 4,096 / 10,000 agents.
+
+The batch seek is the CPU side of an optional GPU step. `h5i-app-gpu` is not a crate on crates.io. The h5i GPU note describes an experimental search and push backend outside extraction, and it does not ship a production GPU executor. Lean covers the CPU kernel. GPU execution stays trusted.
 
 ## Trusted boundary
 
