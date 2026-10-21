@@ -154,6 +154,20 @@ fn between(a: u32, b: u32, c: u32) -> bool {
     }
 }
 
+/// `b - a` points the same way as `c - a`, or `b` sits on `a`.
+/// A boolean `==` of two comparisons extracts as a proposition, which Lean
+/// then refuses as an `if` condition, so the branches are written out.
+fn axis_same(a: u32, b: u32, c: u32) -> bool {
+    if b == a {
+        return true;
+    }
+    if b > a {
+        c >= a
+    } else {
+        c < a
+    }
+}
+
 /// True when `b` lies on the segment `a`–`c` and the facing does not change.
 pub fn colinear(a: &PathNode, b: &PathNode, c: &PathNode) -> bool {
     if a.face_dx != b.face_dx || a.face_dy != b.face_dy || b.face_dx != c.face_dx || b.face_dy != c.face_dy {
@@ -167,13 +181,21 @@ pub fn colinear(a: &PathNode, b: &PathNode, c: &PathNode) -> bool {
         return false;
     }
     // Same direction: each axis of `b - a` agrees with `c - a`.
-    let same_x = (b.x >= a.x) == (c.x >= a.x) || b.x == a.x;
-    let same_y = (b.y >= a.y) == (c.y >= a.y) || b.y == a.y;
-    same_x && same_y && between(a.x, b.x, c.x) && between(a.y, b.y, c.y)
+    if !axis_same(a.x, b.x, c.x) {
+        return false;
+    }
+    if !axis_same(a.y, b.y, c.y) {
+        return false;
+    }
+    between(a.x, b.x, c.x) && between(a.y, b.y, c.y)
 }
 
 /// Drop waypoints that interpolate between their neighbors. Same idea as
 /// `compressPath` in the original geometry module.
+///
+/// The scan keeps an anchor and one candidate index. A candidate that is
+/// colinear with the anchor and the next point is skipped. The loop is a
+/// single index so Aeneas can find a fixed point (no `Option`, no `continue`).
 pub fn compress(path: &Vec<PathNode>) -> Vec<PathNode> {
     if path.len() <= 2 {
         return path.clone();
@@ -181,35 +203,54 @@ pub fn compress(path: &Vec<PathNode>) -> Vec<PathNode> {
     let mut out = Vec::new();
     out.push(path[0].clone());
     let mut last = 0;
-    let mut candidate: Option<usize> = None;
-    let mut i = 1;
+    let mut candidate = 1;
+    let mut i = 2;
     while i < path.len() {
-        if candidate.is_none() {
-            candidate = Some(i);
-            i += 1;
-            continue;
+        if colinear(&path[last], &path[candidate], &path[i]) {
+            candidate = i;
+        } else {
+            out.push(path[candidate].clone());
+            last = candidate;
+            candidate = i;
         }
-        let c = match candidate {
-            Some(c) => c,
-            None => {
-                i += 1;
-                continue;
-            }
-        };
-        if colinear(&path[last], &path[c], &path[i]) {
-            candidate = Some(i);
-            i += 1;
-            continue;
-        }
-        out.push(path[c].clone());
-        last = c;
-        candidate = Some(i);
         i += 1;
     }
-    if let Some(c) = candidate {
-        out.push(path[c].clone());
-    }
+    out.push(path[candidate].clone());
     out
+}
+
+/// Remove the last element by copying the prefix. `Vec::pop` is not in the
+/// Aeneas subset this toolchain translates, and a heap pop is the only caller.
+fn drop_last_u32(tree: &mut Vec<u32>) -> Option<u32> {
+    let n = tree.len();
+    if n == 0 {
+        return None;
+    }
+    let last = tree[n - 1];
+    let mut kept = Vec::new();
+    let mut i = 0;
+    while i + 1 < n {
+        kept.push(tree[i]);
+        i += 1;
+    }
+    *tree = kept;
+    Some(last)
+}
+
+fn drop_last_u64(tree: &mut Vec<u64>) -> Option<u64> {
+    let n = tree.len();
+    if n == 0 {
+        return None;
+    }
+    let last = tree[n - 1];
+    let mut kept = Vec::new();
+    let mut i = 0;
+    while i + 1 < n {
+        kept.push(tree[i]);
+        i += 1;
+    }
+    *tree = kept;
+    Some(last)
 }
 
 /// 1-indexed binary heap of `u64`, smallest on top. `compare(a, b)` in the
@@ -258,7 +299,7 @@ impl MinHeap {
             return None;
         }
         let value = self.tree[1];
-        let last = match self.tree.pop() {
+        let last = match drop_last_u64(&mut self.tree) {
             Some(v) => v,
             None => return Some(value),
         };
@@ -307,7 +348,7 @@ pub fn idx_pop(tree: &mut Vec<u32>, cost: &[u32]) -> Option<u32> {
         return None;
     }
     let value = tree[1];
-    let last = match tree.pop() {
+    let last = match drop_last_u32(tree) {
         Some(v) => v,
         None => return None,
     };
@@ -352,9 +393,19 @@ pub fn mask_blocked(mask: &[u8], width: u32, height: u32, x: u32, y: u32) -> boo
     ((mask[byte] >> bit) & 1) == 1
 }
 
+/// Bytes in a bit mask of `cells` bits. Same value as `usize::div_ceil(8)`,
+/// written with division so extraction does not pull in `core::num::div_ceil`.
+pub fn mask_bytes(cells: usize) -> usize {
+    if cells == 0 {
+        0
+    } else {
+        (cells - 1) / 8 + 1
+    }
+}
+
 pub fn set_blocked(mask: &mut Vec<u8>, width: u32, height: u32, tx: u32, ty: u32) {
     let cells = (width as usize) * (height as usize);
-    let bytes = cells.div_ceil(8);
+    let bytes = mask_bytes(cells);
     while mask.len() < bytes {
         mask.push(0);
     }

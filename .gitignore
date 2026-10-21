@@ -1,6 +1,7 @@
 target/
-proofs/.lake/
+proofs/.lake
 frontend/node_modules/
 frontend/dist/
 .env
 *.pem
+.h5i/

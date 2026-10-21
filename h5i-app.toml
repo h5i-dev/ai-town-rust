@@ -1,0 +1,51 @@
+# Read by `h5i app`: extract, check, prove, mutate, doctor.
+
+[extract]
+crate = "kernel"
+# Charon starts here and extracts what it reaches.
+start-from = [
+  "transition",
+  "rules::exclusive",
+  "rules::members_consistent",
+  "rules::collision_safe",
+  "rules::motion_isolated",
+  "rules::paths_isolated",
+  "rules::same_motion",
+]
+schema = true
+# Extract the SQL codec with the kernel so Column and has_col are definitions,
+# not axioms. The proof gate rejects any `axiom` declaration.
+include = ["h5i_app_sql"]
+
+[check]
+theorems = [
+  "ai_town_kernel.exclusive_preserved",
+  "ai_town_kernel.members_consistent_preserved",
+  "ai_town_kernel.collision_safe_preserved",
+  "ai_town_kernel.motion_isolated_for_player",
+]
+
+# Each `old` occurs once. A proof that does not mention the real check lets the mutant through.
+[[mutant]]
+name = "second_conversation"
+file = "kernel/src/rules.rs"
+old = "if member_index(&s.members, id).is_some() || member_index(&s.members, invitee).is_some() {"
+new = "if member_index(&s.members, id).is_some() && member_index(&s.members, invitee).is_some() {"
+
+[[mutant]]
+name = "move_anyone"
+file = "kernel/src/rules.rs"
+old = "Some(i) => Ok(s.players[i].id),"
+new = "Some(_) => Ok(s.players[0].id),"
+
+[[mutant]]
+name = "overlap_allowed"
+file = "kernel/src/rules.rs"
+old = "if p.id != ignore && geom::dist_sq(p.x, p.y, x, y) < COLLISION_SQ {"
+new = "if p.id != ignore && geom::dist_sq(p.x, p.y, x, y) > COLLISION_SQ {"
+
+[[mutant]]
+name = "one_member_ok"
+file = "kernel/src/rules.rs"
+old = "s.members.push(Member { conversation: cid, player: invitee, invited: now, status: ST_INVITED, started: 0 });"
+new = "let _ = (cid, invitee, now);"

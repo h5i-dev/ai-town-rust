@@ -5,7 +5,7 @@ use crate::geom::{self, path_pose};
 use crate::movement::find_route;
 use crate::{
     Agent, Command, Conversation, Error, Member, Memory, Message, PathNode, Player, Reply, Snapshot, Write, ACTION_TIMEOUT_MS,
-    ACTIVITY_MS, AGENT_BASE, AWKWARD_MS, BACKOFF_MS, COLLISION_SQ, CONV_COOLDOWN_MS, ENGINE, IDLE_MS, INVITE_MS, MAX_CONV_MS,
+    ACTIVITY_MS, AGENT_BASE, AWKWARD_MS, COLLISION_SQ, CONV_COOLDOWN_MS, ENGINE, IDLE_MS, INVITE_MS, MAX_CONV_MS,
     MAX_DIM, MAX_HUMANS, MAX_MESSAGES, MAX_NAME, MAX_PATHFINDS, MAX_PLAN, MAX_TEXT, MAX_TICKS, MESSAGE_COOLDOWN_MS, MILLI,
     OP_DO, OP_NONE, OP_REMEMBER, OP_SPEAK, PATH_TIMEOUT_MS, PF_MOVE, PF_NEED, PF_NONE, PF_WAIT, ST_INVITED, ST_TALKING,
     ST_WALKING, TALK_SQ, TICK_MS, TYPING_MS,
@@ -370,8 +370,9 @@ fn tick_agent(s: &mut Snapshot, i: usize, now: u64) {
             None => true,
         };
         if !busy && s.agents[i].op == OP_NONE {
-            let cooled = s.agents[i].last_invite == 0 || now >= s.agents[i].last_invite.saturating_add(CONV_COOLDOWN_MS);
-            if cooled {
+            let last = s.agents[i].last_invite;
+            let deadline = last.saturating_add(CONV_COOLDOWN_MS);
+            if last == 0 || now >= deadline {
                 s.agents[i].op = OP_DO;
                 s.agents[i].op_since = now;
                 s.agents[i].last_invite = now;
@@ -443,19 +444,35 @@ fn tick_agent(s: &mut Snapshot, i: usize, now: u64) {
         }
         let creator = s.conversations[c].creator;
         let last_at = s.conversations[c].last_at;
-        let speak = if s.conversations[c].num_messages == 0 {
-            creator == player_id || (started > 0 && now > started && now - started > AWKWARD_MS)
-        } else {
-            now >= last_at.saturating_add(MESSAGE_COOLDOWN_MS)
-        };
-        if speak && agent_op(s, agent_id) == OP_NONE {
-            if let Some(ai) = agent_index(s, agent_id) {
-                s.agents[ai].op = OP_SPEAK;
-                s.agents[ai].op_since = now;
-                s.agents[ai].op_arg = conv;
+        let deadline = last_at.saturating_add(MESSAGE_COOLDOWN_MS);
+        // Nested `let speak = if { saturating_add }` extracts as a proposition.
+        if s.conversations[c].num_messages == 0 {
+            if creator == player_id {
+                queue_speak(s, agent_id, conv, now);
+            } else if started > 0 {
+                if now > started {
+                    let waited = now - started;
+                    if waited > AWKWARD_MS {
+                        queue_speak(s, agent_id, conv, now);
+                    }
+                }
             }
+        } else if now >= deadline {
+            queue_speak(s, agent_id, conv, now);
         }
     }
+}
+
+fn queue_speak(s: &mut Snapshot, agent_id: u64, conv: u64, now: u64) {
+    if agent_op(s, agent_id) != OP_NONE {
+        return;
+    }
+    let Some(ai) = agent_index(s, agent_id) else {
+        return;
+    };
+    s.agents[ai].op = OP_SPEAK;
+    s.agents[ai].op_since = now;
+    s.agents[ai].op_arg = conv;
 }
 
 fn agent_index(s: &Snapshot, id: u64) -> Option<usize> {
@@ -654,7 +671,11 @@ fn move_one(s: &mut Snapshot, i: usize, now: u64) {
     };
     if occupied(s, pose.x, pose.y, id) {
         s.players[i].pf = PF_WAIT;
-        s.players[i].wait_until = now + 1 + (id % BACKOFF_MS);
+        // `BACKOFF_MS` is 1000. A checked `+` of the remainder stays
+        // `AddChecked`, which does not translate; wrapping add does, and
+        // these timestamps sit far below `u64::MAX`.
+        let stagger = id % 1000;
+        s.players[i].wait_until = now.wrapping_add(1).wrapping_add(stagger);
         s.players[i].speed = 0;
         return;
     }
@@ -684,7 +705,7 @@ fn dispatch_init(s: &mut Snapshot, width: u32, height: u32, mask: &Vec<u8>, now:
         return Err(Error::BadState);
     }
     let cells = (width as usize) * (height as usize);
-    if mask.len() != cells.div_ceil(8) {
+    if mask.len() != geom::mask_bytes(cells) {
         return Err(Error::BadState);
     }
     s.meta.width = width;
@@ -1289,19 +1310,24 @@ pub fn same_motion(a: &Player, b: &Player) -> bool {
 }
 
 /// A non-engine command does not move, retarget, or delete anyone else's player.
+///
+/// The loops record a flag instead of returning. A `return` inside a loop
+/// that also calls `player_index` becomes a break to an outer loop, which
+/// Aeneas does not translate.
 pub fn motion_isolated(actor: u64, before: &Snapshot, after: &Snapshot) -> bool {
     if actor == ENGINE {
         return true;
     }
+    let mut ok = true;
     let mut i = 0;
     while i < before.players.len() {
         let p = &before.players[i];
         if p.owner != actor {
             match player_index(&after.players, p.id) {
-                None => return false,
+                None => ok = false,
                 Some(j) => {
                     if !same_motion(p, &after.players[j]) {
-                        return false;
+                        ok = false;
                     }
                 }
             }
@@ -1312,11 +1338,11 @@ pub fn motion_isolated(actor: u64, before: &Snapshot, after: &Snapshot) -> bool 
     while i < after.players.len() {
         let p = &after.players[i];
         if p.owner != actor && player_index(&before.players, p.id).is_none() {
-            return false;
+            ok = false;
         }
         i += 1;
     }
-    true
+    ok
 }
 
 pub fn paths_isolated(actor: u64, before: &Snapshot, after: &Snapshot) -> bool {
@@ -1335,18 +1361,19 @@ pub fn paths_isolated(actor: u64, before: &Snapshot, after: &Snapshot) -> bool {
 }
 
 pub fn exclusive(s: &Snapshot) -> bool {
+    let mut ok = true;
     let mut i = 0;
     while i < s.members.len() {
         let mut j = i + 1;
         while j < s.members.len() {
             if s.members[i].player == s.members[j].player {
-                return false;
+                ok = false;
             }
             j += 1;
         }
         i += 1;
     }
-    true
+    ok
 }
 
 fn status_pair_ok(a: u32, b: u32) -> bool {
@@ -1354,6 +1381,7 @@ fn status_pair_ok(a: u32, b: u32) -> bool {
 }
 
 pub fn members_consistent(s: &Snapshot) -> bool {
+    let mut ok = true;
     let mut i = 0;
     while i < s.conversations.len() {
         let id = s.conversations[i].id;
@@ -1377,23 +1405,38 @@ pub fn members_consistent(s: &Snapshot) -> bool {
             j += 1;
         }
         if n != 2 || !status_pair_ok(a, b) {
-            return false;
+            ok = false;
         }
         if player_index(&s.players, pa).is_none() || player_index(&s.players, pb).is_none() {
-            return false;
+            ok = false;
         }
         let creator = s.conversations[i].creator;
         if creator != pa && creator != pb {
-            return false;
+            ok = false;
         }
         i += 1;
     }
     i = 0;
     while i < s.members.len() {
         if conv_index(&s.conversations, s.members[i].conversation).is_none() {
-            return false;
+            ok = false;
         }
         if s.members[i].status != ST_INVITED && s.members[i].status != ST_WALKING && s.members[i].status != ST_TALKING {
+            ok = false;
+        }
+        i += 1;
+    }
+    ok
+}
+
+fn terrain_clear(s: &Snapshot) -> bool {
+    let w = s.meta.width;
+    let h = s.meta.height;
+    let mut i = 0;
+    while i < s.players.len() {
+        let x = s.players[i].x;
+        let y = s.players[i].y;
+        if geom::mask_blocked(&s.terrain.mask, w, h, x, y) {
             return false;
         }
         i += 1;
@@ -1401,22 +1444,26 @@ pub fn members_consistent(s: &Snapshot) -> bool {
     true
 }
 
-pub fn collision_safe(s: &Snapshot) -> bool {
+fn pairs_apart(s: &Snapshot) -> bool {
+    let mut ok = true;
     let mut i = 0;
     while i < s.players.len() {
-        let p = &s.players[i];
-        if geom::mask_blocked(&s.terrain.mask, s.meta.width, s.meta.height, p.x, p.y) {
-            return false;
-        }
+        let x = s.players[i].x;
+        let y = s.players[i].y;
         let mut j = i + 1;
         while j < s.players.len() {
-            let q = &s.players[j];
-            if geom::dist_sq(p.x, p.y, q.x, q.y) < COLLISION_SQ {
-                return false;
+            let qx = s.players[j].x;
+            let qy = s.players[j].y;
+            if geom::dist_sq(x, y, qx, qy) < COLLISION_SQ {
+                ok = false;
             }
             j += 1;
         }
         i += 1;
     }
-    true
+    ok
+}
+
+pub fn collision_safe(s: &Snapshot) -> bool {
+    terrain_clear(s) && pairs_apart(s)
 }

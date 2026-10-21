@@ -75,7 +75,8 @@ pub fn scalar_seek(
     (out_x, out_y)
 }
 
-/// Same rule as [`scalar_seek`], written as one loop over the whole population.
+/// Same rule as [`scalar_seek`], written out as its own scan so a later GPU
+/// port can replace this body and the scalar test still has an oracle.
 pub fn batch_seek(
     xs: &[u32],
     ys: &[u32],
@@ -86,5 +87,24 @@ pub fn batch_seek(
     width: u32,
     height: u32,
 ) -> (Vec<u32>, Vec<u32>) {
-    scalar_seek(xs, ys, txs, tys, step, mask, width, height)
+    let mut ox = Vec::new();
+    let mut oy = Vec::new();
+    let mut i = 0;
+    while i < xs.len() && i < ys.len() {
+        ox.push(xs[i]);
+        oy.push(ys[i]);
+        i += 1;
+    }
+    let mut out_x = Vec::new();
+    let mut out_y = Vec::new();
+    i = 0;
+    while i < ox.len() {
+        let tx = if i < txs.len() { txs[i] } else { 0 };
+        let ty = if i < tys.len() { tys[i] } else { 0 };
+        let (nx, ny) = seek_one(ox[i], oy[i], tx, ty, step, mask, width, height, &ox, &oy, i);
+        out_x.push(nx);
+        out_y.push(ny);
+        i += 1;
+    }
+    (out_x, out_y)
 }

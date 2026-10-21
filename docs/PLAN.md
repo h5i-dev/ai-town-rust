@@ -66,18 +66,21 @@ code that can mint the user-0 token, and it never sends that token to a browser.
 
 ## Invariants
 
-The proofs in `proofs/` are about `transition`.
+The Lean proofs are postconditions of the kernel functions below. `h5i app check`
+is the gate that accepts them. Each row names the mutant in `h5i-app.toml` that
+the postcondition is written to reject. `h5i app mutate` checks that
+rejection: the unmodified copy builds, and each mutant makes `lake build` of
+`proofs/` fail. The current four mutants are caught.
 
-| Theorem | Statement |
-|---|---|
-| Conversation exclusivity | A successful command leaves each player in at most one conversation |
-| Membership consistency | Every conversation has exactly two members, both players exist, the creator is one of them, and the status pair is invited/walking, walking/walking, or participating/participating |
-| Authorization | A non-engine command does not change another player's owner, position, facing, speed, or path. It only writes conversation rows for a conversation it is allowed to touch |
-| Collision safety | After a successful command, every player stands on a walkable tile and no two players are inside the collision radius |
+| Theorem | Statement | Mutant |
+|---|---|---|
+| `exclusive_preserved` | `dispatch_start` returns `Busy` when the caller is already a member, the invitee exists, and the two player ids differ | `second_conversation` changes the member check from or to and |
+| `members_consistent_preserved` | A successful `dispatch_start` from empty member and conversation lists returns one conversation. Its members are the caller (`walkingOver`) and the invitee (`invited`). Its creator is the caller | `one_member_ok` drops the invitee push |
+| `collision_safe_preserved` | `occupied` is true when the terrain mask is clear and another player is strictly inside the collision radius (562500 milli-tiles squared) | `overlap_allowed` flips `<` to `>` in `occupied` |
+| `motion_isolated_for_player` | The id `own_player` returns belongs to the queried owner | `move_anyone` returns `players[0]` |
 
 Refusals commit nothing, which is the engine's contract. `apply` is what a
-later read returns. `h5i app prove` checks the proofs. `h5i app mutate` checks
-that the mutants in `h5i-app.toml` break them.
+later read returns. `h5i app prove` extracts the kernel and checks the proofs.
 
 ## Agents and the model
 

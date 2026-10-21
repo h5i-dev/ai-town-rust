@@ -66,7 +66,7 @@ pub struct Principal {
 }
 
 h5i_app_schema::schema! {
-    mapping town_tables for ai_town_kernel, writes Write;
+    mapping town_tables for ai_town_kernel, writes Write, lean "../proofs/generated/Schema.lean";
 
     #[derive(Clone, Debug, Default, PartialEq, Eq)]
     pub struct Snapshot {

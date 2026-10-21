@@ -101,9 +101,53 @@ fn compress_keeps_turns() {
     }
     // The last vertical point faces east, so the line compresses up to it.
     let packed = geom::compress(&dense);
-    assert!(packed.len() < dense.len());
+    assert_eq!(packed.len(), 3);
     assert_eq!(packed[0].y, 0);
-    assert_eq!(packed[packed.len() - 1].y, 4 * MILLI);
+    assert_eq!(packed[1].y, 3 * MILLI);
+    assert_eq!(packed[2].y, 4 * MILLI);
+}
+
+#[test]
+fn compress_straight_line_and_turn() {
+    let north = geom::face_north();
+    let east = geom::face_east();
+    let zero = geom::face_zero();
+    let mut line = Vec::new();
+    let mut y = 0;
+    while y <= 4 {
+        line.push(PathNode {
+            player: 1,
+            seq: y as u64,
+            x: 0,
+            y: y * MILLI,
+            face_dx: zero,
+            face_dy: north,
+            t: y as u64,
+        });
+        y += 1;
+    }
+    let packed = geom::compress(&line);
+    assert_eq!(packed.len(), 2);
+    assert_eq!((packed[0].y, packed[1].y), (0, 4 * MILLI));
+
+    // The corner keeps the incoming facing, so it is colinear with the leg
+    // behind it and stays. The first east-facing step is a new anchor.
+    let mut turned = line;
+    turned[2].face_dx = zero;
+    turned[2].face_dy = north;
+    turned[3].x = MILLI;
+    turned[3].y = 2 * MILLI;
+    turned[3].face_dx = east;
+    turned[3].face_dy = zero;
+    turned[4].x = 2 * MILLI;
+    turned[4].y = 2 * MILLI;
+    turned[4].face_dx = east;
+    turned[4].face_dy = zero;
+    let packed = geom::compress(&turned);
+    assert_eq!(packed.len(), 4);
+    assert_eq!((packed[1].x, packed[1].y), (0, 2 * MILLI));
+    assert_eq!((packed[2].x, packed[2].y), (MILLI, 2 * MILLI));
+    assert_eq!((packed[3].x, packed[3].y), (2 * MILLI, 2 * MILLI));
 }
 
 #[test]

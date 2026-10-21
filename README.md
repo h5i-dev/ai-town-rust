@@ -16,7 +16,7 @@ The design map from each Convex module to kernel, shell, or worker is
 | `kernel/` | Pure transitions: world, movement, conversations, inputs. Depends on `h5i-app-schema` and `h5i-app-sql` 0.1.2 |
 | `server/` | h5i-app 0.1.2 with the `http` and `postgres` features, sim loop, NIM or stub agents |
 | `frontend/` | PixiJS town. A small HTTP and WebSocket client replaces the Convex hooks |
-| `proofs/` | Lean 4 proofs: conversation exclusivity, authorization, collision safety, membership consistency |
+| `proofs/` | Lean 4 postconditions: `dispatch_start` exclusivity and membership, `occupied`, and `own_player`. See `docs/PLAN.md` |
 | `assets/gentle.json` | The gentle map. The shell reads the collision mask. The client draws the tiles |
 
 ## Run
@@ -48,6 +48,7 @@ deterministic stub. The process never prints the key.
 ```bash
 cargo test
 h5i app prove
+h5i app mutate
 ```
 
 `h5i app prove` needs Charon, Aeneas, and Lean v4.31.0 on `PATH`
