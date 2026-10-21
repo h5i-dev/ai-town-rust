@@ -16,8 +16,8 @@ The design map from each Convex module to kernel, shell, or worker is
 | `kernel/` | Pure transitions: world, movement, conversations, inputs. Depends on `h5i-app-schema` and `h5i-app-sql` 0.1.2 |
 | `server/` | h5i-app 0.1.2 with the `http` and `postgres` features, sim loop, NIM or stub agents |
 | `frontend/` | PixiJS town. A small HTTP and WebSocket client replaces the Convex hooks |
-| `proofs/` | Lean 4 postconditions: `dispatch_start` exclusivity and membership, `occupied`, and `own_player`. See `docs/PLAN.md` |
-| `gpu/` | Optional CUDA seek, outside the workspace. PTX is `kernel`'s `seek_one`; `seek.cu` is the cubin baseline |
+| `proofs/` | Lean 4 postconditions: exclusivity, membership, collision, authorization, and the shared movement step. See `docs/PLAN.md` |
+| `gpu/` | Optional CUDA movement, outside the workspace. PTX entry `step_batch` is `kernel`'s `tick_moves`; `seek.cu` and `seek_one` stay the cubin baseline |
 | `assets/gentle.json` | The gentle map. The shell reads the collision mask. The client draws the tiles |
 
 ## Run
@@ -74,7 +74,7 @@ cargo test --manifest-path gpu/Cargo.toml
 cargo run --release --manifest-path gpu/Cargo.toml --bin seek-bench
 ```
 
-The product GPU path compiles the same `kernel` `seek_one` to PTX with
+The product GPU path compiles the same `kernel` `tick_moves` to PTX with
 `rustc_codegen_nvvm` (rust-cuda `3a82c35`, nightly-2026-04-02). The toolchain,
 the LLVM download, and the device target stay under `/dev/shm/ai-town-rust`.
 One GPU:
@@ -86,15 +86,22 @@ CUDA_VISIBLE_DEVICES=0 cargo run --release --manifest-path gpu/Cargo.toml --bin 
 ```
 
 `fair-bench` times one CPU spatial-grid step against 60 rounds of that PTX
-seek, at 1,000, 10,000, and 50,000 agents. On this machine the 60-round device
-time was 7.43 ms, 72.36 ms, and 885 ms. The spatial-grid `run_ticks` time was
-9.06 ms, 97.35 ms, and 507 ms. Copies make the GPU wall time 157 ms, 222 ms,
-and 1,022 ms.
+tick, at 1,000, 10,000, and 50,000 agents. The device entry `step_batch` runs
+`tick_moves` on one thread, in order, so a later agent sees an earlier landing.
+On this machine the 60-round device time was 126.37 ms, 2,588.81 ms, and
+14,442.59 ms. The spatial-grid `run_ticks` time was 9.15 ms, 94.99 ms, and
+481.09 ms. Wall time, including host path poses, grid rebuilds, and copies,
+was 1,228.94 ms, 3,632.88 ms, and 14,988.62 ms. Every position matched the CPU
+run. GPU 0 was busy with another job, so these times are an upper bound. The
+CPU spatial tick is faster at each size. `seek_one` and `seek.cu` stay the
+hand-written baseline in `docs/PLAN.md`.
 
 The default server tick is that CPU step. `--features gpu` together with
-`AI_TOWN_MOVE=gpu` replaces it with the PTX seek and writes positions through
-`Command::Relocate`. Conversations and the clock advance on `Step`. End-to-end
-latency is the `pipe` binary (database `ai_town_pipe`, `AI_TOWN_DRAIN=off`):
+`AI_TOWN_MOVE=gpu` replaces it with 60 rounds of the PTX tick and writes
+positions through `Command::Relocate`. Each round retries the path pose.
+`Relocate` writes x, y, and speed 0, and clears paths. Conversations and the
+clock advance on `Step`. The pipe figures below are from the earlier `seek_one`
+path (database `ai_town_pipe`, `AI_TOWN_DRAIN=off`):
 
 ```bash
 AI_TOWN_DRAIN=off cargo run --release -p ai-town-bench --bin pipe
@@ -102,11 +109,11 @@ AI_TOWN_MOVE=gpu AI_TOWN_DRAIN=off CUDA_VISIBLE_DEVICES=0 \
   cargo run --release -p ai-town-bench --features gpu --bin pipe
 ```
 
-From the `move_to` POST until a websocket snapshot showed the body move: CPU
-1.32 s at 1,000 agents and 14.9 s at 10,000; GPU 0.58 s and 1.86 s. The HTTP
-call itself was 37 ms and 262 ms on the CPU path, 43 ms and 230 ms on the GPU
-path. `Init` stops at 128 tiles on a side, so the 50,000-agent figure stays in
-the in-memory fair bench.
+On that greedy path, from the `move_to` POST until a websocket snapshot showed
+the body move: CPU 1.32 s at 1,000 agents and 14.9 s at 10,000; GPU 0.58 s and
+1.86 s. The HTTP call itself was 37 ms and 262 ms on the CPU path, 43 ms and
+230 ms on the GPU path. `Init` stops at 128 tiles on a side, so the
+50,000-agent figure stays in the in-memory fair bench.
 
 Creating 10,000 agents on the spatial grid, then pathing them, took 22.3 s and
 49.6 s on an idle machine (71.9 s together). The step after that was 193 ms.
