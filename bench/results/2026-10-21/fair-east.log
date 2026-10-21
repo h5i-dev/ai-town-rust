@@ -1,0 +1,22 @@
+scenario=east verify_grid=false cpu_threads=[32] samples=5
+fair east players=1000 sample=0 cpu_tick_ms=14.202 cpu_seq_ms=12.529 gpu_checked_ms=7.415
+fair east players=1000 sample=1 cpu_tick_ms=14.168 cpu_seq_ms=12.510 gpu_checked_ms=7.443
+fair east players=1000 sample=2 cpu_tick_ms=15.038 cpu_seq_ms=12.527 gpu_checked_ms=7.404
+fair east players=1000 sample=3 cpu_tick_ms=14.162 cpu_seq_ms=12.497 gpu_checked_ms=7.380
+fair east players=1000 sample=4 cpu_tick_ms=14.147 cpu_seq_ms=12.528 gpu_checked_ms=7.374
+fair east players=10000 sample=0 cpu_tick_ms=148.665 cpu_seq_ms=130.066 gpu_checked_ms=64.217
+fair east players=10000 sample=1 cpu_tick_ms=148.018 cpu_seq_ms=129.740 gpu_checked_ms=63.406
+fair east players=10000 sample=2 cpu_tick_ms=147.898 cpu_seq_ms=129.558 gpu_checked_ms=63.421
+fair east players=10000 sample=3 cpu_tick_ms=147.839 cpu_seq_ms=129.689 gpu_checked_ms=63.538
+fair east players=10000 sample=4 cpu_tick_ms=147.877 cpu_seq_ms=129.397 gpu_checked_ms=63.814
+fair east players=50000 sample=0 cpu_tick_ms=794.066 cpu_seq_ms=692.069 gpu_checked_ms=310.987
+fair east players=50000 sample=1 cpu_tick_ms=790.556 cpu_seq_ms=695.137 gpu_checked_ms=310.133
+fair east players=50000 sample=2 cpu_tick_ms=791.993 cpu_seq_ms=694.012 gpu_checked_ms=311.942
+fair east players=50000 sample=3 cpu_tick_ms=793.417 cpu_seq_ms=695.247 gpu_checked_ms=310.877
+fair east players=50000 sample=4 cpu_tick_ms=792.938 cpu_seq_ms=693.571 gpu_checked_ms=310.438
+fair east players=100000 sample=0 cpu_tick_ms=1655.856 cpu_seq_ms=1465.801 gpu_checked_ms=616.603
+fair east players=100000 sample=1 cpu_tick_ms=1647.665 cpu_seq_ms=1478.414 gpu_checked_ms=617.142
+fair east players=100000 sample=2 cpu_tick_ms=1648.759 cpu_seq_ms=1466.278 gpu_checked_ms=616.129
+fair east players=100000 sample=3 cpu_tick_ms=1648.579 cpu_seq_ms=1473.038 gpu_checked_ms=615.619
+fair east players=100000 sample=4 cpu_tick_ms=1646.667 cpu_seq_ms=1471.653 gpu_checked_ms=616.559
+wrote /home/ht2673/Dev/ai-town-rust/bench/results/2026-10-21/fair-east.csv

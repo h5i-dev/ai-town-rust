@@ -140,7 +140,7 @@ async fn sim_loop(
             cpu_step(&engine).await;
         }
         let ms = started.elapsed().as_secs_f64() * 1_000.0;
-        tracing::info!(ms, "sim tick");
+        tracing::info!(ms, used_gpu, "sim tick");
         publish(&engine, &events).await;
         drop(_hold);
         if drain_enabled() && busy.compare_exchange(false, true, Ordering::AcqRel, Ordering::Acquire).is_ok() {

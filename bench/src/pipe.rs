@@ -2,7 +2,7 @@
 //!
 //! Uses database `ai_town_pipe` and `127.0.0.1:18081`. `AI_TOWN_MOVE=gpu`
 //! selects the GPU tick when this package is built with `--features gpu`.
-//! The default build leaves that flag on the CPU path. `AI_TOWN_DRAIN=off`
+//! A build without that feature rejects the GPU flag. `AI_TOWN_DRAIN=off`
 //! keeps the agent worker out of the measurement, so the crowd stays idle.
 //!
 //! On a packed map the first free tile in owner-id order can be enclosed.
@@ -21,6 +21,11 @@ use std::time::{Duration, Instant};
 
 #[tokio::main]
 async fn main() {
+    tracing_subscriber::fmt().with_env_filter("error,ai_town_server::http=info").with_ansi(false).init();
+    #[cfg(not(feature = "gpu"))]
+    if std::env::var("AI_TOWN_MOVE").ok().as_deref() == Some("gpu") {
+        panic!("GPU pipe requires --features gpu");
+    }
     let base = std::env::var("DATABASE_URL").unwrap_or_else(|_| "postgres://h5i:h5i@127.0.0.1:55432/h5i".into());
     let url = match pipe_database_url(&base) {
         Ok(url) => url,
@@ -132,87 +137,110 @@ async fn sample(database_url: &str, addr: &str, mode: &str) -> Result<(), String
     let eng = ai_town_server::engine(database_url).map_err(|_| "database connection failed")?;
     let client = reqwest::Client::new();
     let base = format!("http://{addr}");
-    let mut rows = vec!["mode,agents,input_ms,push_ms".to_string()];
+    let samples: usize = std::env::var("AI_TOWN_BENCH_SAMPLES")
+        .unwrap_or_else(|_| "5".into()).parse().map_err(|_| "invalid sample count")?;
+    if samples == 0 { return Err("sample count must be positive".into()); }
+    let dir = std::env::var("AI_TOWN_BENCH_DIR").unwrap_or_else(|_| "/dev/shm/ai-town-rust/bench".into());
+    std::fs::create_dir_all(&dir).map_err(|_| "could not create the bench directory")?;
+    let path = format!("{dir}/pipe-{mode}.csv");
+    let mut rows = vec!["mode,agents,sample,input_ms,push_ms".to_string()];
     for target in [1_000usize, 10_000] {
         grow_agents(&eng, target).await?;
-        let mut attempt = 0u32;
-        loop {
-            attempt += 1;
-            if attempt > 8 {
-                return Err("joined player had no free step".into());
-            }
-            let (token, user) = session_on_open_tile(&client, &base).await?;
-            let joined = client
-                .post(format!("{base}/rpc"))
-                .header("authorization", format!("Bearer {token}"))
-                .json(&serde_json::json!({"cmd": "join", "name": "Pipe", "character": 0}))
-                .send()
-                .await
-                .map_err(|_| "join request failed")?;
-            if !joined.status().is_success() {
-                return Err("join was refused".into());
-            }
-            let (socket, _) = tokio_tungstenite::connect_async(format!("ws://{addr}/ws")).await.map_err(|_| "websocket failed")?;
-            let (mut _write, mut read) = socket.split();
-            let first = next_text(&mut read, Duration::from_secs(30)).await.ok_or("websocket sent no snapshot")?;
-            let me = player_xy(&first, user).ok_or("joined player missing from snapshot")?;
-            let Some((tx, ty)) = open_neighbor(&first, user) else {
+        for sample in 0..samples {
+            let mut attempt = 0u32;
+            loop {
+                attempt += 1;
+                if attempt > 8 {
+                    return Err("joined player had no free step".into());
+                }
+                let (token, user) = session_on_open_tile(&client, &base).await?;
+                let joined = client
+                    .post(format!("{base}/rpc"))
+                    .header("authorization", format!("Bearer {token}"))
+                    .json(&serde_json::json!({"cmd": "join", "name": "Pipe", "character": 0}))
+                    .send()
+                    .await
+                    .map_err(|_| "join request failed")?;
+                if !joined.status().is_success() {
+                    return Err("join was refused".into());
+                }
+                let (socket, _) = tokio_tungstenite::connect_async(format!("ws://{addr}/ws")).await.map_err(|_| "websocket failed")?;
+                let (mut _write, mut read) = socket.split();
+                let first = next_text(&mut read, Duration::from_secs(30)).await.ok_or("websocket sent no snapshot")?;
+                let first_clock = serde_json::from_str::<serde_json::Value>(&first)
+                    .map_err(|_| "invalid snapshot")?["nowMs"].as_u64().ok_or("snapshot has no clock")?;
+                let me = player_xy(&first, user).ok_or("joined player missing from snapshot")?;
+                let Some((tx, ty)) = open_neighbor(&first, user) else {
+                    let left = client
+                        .post(format!("{base}/rpc"))
+                        .header("authorization", format!("Bearer {token}"))
+                        .json(&serde_json::json!({"cmd": "leave"}))
+                        .send()
+                        .await
+                        .map_err(|_| "leave request failed")?;
+                    if !left.status().is_success() {
+                        return Err("leave was refused".into());
+                    }
+                    continue;
+                };
+                let started = Instant::now();
+                let moved = client
+                    .post(format!("{base}/rpc"))
+                    .header("authorization", format!("Bearer {token}"))
+                    .json(&serde_json::json!({"cmd": "move_to", "x": tx, "y": ty}))
+                    .send()
+                    .await
+                    .map_err(|_| "move request failed")?;
+                let input_ms = started.elapsed().as_secs_f64() * 1_000.0;
+                if !moved.status().is_success() {
+                    return Err("move_to was refused".into());
+                }
+                let mut push_ms = None;
+                let deadline = Instant::now() + Duration::from_secs(60);
+                while Instant::now() < deadline {
+                    let left = deadline.saturating_duration_since(Instant::now());
+                    let Some(text) = next_text(&mut read, left).await else { break };
+                    if let Some((x, y)) = player_xy(&text, user) {
+                        if x != me.0 || y != me.1 {
+                            // Relocate preserves the clock; a CPU fallback advances it.
+                            // Refuse to publish a CPU sample under the GPU label.
+                            if mode == "gpu" {
+                                let clock = serde_json::from_str::<serde_json::Value>(&text)
+                                    .map_err(|_| "invalid snapshot")?["nowMs"].as_u64().ok_or("snapshot has no clock")?;
+                                if clock != first_clock {
+                                    return Err("GPU sample used CPU fallback (simulation clock advanced)".into());
+                                }
+                            }
+                            push_ms = Some(started.elapsed().as_secs_f64() * 1_000.0);
+                            break;
+                        }
+                    }
+                }
+                let push = push_ms.ok_or("position did not change on the websocket")?;
+                let agents = eng.snapshot(h5i_app::TenantId(ai_town_server::TENANT)).await.map_err(|_| "snapshot failed")?.agents.len();
+                println!("pipe mode={mode} agents={agents} sample={sample} input_ms={input_ms:.1} push_ms={push:.1}");
+                rows.push(format!("{mode},{agents},{sample},{input_ms:.3},{push:.3}"));
+                std::fs::write(&path, rows.join("\n") + "\n").map_err(|_| "could not write the pipe csv")?;
+                let stopped = client
+                    .post(format!("{base}/rpc"))
+                    .header("authorization", format!("Bearer {token}"))
+                    .json(&serde_json::json!({"cmd": "stop"}))
+                    .send()
+                    .await
+                    .map_err(|_| "stop request failed")?;
+                if !stopped.status().is_success() {
+                    return Err("stop was refused".into());
+                }
                 let left = client
                     .post(format!("{base}/rpc"))
                     .header("authorization", format!("Bearer {token}"))
                     .json(&serde_json::json!({"cmd": "leave"}))
-                    .send()
-                    .await
-                    .map_err(|_| "leave request failed")?;
-                if !left.status().is_success() {
-                    return Err("leave was refused".into());
-                }
-                continue;
-            };
-            let started = Instant::now();
-            let moved = client
-                .post(format!("{base}/rpc"))
-                .header("authorization", format!("Bearer {token}"))
-                .json(&serde_json::json!({"cmd": "move_to", "x": tx, "y": ty}))
-                .send()
-                .await
-                .map_err(|_| "move request failed")?;
-            let input_ms = started.elapsed().as_secs_f64() * 1_000.0;
-            if !moved.status().is_success() {
-                return Err("move_to was refused".into());
+                    .send().await.map_err(|_| "leave request failed")?;
+                if !left.status().is_success() { return Err("leave was refused".into()); }
+                break;
             }
-            let mut push_ms = None;
-            let deadline = Instant::now() + Duration::from_secs(60);
-            while Instant::now() < deadline {
-                let left = deadline.saturating_duration_since(Instant::now());
-                let Some(text) = next_text(&mut read, left).await else { break };
-                if let Some((x, y)) = player_xy(&text, user) {
-                    if x != me.0 || y != me.1 {
-                        push_ms = Some(started.elapsed().as_secs_f64() * 1_000.0);
-                        break;
-                    }
-                }
-            }
-            let push = push_ms.ok_or("position did not change on the websocket")?;
-            let agents = eng.snapshot(h5i_app::TenantId(ai_town_server::TENANT)).await.map_err(|_| "snapshot failed")?.agents.len();
-            println!("pipe mode={mode} agents={agents} input_ms={input_ms:.1} push_ms={push:.1}");
-            rows.push(format!("{mode},{agents},{input_ms:.3},{push:.3}"));
-            let stopped = client
-                .post(format!("{base}/rpc"))
-                .header("authorization", format!("Bearer {token}"))
-                .json(&serde_json::json!({"cmd": "stop"}))
-                .send()
-                .await
-                .map_err(|_| "stop request failed")?;
-            if !stopped.status().is_success() {
-                return Err("stop was refused".into());
-            }
-            break;
         }
     }
-    let dir = std::env::var("AI_TOWN_BENCH_DIR").unwrap_or_else(|_| "/dev/shm/ai-town-rust/bench".into());
-    std::fs::create_dir_all(&dir).map_err(|_| "could not create the bench directory")?;
-    let path = format!("{dir}/pipe-{mode}.csv");
     std::fs::write(&path, rows.join("\n") + "\n").map_err(|_| "could not write the pipe csv")?;
     println!("wrote {path}");
     Ok(())

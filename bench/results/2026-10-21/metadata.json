@@ -1,0 +1,38 @@
+{
+  "metadata_captured_utc": "2026-10-21T21:26:32.438050+00:00",
+  "commands": {
+    "rust_commit": "b7465c8f7894312465e032242a2f97b1c41b96ca",
+    "upstream_commit": "8e05997f2409275669c8344b84a51692e83f3f33",
+    "upstream_status": "",
+    "rustc": "rustc 1.98.1 (48a229cea 2026-09-01)",
+    "cargo": "cargo 1.98.1 (797e8a9bc 2026-08-05)",
+    "node": "v24.21.0",
+    "cpu": "Architecture:                            x86_64\nCPU op-mode(s):                          32-bit, 64-bit\nAddress sizes:                           43 bits physical, 48 bits virtual\nByte Order:                              Little Endian\nCPU(s):                                  128\nOn-line CPU(s) list:                     0-127\nVendor ID:                               AuthenticAMD\nModel name:                              AMD EPYC 7502 32-Core Processor\nCPU family:                              23\nModel:                                   49\nThread(s) per core:                      2\nCore(s) per socket:                      32\nSocket(s):                               2\nStepping:                                0\nFrequency boost:                         enabled\nCPU(s) scaling MHz:                      71%\nCPU max MHz:                             2500.0000\nCPU min MHz:                             1500.0000\nBogoMIPS:                                5000.29\nFlags:                                   fpu vme de pse tsc msr pae mce cx8 apic sep mtrr pge mca cmov pat pse36 clflush mmx fxsr sse sse2 ht syscall nx mmxext fxsr_opt pdpe1gb rdtscp lm constant_tsc rep_good nopl nonstop_tsc cpuid extd_apicid aperfmperf rapl pni pclmulqdq monitor ssse3 fma cx16 sse4_1 sse4_2 movbe popcnt aes xsave avx f16c rdrand lahf_lm cmp_legacy svm extapic cr8_legacy abm sse4a misalignsse 3dnowprefetch osvw ibs skinit wdt tce topoext perfctr_core perfctr_nb bpext perfctr_llc mwaitx cpb cat_l3 cdp_l3 hw_pstate ssbd mba ibrs ibpb stibp vmmcall fsgsbase bmi1 avx2 smep bmi2 cqm rdt_a rdseed adx smap clflushopt clwb sha_ni xsaveopt xsavec xgetbv1 cqm_llc cqm_occup_llc cqm_mbm_total cqm_mbm_local clzero irperf xsaveerptr rdpru wbnoinvd amd_ppin arat npt lbrv svm_lock nrip_save tsc_scale vmcb_clean flushbyasid decodeassists pausefilter pfthreshold avic v_vmsave_vmload vgif v_spec_ctrl umip rdpid overflow_recov succor smca sev sev_es ibpb_exit_to_user\nVirtualization:                          AMD-V\nL1d cache:                               2 MiB (64 instances)\nL1i cache:                               2 MiB (64 instances)\nL2 cache:                                32 MiB (64 instances)\nL3 cache:                                256 MiB (16 instances)\nNUMA node(s):                            2\nNUMA node0 CPU(s):                       0-31,64-95\nNUMA node1 CPU(s):                       32-63,96-127\nVulnerability Gather data sampling:      Not affected\nVulnerability Indirect target selection: Not affected\nVulnerability Itlb multihit:             Not affected\nVulnerability L1tf:                      Not affected\nVulnerability Mds:                       Not affected\nVulnerability Meltdown:                  Not affected\nVulnerability Mmio stale data:           Not affected\nVulnerability Reg file data sampling:    Not affected\nVulnerability Retbleed:                  Mitigation; untrained return thunk; SMT enabled with STIBP protection\nVulnerability Spec rstack overflow:      Mitigation; Safe RET\nVulnerability Spec store bypass:         Mitigation; Speculative Store Bypass disabled via prctl\nVulnerability Spectre v1:                Mitigation; usercopy/swapgs barriers and __user pointer sanitization\nVulnerability Spectre v2:                Mitigation; Retpolines; IBPB conditional; STIBP always-on; RSB filling; PBRSB-eIBRS Not affected; BHI Not affected\nVulnerability Srbds:                     Not affected\nVulnerability Tsa:                       Not affected\nVulnerability Tsx async abort:           Not affected\nVulnerability Vmscape:                   Mitigation; IBPB before exit to userspace",
+    "gpu": "index, name, driver_version, utilization.gpu [%], memory.used [MiB]\n0, NVIDIA GeForce RTX 3090, 560.35.05, 0 %, 2 MiB\n1, NVIDIA GeForce RTX 3090, 560.35.05, 0 %, 2 MiB\n2, NVIDIA GeForce RTX 3090, 560.35.05, 0 %, 2 MiB\n3, NVIDIA GeForce RTX 3090, 560.35.05, 0 %, 2 MiB",
+    "load": "17:26:32 up 1 day,  1:26,  2 users,  load average: 5.42, 3.06, 6.17"
+  },
+  "ptx_sha256": "e4ad13e3c21a52a0a7ec689349923e1327b845004ab4c016adac29207393be32",
+  "notes": [
+    "Working tree changes are benchmark harnesses and documentation, no kernel/server behavior changes.",
+    "Upstream east: 3 measured samples plus one warmup per size.",
+    "Rust east/headon and grid-check diagnostics: 5 measured samples plus one warmup per size.",
+    "Server pipe: 3 samples per size, no discarded warmup; worker disabled, stub provider.",
+    "Benchmarks run sequentially; setup builds may overlap upstream samples. Shared machine, no exclusive CPU reservation.",
+    "GPU pipe adds used_gpu to the existing sim-tick trace and enables that trace in the harness; CPU pipe was measured before this logging-only change. Kernel and simulation behavior are identical.",
+    "GPU pipe samples reject CPU fallback by checking that nowMs is unchanged; setup ticks can fall back while direct engine inserts change player count. Two exploratory/interrupted GPU runs are excluded."
+  ],
+  "upstream_files_sha256": {
+    "convex/aiTown/game.ts": "75765dd1289d768081ed6ff78f474e5ab0006d3ddea3f5174e1bf6f488cbcb8f",
+    "convex/aiTown/player.ts": "eb44dec55f85efe90c8d18279944294b4fb61e835916300bb096530d5e6298a1",
+    "convex/aiTown/world.ts": "3a29da734190137e1178223607029ad174242f8bf31b2129bdf37d92bf1e089f",
+    "package-lock.json": "772415cf255c0590e4144a5477ee68bb8a4bad91b7b74b68e0a90c63dcb6e17f"
+  },
+  "harness_files_sha256": {
+    "bench/upstream/run.mjs": "2fedbca6aa82a0a3b38fc50b3eedd5518b54d3a6315ef8b7d989607de1888731",
+    "bench/upstream/ticks.ts": "0d4bb559aab0f42661a677f6dc13995e5c1799bc1db453d012efb3d9f248f63c",
+    "bench/upstream/package-lock.json": "94568088132eedace21508dc33873d65d7ca3a2a9e61be7202c4a483936b7199",
+    "gpu/src/bin/fair-bench.rs": "e4929999cc4444383dbeb36602e777ab109f925174ea9abafd55e8fbba446de0",
+    "bench/src/pipe.rs": "029fc5c840f36c4a49b449e78ea3aaace18e40a6cb87171398badc46bf1d9ac7",
+    "server/src/http.rs": "38dccce5f63f8fb5c4499b4332cf8e2cd113d7fbdc9ca63e09f57aaaa86cac75"
+  }
+}
