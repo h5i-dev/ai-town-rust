@@ -146,6 +146,10 @@ minute and retries the later path pose.
 60 rounds of `round_phase` and writes positions through `Command::Relocate`.
 Candidates for the minute are copied once. The device rebuilds the spatial
 grid between phases. `Relocate` writes x, y, and speed 0, and clears paths.
+It refuses the minute unless every player ends on a walkable tile with nobody
+else inside the collision radius, and the loop then runs the CPU step instead.
+`relocate_apart` in `proofs/Theorems.lean` proves that check, so a wrong GPU
+result cannot be stored.
 Conversations and the clock advance on `Step`. The pipe below is this two-phase
 round on database `ai_town_pipe` with `AI_TOWN_DRAIN=off`. The joined player is
 a session whose spawn tile has a free orthogonal step, and `move_to` targets

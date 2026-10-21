@@ -70,7 +70,10 @@ the phases and keeps the buffers for the whole minute. A refused walker on
 the CPU enters `PF_WAIT` for about a second. The GPU minute keeps the moving
 flags from the start of the minute and retries the later path pose. The pass
 writes positions with `Command::Relocate`, which sets x, y, and speed 0 and
-clears every path. Face and the path flag stay as they were. Conversations,
+clears every path, and refuses the whole minute with `Occupied` unless every
+player then stands on a walkable tile with nobody else inside the collision
+radius (`placement_ok`). The loop then falls back to the CPU step for that
+second. Face and the path flag stay as they were. Conversations,
 invites, agent operations, and `meta.now_ms` advance when the loop runs
 `Command::Step`. The default build runs the same two-phase round on the CPU.
 `AI_TOWN_TICK=seq` selects `Command::StepSeq`, the old index-order rule, and
@@ -316,5 +319,5 @@ matching the h5i-app tutorials:
 - PostgreSQL commits the write set or nothing
 - the agent worker sends commands as the agent user the kernel assigned
 - the model, when enabled, only supplies text and a chosen tile. The kernel still accepts or refuses the command
-- the optional GPU thread loads the PTX image of the two-phase round (`round_phase`) and submits `Relocate` as user 0
+- the optional GPU thread loads the PTX image of the two-phase round (`round_phase`) and submits `Relocate` as user 0. The GPU, `rustc_codegen_nvvm`, NVVM and the driver are trusted for *liveness* only: `relocate_apart` proves that an accepted `Relocate` leaves every player on a walkable tile and every pair at least the collision radius apart, whatever positions it was sent. The check compares every pair (`placement_ok`, O(n^2)): about 4 ms at 1,000 players, 212 ms at 10,000, and 592 ms at 16,384 (the 128 by 128 map limit) on this shared machine. A grid-based check would be linear but needs the grid-completeness theorem below
 - the spatial grid answers. `step_never_overlap`, `propose_*`, and `resolve_*` take the result of `grid_hit` / `grid_yield` as a hypothesis; no theorem yet says that a grid built by `grid_build` (or accepted by `grid_wellformed`) makes `grid_hit` false only when nobody is inside the radius. Tests check it against the full scan under random chain orders. The PTX image builds its grid with atomic pushes through the kernel's `cell_of`; with `AI_TOWN_GPU_VERIFY=1` every device grid is copied back and must pass `grid_wellformed`, or that second falls back to the CPU step

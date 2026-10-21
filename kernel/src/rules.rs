@@ -98,6 +98,43 @@ pub fn occupied(s: &Snapshot, x: u32, y: u32, ignore: u64) -> bool {
     false
 }
 
+/// True when every player stands on a walkable tile and no other player is
+/// strictly inside its collision radius: `occupied` is false at each player's
+/// own point, ignoring that player. Every pair is compared, so this is O(n^2).
+pub fn placement_ok(s: &Snapshot) -> bool {
+    let mut i = 0;
+    while i < s.players.len() {
+        let p = &s.players[i];
+        if occupied(s, p.x, p.y, p.id) {
+            return false;
+        }
+        i += 1;
+    }
+    true
+}
+
+/// Move every player to `(x[i], y[i])`, stop them, and drop all paths. The
+/// positions come from outside the kernel (the GPU movement minute), so the
+/// result is refused with `Occupied` unless [`placement_ok`] accepts it.
+pub fn relocate(mut s: Snapshot, x: &Vec<u32>, y: &Vec<u32>) -> Result<Snapshot, Error> {
+    let n = s.players.len();
+    if x.len() != n || y.len() != n {
+        return Err(Error::BadState);
+    }
+    let mut i = 0;
+    while i < n {
+        s.players[i].x = x[i];
+        s.players[i].y = y[i];
+        s.players[i].speed = 0;
+        i += 1;
+    }
+    if !placement_ok(&s) {
+        return Err(Error::Occupied);
+    }
+    s.paths = Vec::new();
+    Ok(s)
+}
+
 fn alloc(s: &mut Snapshot) -> Result<u64, Error> {
     if s.meta.next_id == u64::MAX {
         return Err(Error::Limit);
@@ -1450,17 +1487,7 @@ pub fn command(actor_user: u64, now: u64, s: &Snapshot, cmd: &Command) -> Result
                 return Err(Error::Forbidden);
             }
             ok!(require_world(&next));
-            if x.len() != next.players.len() || y.len() != next.players.len() {
-                return Err(Error::BadState);
-            }
-            let mut i = 0;
-            while i < next.players.len() {
-                next.players[i].x = x[i];
-                next.players[i].y = y[i];
-                next.players[i].speed = 0;
-                i += 1;
-            }
-            next.paths = Vec::new();
+            next = ok!(relocate(next, x, y));
             Reply::Ok
         }
         Command::Freeze => {

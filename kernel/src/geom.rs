@@ -406,13 +406,15 @@ pub fn mask_blocked(mask: &[u8], width: u32, height: u32, x: u32, y: u32) -> boo
     if tx >= width || ty >= height {
         return true;
     }
-    let i = (tx as usize) * (height as usize) + (ty as usize);
+    // u64 so the index cannot overflow on a 32-bit usize: tx < width and
+    // ty < height are both below 2^32. Same bit as `tx * height + ty`.
+    let i = (tx as u64) * (height as u64) + (ty as u64);
     let byte = i / 8;
     let bit = i % 8;
-    if byte >= mask.len() {
+    if byte >= mask.len() as u64 {
         return true;
     }
-    ((mask[byte] >> bit) & 1) == 1
+    ((mask[byte as usize] >> bit) & 1) == 1
 }
 
 /// Bytes in a bit mask of `cells` bits. Same value as `usize::div_ceil(8)`,

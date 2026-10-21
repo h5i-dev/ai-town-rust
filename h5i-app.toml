@@ -9,6 +9,8 @@ start-from = [
   "rules::members_consistent",
   "rules::collision_safe",
   "rules::occupied",
+  "rules::placement_ok",
+  "rules::relocate",
   "geom::grid_hit",
   "geom::grid_build",
   "geom::grid_wellformed",
@@ -71,6 +73,14 @@ theorems = [
   "ai_town_kernel.tick_players_round_preserves_exclusive",
   "ai_town_kernel.tick_players_round_preserves_members",
   "ai_town_kernel.tick_players_round_preserves_own_player",
+  "ai_town_kernel.milli_val",
+  "ai_town_kernel.mask_blocked_ok",
+  "ai_town_kernel.mask_blocked_spec",
+  "ai_town_kernel.occupied_spec",
+  "ai_town_kernel.placement_ok_spec",
+  "ai_town_kernel.relocate_loop_ok",
+  "ai_town_kernel.relocate_placed",
+  "ai_town_kernel.relocate_apart",
 ]
 
 # Each `old` occurs once. A proof that does not mention the real check lets the mutant through.
@@ -97,3 +107,9 @@ name = "one_member_ok"
 file = "kernel/src/rules.rs"
 old = "s.members.push(Member { conversation: cid, player: invitee, invited: now, status: ST_INVITED, started: 0 });"
 new = "let _ = (cid, invitee, now);"
+
+[[mutant]]
+name = "relocate_unchecked"
+file = "kernel/src/rules.rs"
+old = "    if !placement_ok(&s) {"
+new = "    if false && !placement_ok(&s) {"

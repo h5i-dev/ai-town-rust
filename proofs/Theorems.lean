@@ -1378,4 +1378,140 @@ theorem tick_players_round_preserves_own_player
       (by intro j hj; exact hids j hj (by omega))
   · exact motion_isolated_for_player s' owner
 
+/-! ## Relocate
+
+`Relocate` writes positions computed outside the kernel (the GPU movement
+minute). `relocate_apart` says an accepted result has every player on a
+walkable tile and no other player inside the collision radius, whatever
+positions the shell sent. `mask_blocked_ok` makes the tile test total. -/
+
+theorem milli_val : MILLI.val = 1000 := by unfold MILLI; rfl
+
+theorem mask_blocked_ok (m : Slice U8) (w h x y : U32) :
+    geom.mask_blocked m w h x y ⦃ _ => True ⦄ := by
+  unfold geom.mask_blocked geom.tile_of
+  have hm : (MILLI : U32).val ≠ 0 := by rw [milli_val]; decide
+  h5i_steps
+  have hlen := Slice.length_ineq m
+  have hnb : ¬ byte ≥ i6 := by assumption
+  have hUs : Usize.max < 2 ^ UScalarTy.Usize.numBits := by
+    simp only [Usize.max, UScalarTy.numBits, Usize.numBits]
+    have := Nat.one_le_two_pow (n := System.Platform.numBits)
+    omega
+  have hU64 : Usize.max < 2 ^ UScalarTy.U64.numBits := by
+    rcases Usize.bounds_eq with h | h <;> rw [h] <;> simp [U32.max, U64.max, UScalarTy.numBits, U32.numBits, U64.numBits]
+  have h6 : i6.val = m.length := by
+    rw [i6_post, UScalar.cast_val_eq, Slice.len_val]
+    exact Nat.mod_eq_of_lt (lt_of_le_of_lt hlen hU64)
+  have hb : byte.val < m.length := by
+    have : byte.val < i6.val := by scalar_tac
+    omega
+  rw [i7_post, UScalar.cast_val_eq, Nat.mod_eq_of_lt (lt_of_lt_of_le hb (le_of_lt (lt_of_le_of_lt hlen hUs)))]
+  exact hb
+
+
+/-- `mask_blocked`'s answer as a function. It always returns, by `mask_blocked_ok`. -/
+noncomputable def blockedAt (m : Slice U8) (w h x y : U32) : Bool :=
+  Classical.choose (WP.spec_imp_exists (mask_blocked_ok m w h x y))
+
+@[step] theorem mask_blocked_spec (m : Slice U8) (w h x y : U32) :
+    geom.mask_blocked m w h x y ⦃ b => b = blockedAt m w h x y ⦄ := by
+  apply WP.exists_imp_spec
+  exact ⟨_, (Classical.choose_spec (WP.spec_imp_exists (mask_blocked_ok m w h x y))).1, rfl⟩
+
+/-- `occupied s x y ignore` as a function: the point is blocked, or a player
+other than `ignore` is strictly inside the collision radius. -/
+noncomputable def occB (s : Snapshot) (x y : U32) (ignore : U64) : Bool :=
+  blockedAt (alloc.vec.Vec.deref s.terrain.mask) s.meta.width s.meta.height x y ||
+    s.players.val.any (tooClose ignore x y)
+
+@[step] theorem occupied_spec (s : Snapshot) (x y : U32) (ignore : U64) :
+    rules.occupied s x y ignore ⦃ b => b = occB s x y ignore ⦄ := by
+  unfold rules.occupied
+  apply WP.spec_bind (mask_blocked_spec _ _ _ _ _)
+  intro b hb
+  beta_reduce
+  split
+  · simp_all [occB]
+  · apply WP.spec_mono (occupied_loop_spec s.players x y ignore)
+    intro r hr
+    simp_all [occB]
+
+/-- `placement_ok` holds exactly when no player's own point is occupied. -/
+theorem placement_ok_spec (s : Snapshot) :
+    rules.placement_ok s ⦃ b =>
+      b = s.players.val.all (fun p => !occB s p.x p.y p.id) ⦄ := by
+  unfold rules.placement_ok rules.placement_ok_loop
+  apply WP.spec_mono (loop_search s.players.val (fun p => occB s p.x p.y p.id) id
+      (fun _ _ => false) true (rules.placement_ok_loop.body s) ?_ 0#usize (by simp))
+  · intro r hr
+    simp only [id] at hr
+    exact search_all _ _ _ hr
+  · intro j hj
+    unfold rules.placement_ok_loop.body
+    h5i_step
+
+/-- The position copy in `relocate` returns, and keeps one player per slot. -/
+theorem relocate_loop_ok (v : alloc.vec.Vec Player) (x y : alloc.vec.Vec U32) (n i : Usize)
+    (hv : v.val.length = n.val) (hx : x.val.length = n.val) (hy : y.val.length = n.val)
+    (hi : i.val ≤ n.val) :
+    rules.relocate_loop v x y n i ⦃ r => r.val.length = n.val ⦄ := by
+  unfold rules.relocate_loop
+  apply loop.spec_decr_nat
+    (measure := fun (st : alloc.vec.Vec Player × Usize) => n.val - st.2.val)
+    (inv := fun st => st.2.val ≤ n.val ∧ st.1.val.length = n.val)
+    (post := fun r => r.val.length = n.val)
+    (body := fun (v, i) => rules.relocate_loop.body x y n v i)
+  · rintro ⟨v, i⟩ ⟨hi, hv⟩
+    simp only at hi hv
+    unfold rules.relocate_loop.body
+    h5i_steps
+    all_goals (subst_vars; simp_all [alloc.vec.Vec.set_val_eq]; scalar_tac)
+  · exact ⟨hi, hv⟩
+
+/-- Whatever positions the shell hands `Relocate` (the GPU movement minute),
+an accepted result has every player on a walkable tile and nobody strictly
+inside another player's collision radius. -/
+theorem relocate_placed (s : Snapshot) (x y : alloc.vec.Vec U32) :
+    rules.relocate s x y ⦃ r => ∀ s', r = .Ok s' →
+      s'.players.val.all (fun p => !occB s' p.x p.y p.id) = true ⦄ := by
+  unfold rules.relocate
+  simp only []
+  split
+  · simp
+  · split
+    · simp
+    · rename_i hxn hyn
+      have hx : x.val.length = s.players.val.length := by
+        simp at hxn; scalar_tac
+      have hy : y.val.length = s.players.val.length := by
+        simp at hyn; scalar_tac
+      apply WP.spec_bind (relocate_loop_ok s.players x y _ 0#usize (by simp) (by simpa using hx) (by simpa using hy) (by simp))
+      intro v hv
+      apply WP.spec_bind (placement_ok_spec _)
+      intro b hb
+      beta_reduce
+      split
+      · simp only [WP.spec_ok]
+        intro s' hs'
+        injection hs' with hs'
+        subst hs'
+        rename_i hbt
+        rw [hbt] at hb
+        simpa [occB] using hb.symm
+      · simp
+
+/-- `relocate_placed` spelled out: on an accepted result, every player's tile
+is walkable and every other player is at least the collision radius away. -/
+theorem relocate_apart (s : Snapshot) (x y : alloc.vec.Vec U32) :
+    rules.relocate s x y ⦃ r => ∀ s', r = .Ok s' → ∀ p ∈ s'.players.val,
+      blockedAt (alloc.vec.Vec.deref s'.terrain.mask) s'.meta.width s'.meta.height p.x p.y = false ∧
+      ∀ q ∈ s'.players.val, q.id ≠ p.id → ¬ distNat q.x q.y p.x p.y < 562500 ⦄ := by
+  apply WP.spec_mono (relocate_placed s x y)
+  intro r h s' hs p hp
+  have hp' := List.all_eq_true.mp (h s' hs) p hp
+  simp only [occB, tooClose, Bool.not_or, Bool.and_eq_true, Bool.not_eq_true',
+    List.any_eq_false, decide_eq_true_eq, not_and] at hp'
+  exact ⟨hp'.1, fun q hq hne => hp'.2 q hq hne⟩
+
 end ai_town_kernel

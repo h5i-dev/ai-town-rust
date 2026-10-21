@@ -806,3 +806,27 @@ fn grid_wellformed_rejects_broken_chains() {
     let off = vec![1u32, 1, 0, 1];
     assert!(!grid_wellformed(&head, &next, w, h, &xs, &ys, &off, &mut seen), "off agent linked");
 }
+
+#[test]
+fn relocate_refuses_overlap_and_blocked_tiles() {
+    let s = world(5_000);
+    let (s, _) = run(&s, ENGINE, 5_000, Command::CreateAgent { name: b"A".to_vec(), character: 0, identity: b"a".to_vec(), plan: b"p".to_vec() });
+    let (s, _) = run(&s, ENGINE, 5_000, Command::CreateAgent { name: b"B".to_vec(), character: 0, identity: b"b".to_vec(), plan: b"p".to_vec() });
+    assert_eq!(s.players.len(), 2);
+    assert!(placement_ok(&s));
+    // 749 apart is inside the radius; 750 is not.
+    let (_s2, r) = run(&s, ENGINE, 5_100, Command::Relocate { x: vec![2_000, 2_749], y: vec![3_000, 3_000] });
+    assert_eq!(r, Err(Error::Occupied));
+    let (s2, r) = run(&s, ENGINE, 5_100, Command::Relocate { x: vec![2_000, 2_750], y: vec![3_000, 3_000] });
+    assert_eq!(r, Ok(Reply::Ok));
+    assert!(placement_ok(&s2));
+    // Off the map counts as blocked.
+    let far = s.meta.width * MILLI + 10;
+    let (_s3, r) = run(&s, ENGINE, 5_100, Command::Relocate { x: vec![2_000, far], y: vec![3_000, 3_000] });
+    assert_eq!(r, Err(Error::Occupied));
+    // A blocked tile.
+    let mut walled = s.clone();
+    set_blocked(&mut walled.terrain.mask, walled.meta.width, walled.meta.height, 5, 5);
+    let (_s4, r) = run(&walled, ENGINE, 5_100, Command::Relocate { x: vec![2_000, 5_500], y: vec![3_000, 5_500] });
+    assert_eq!(r, Err(Error::Occupied));
+}
