@@ -519,3 +519,172 @@ fn tick_players_matches_one_engine_tick() {
     assert_eq!(stepped.members, before.members);
     assert_eq!(stepped.conversations, before.conversations);
 }
+
+fn round_move(xs: &mut [u32], ys: &mut [u32], moving: &[u32], cand_x: &[u32], cand_y: &[u32], ids: &[u64], mask: &[u8], w: u32, h: u32) -> Vec<u32> {
+    let n = xs.len();
+    let cells = (w as usize) * (h as usize);
+    let mut head = vec![u32::MAX; cells];
+    let mut next = vec![u32::MAX; n];
+    let mut prop_x = vec![0u32; n];
+    let mut prop_y = vec![0u32; n];
+    let mut prop_on = vec![0u32; n];
+    assert!(tick_round(xs, ys, moving, cand_x, cand_y, ids, mask, w, h, &mut head, &mut next, &mut prop_x, &mut prop_y, &mut prop_on));
+    prop_on
+}
+
+fn pairs_clear(xs: &[u32], ys: &[u32]) -> bool {
+    let mut i = 0;
+    while i < xs.len() {
+        let mut j = i + 1;
+        while j < xs.len() && j < ys.len() {
+            if dist_sq(xs[i], ys[i], xs[j], ys[j]) < COLLISION_SQ {
+                return false;
+            }
+            j += 1;
+        }
+        i += 1;
+    }
+    true
+}
+
+#[test]
+fn tick_round_uses_priority_and_previous_positions() {
+    let w = 8u32;
+    let h = 8u32;
+    let mask = mask(w, h);
+    let mut xs = vec![0u32, 1000];
+    let mut ys = vec![0u32, 0];
+    let moved = round_move(&mut xs, &mut ys, &[1, 1], &[200, 800], &[0, 0], &[1, 2], &mask, w, h);
+    assert_eq!(xs, vec![200, 1000]);
+    assert_eq!(moved, vec![1, 0]);
+    assert!(pairs_clear(&xs, &ys));
+
+    let mut xs = vec![0u32, 1000];
+    let mut ys = vec![0u32, 0];
+    let moved = round_move(&mut xs, &mut ys, &[1, 1], &[200, 800], &[0, 0], &[9, 1], &mask, w, h);
+    assert_eq!(xs, vec![0, 800]);
+    assert_eq!(moved, vec![0, 1]);
+    assert!(pairs_clear(&xs, &ys));
+
+    let mut xs = vec![2000u32, 1248];
+    let mut ys = vec![0u32, 0];
+    let mut seq_x = xs.clone();
+    let mut seq_y = ys.clone();
+    let g = near_index(w, h, &xs, &ys);
+    assert!(tick_moves(&mut seq_x, &mut seq_y, &[1, 1], &[2012, 1260], &[0, 0], &mask, w, h, &g.head, &g.next));
+    assert_eq!(seq_x, vec![2012, 1260]);
+    let moved = round_move(&mut xs, &mut ys, &[1, 1], &[2012, 1260], &[0, 0], &[1, 2], &mask, w, h);
+    assert_eq!(xs, vec![2012, 1248]);
+    assert_eq!(moved, vec![1, 0]);
+    assert!(pairs_clear(&xs, &ys));
+}
+
+#[test]
+fn tick_round_refuses_a_blocked_tile_and_stays_apart() {
+    let w = 8u32;
+    let h = 8u32;
+    let mut blocked = mask(w, h);
+    set_blocked(&mut blocked, w, h, 1, 0);
+    let mut xs = vec![0u32];
+    let mut ys = vec![0u32];
+    let moved = round_move(&mut xs, &mut ys, &[1], &[1000], &[0], &[1], &blocked, w, h);
+    assert_eq!(xs, vec![0]);
+    assert_eq!(moved, vec![0]);
+
+    let open = mask(16, 8);
+    let n = 128usize;
+    let mut xs = Vec::new();
+    let mut ys = Vec::new();
+    let mut moving = Vec::new();
+    let mut cand_x = Vec::new();
+    let mut cand_y = Vec::new();
+    let mut ids = Vec::new();
+    let mut i = 0usize;
+    while i < n {
+        let x = ((i % 16) as u32) * 1000;
+        let y = ((i / 16) as u32) * 1000;
+        xs.push(x);
+        ys.push(y);
+        moving.push(1);
+        cand_x.push(x + 12);
+        cand_y.push(y);
+        ids.push((i as u64) + 1);
+        i += 1;
+    }
+    assert!(pairs_clear(&xs, &ys));
+    let moved = round_move(&mut xs, &mut ys, &moving, &cand_x, &cand_y, &ids, &open, 16, 8);
+    assert!(moved.iter().all(|m| *m == 1));
+    assert_eq!(xs[0], 12);
+    assert!(pairs_clear(&xs, &ys));
+    i = 0;
+    while i < n {
+        assert!(!mask_blocked(&open, 16, 8, xs[i], ys[i]));
+        i += 1;
+    }
+}
+
+#[test]
+fn grid_yield_matches_the_full_scan() {
+    let w = 8u32;
+    let h = 8u32;
+    let xs = vec![0u32, 1000, 2000, 500, 3000];
+    let ys = vec![0u32, 0, 0, 400, 1000];
+    let ids = vec![4u64, 1, 8, 2, 3];
+    let on = vec![1u32, 1, 0, 1, 1];
+    let mut head = vec![u32::MAX; (w * h) as usize];
+    let mut next = vec![u32::MAX; xs.len()];
+    assert!(grid_build(&mut head, &mut next, w, h, &xs, &ys, &on));
+    let ones = vec![1u32; xs.len()];
+    let mut i = 0usize;
+    while i < xs.len() {
+        assert!(grid_build(&mut head, &mut next, w, h, &xs, &ys, &on));
+        let grid = grid_yield(w, h, &head, &next, &xs, &ys, &ids, xs[i], ys[i], ids[i], i as u32);
+        let scan = scan_yield(&xs, &ys, &ids, &on, xs[i], ys[i], ids[i], i as u32);
+        assert_eq!(grid, scan, "agent {i}");
+        assert!(grid_build(&mut head, &mut next, w, h, &xs, &ys, &ones));
+        let hit = grid_hit(w, h, &head, &next, &xs, &ys, xs[i], ys[i], i as u32);
+        assert_eq!(hit, scan_hit(&xs, &ys, xs[i], ys[i], i as u32), "hit {i}");
+        i += 1;
+    }
+}
+
+#[test]
+fn sequential_tick_still_sees_the_earlier_landing() {
+    let (s, _) = run(&Snapshot::default(), ENGINE, 1_000_000, Command::Init { width: 8, height: 8, mask: mask(8, 8) });
+    let (mut s, _) = run(&s, ENGINE, 1_000_000, Command::CreateAgent { name: b"A".to_vec(), character: 0, identity: b"a".to_vec(), plan: b"p".to_vec() });
+    let (s2, _) = run(&s, ENGINE, 1_000_000, Command::CreateAgent { name: b"B".to_vec(), character: 1, identity: b"b".to_vec(), plan: b"p".to_vec() });
+    s = s2;
+    assert_eq!(s.players.len(), 2);
+    let id0 = s.players[0].id;
+    let id1 = s.players[1].id;
+    s.players[0].x = 2000;
+    s.players[0].y = 0;
+    s.players[0].dest_x = 4000;
+    s.players[0].dest_y = 0;
+    s.players[0].pf = PF_MOVE;
+    s.players[0].pf_started = 1_000_000;
+    s.players[1].x = 1248;
+    s.players[1].y = 0;
+    s.players[1].dest_x = 4000;
+    s.players[1].dest_y = 0;
+    s.players[1].pf = PF_MOVE;
+    s.players[1].pf_started = 1_000_000;
+    s.meta.now_ms = 1_000_000;
+    let t0 = 1_000_000u64;
+    let t1 = t0 + TICK_MS;
+    s.paths = vec![
+        PathNode { player: id0, seq: 0, x: 2000, y: 0, face_dx: 2000, face_dy: 1000, t: t0 },
+        PathNode { player: id0, seq: 1, x: 2012, y: 0, face_dx: 2000, face_dy: 1000, t: t1 },
+        PathNode { player: id1, seq: 0, x: 1248, y: 0, face_dx: 2000, face_dy: 1000, t: t0 },
+        PathNode { player: id1, seq: 1, x: 1260, y: 0, face_dx: 2000, face_dy: 1000, t: t1 },
+    ];
+    let mut parallel = s.clone();
+    let mut sequential = s.clone();
+    assert_eq!(run_ticks(&mut parallel, t0 + TICK_MS), 1);
+    assert_eq!(run_ticks_seq(&mut sequential, t0 + TICK_MS), 1);
+    assert_eq!((parallel.players[0].x, parallel.players[1].x), (2012, 1248));
+    assert_eq!((sequential.players[0].x, sequential.players[1].x), (2012, 1260));
+    assert!(collision_safe(&parallel));
+    assert!(collision_safe(&sequential));
+    assert_eq!(run(&s, 1, t0 + TICK_MS, Command::StepSeq).1, Err(Error::Forbidden));
+}

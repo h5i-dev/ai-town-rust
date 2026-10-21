@@ -564,3 +564,121 @@ pub fn grid_hit(width: u32, height: u32, head: &[u32], next: &[u32], xs: &[u32],
 pub fn near_hit(index: &NearIndex, xs: &[u32], ys: &[u32], x: u32, y: u32, skip: u32) -> bool {
     grid_hit(index.width, index.height, &index.head, &index.next, xs, ys, x, y, skip)
 }
+
+/// Rebuild one-tile chains. `on[i] != 0` inserts agent `i` at `(xs[i], ys[i])`.
+/// Links run from the newest insert toward older ones. Returns false when the
+/// buffers are short or the map is empty, and then leaves the slices untouched.
+pub fn grid_build(head: &mut [u32], next: &mut [u32], width: u32, height: u32, xs: &[u32], ys: &[u32], on: &[u32]) -> bool {
+    if width == 0 || height == 0 {
+        return false;
+    }
+    let cells = (width as usize) * (height as usize);
+    let n = xs.len();
+    if ys.len() < n || on.len() < n || next.len() < n || head.len() < cells {
+        return false;
+    }
+    let mut c = 0usize;
+    while c < cells {
+        head[c] = u32::MAX;
+        c += 1;
+    }
+    let mut i = 0usize;
+    while i < n {
+        next[i] = u32::MAX;
+        i += 1;
+    }
+    i = 0;
+    while i < n {
+        if on[i] != 0 {
+            let tx = xs[i] / MILLI;
+            let ty = ys[i] / MILLI;
+            if tx < width && ty < height {
+                let cell = (tx as usize) * (height as usize) + (ty as usize);
+                if cell < cells && i < next.len() {
+                    next[i] = head[cell];
+                    head[cell] = i as u32;
+                }
+            }
+        }
+        i += 1;
+    }
+    true
+}
+
+/// True when a chained proposal with a better priority is strictly inside the
+/// collision radius. Better means a lower player id, then a lower index.
+/// `skip` is this agent and is ignored. The walk has no `return`.
+pub fn grid_yield(
+    width: u32,
+    height: u32,
+    head: &[u32],
+    next: &[u32],
+    xs: &[u32],
+    ys: &[u32],
+    ids: &[u64],
+    x: u32,
+    y: u32,
+    self_id: u64,
+    skip: u32,
+) -> bool {
+    if width == 0 || height == 0 {
+        return false;
+    }
+    let cx = x / MILLI;
+    let cy = y / MILLI;
+    if cx >= width || cy >= height {
+        return false;
+    }
+    let x0 = if cx == 0 { 0 } else { cx - 1 };
+    let y0 = if cy == 0 { 0 } else { cy - 1 };
+    let x1 = if cx + 1 >= width { width - 1 } else { cx + 1 };
+    let y1 = if cy + 1 >= height { height - 1 } else { cy + 1 };
+    let mut hit = false;
+    let mut tx = x0;
+    while tx <= x1 {
+        let mut ty = y0;
+        while ty <= y1 {
+            if !hit {
+                let c = (tx as usize) * (height as usize) + (ty as usize);
+                if c < head.len() {
+                    let mut p = head[c];
+                    let mut guard = 0u32;
+                    while p != u32::MAX {
+                        if (p as usize) >= next.len() || (p as usize) >= xs.len() || (p as usize) >= ys.len() {
+                            p = u32::MAX;
+                        } else {
+                            let i = p as usize;
+                            let better = if i >= ids.len() {
+                                false
+                            } else if ids[i] < self_id {
+                                true
+                            } else if ids[i] == self_id && (i as u32) < skip {
+                                true
+                            } else {
+                                false
+                            };
+                            if (i as u32) != skip && better && dist_sq(xs[i], ys[i], x, y) < COLLISION_SQ {
+                                hit = true;
+                                p = u32::MAX;
+                            } else {
+                                let nxt = next[i];
+                                if nxt == p {
+                                    p = u32::MAX;
+                                } else {
+                                    p = nxt;
+                                    guard = guard.wrapping_add(1);
+                                    if guard > next.len() as u32 {
+                                        p = u32::MAX;
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+            ty += 1;
+        }
+        tx += 1;
+    }
+    hit
+}

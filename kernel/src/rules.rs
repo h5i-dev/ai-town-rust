@@ -339,15 +339,20 @@ struct TickScratch {
     near: geom::NearIndex,
     clear: Vec<u64>,
     nclear: usize,
+    moving: Vec<u32>,
+    cand_x: Vec<u32>,
+    cand_y: Vec<u32>,
+    cand_fx: Vec<u32>,
+    cand_fy: Vec<u32>,
+    cand_speed: Vec<u32>,
+    ids: Vec<u64>,
+    prop_x: Vec<u32>,
+    prop_y: Vec<u32>,
+    prop_on: Vec<u32>,
 }
 
-pub fn run_ticks(s: &mut Snapshot, end_ms: u64) -> u32 {
-    if s.meta.frozen || s.meta.width == 0 {
-        return 0;
-    }
-    let mut ticks = 0u32;
-    s.meta.pathfinds = 0;
-    let mut scratch = TickScratch {
+fn fresh_scratch() -> TickScratch {
+    TickScratch {
         xs: Vec::new(),
         ys: Vec::new(),
         start: Vec::new(),
@@ -356,21 +361,55 @@ pub fn run_ticks(s: &mut Snapshot, end_ms: u64) -> u32 {
         near: geom::NearIndex { width: 0, height: 0, head: Vec::new(), next: Vec::new() },
         clear: Vec::new(),
         nclear: 0,
-    };
+        moving: Vec::new(),
+        cand_x: Vec::new(),
+        cand_y: Vec::new(),
+        cand_fx: Vec::new(),
+        cand_fy: Vec::new(),
+        cand_speed: Vec::new(),
+        ids: Vec::new(),
+        prop_x: Vec::new(),
+        prop_y: Vec::new(),
+        prop_on: Vec::new(),
+    }
+}
+
+/// Default tick. Movement is the two-phase round in `step::tick_round`.
+pub fn run_ticks(s: &mut Snapshot, end_ms: u64) -> u32 {
+    run_ticks_mode(s, end_ms, false)
+}
+
+/// The original AI Town tick. Each agent sees landings accepted earlier in
+/// the same tick. `AI_TOWN_TICK=seq` selects this from the shell.
+pub fn run_ticks_seq(s: &mut Snapshot, end_ms: u64) -> u32 {
+    run_ticks_mode(s, end_ms, true)
+}
+
+fn run_ticks_mode(s: &mut Snapshot, end_ms: u64, sequential: bool) -> u32 {
+    if s.meta.frozen || s.meta.width == 0 {
+        return 0;
+    }
+    let mut ticks = 0u32;
+    s.meta.pathfinds = 0;
+    let mut scratch = fresh_scratch();
     while ticks < MAX_TICKS && s.meta.now_ms.saturating_add(TICK_MS) <= end_ms {
         s.meta.now_ms += TICK_MS;
-        tick(s, s.meta.now_ms, &mut scratch);
+        tick(s, s.meta.now_ms, &mut scratch, sequential);
         ticks += 1;
     }
     ticks
 }
 
-fn tick(s: &mut Snapshot, now: u64, scratch: &mut TickScratch) {
+fn tick(s: &mut Snapshot, now: u64, scratch: &mut TickScratch, sequential: bool) {
     idle(s, now);
     agents(s, now);
     conversations(s, now);
     pathfind(s, now);
-    positions(s, now, scratch);
+    if sequential {
+        positions_seq(s, now, scratch);
+    } else {
+        positions_round(s, now, scratch);
+    }
 }
 
 fn idle(s: &mut Snapshot, now: u64) {
@@ -688,7 +727,7 @@ fn pathfind_one(s: &mut Snapshot, i: usize, now: u64) {
     }
 }
 
-fn positions(s: &mut Snapshot, now: u64, scratch: &mut TickScratch) {
+fn positions_seq(s: &mut Snapshot, now: u64, scratch: &mut TickScratch) {
     let limit = match id_limit_one(s) {
         Some(n) => n,
         None => 0,
@@ -712,6 +751,122 @@ fn positions(s: &mut Snapshot, now: u64, scratch: &mut TickScratch) {
     i = 0;
     while i < s.players.len() {
         move_one(s, i, now, scratch);
+        i += 1;
+    }
+    if scratch.nclear > 0 {
+        let nclear = scratch.nclear;
+        s.paths = drop_path_ids(&s.paths, &scratch.clear[..nclear]);
+    }
+}
+
+fn grow_u32(v: &mut Vec<u32>, n: usize) {
+    while v.len() < n {
+        v.push(0);
+    }
+}
+
+fn grow_u64(v: &mut Vec<u64>, n: usize) {
+    while v.len() < n {
+        v.push(0);
+    }
+}
+
+/// Two-phase movement. A rejected walker waits. A missing path does not.
+fn positions_round(s: &mut Snapshot, now: u64, scratch: &mut TickScratch) {
+    let limit = match id_limit_one(s) {
+        Some(n) => n,
+        None => 0,
+    };
+    scratch.grouped = if limit == 0 { false } else { fill_path_spans(&s.paths, limit, &mut scratch.start, &mut scratch.end) };
+    let n = s.players.len();
+    grow_u32(&mut scratch.xs, n);
+    grow_u32(&mut scratch.ys, n);
+    grow_u32(&mut scratch.moving, n);
+    grow_u32(&mut scratch.cand_x, n);
+    grow_u32(&mut scratch.cand_y, n);
+    grow_u32(&mut scratch.cand_fx, n);
+    grow_u32(&mut scratch.cand_fy, n);
+    grow_u32(&mut scratch.cand_speed, n);
+    grow_u64(&mut scratch.ids, n);
+    grow_u32(&mut scratch.prop_x, n);
+    grow_u32(&mut scratch.prop_y, n);
+    grow_u32(&mut scratch.prop_on, n);
+    let cells = (s.meta.width as usize) * (s.meta.height as usize);
+    while scratch.near.head.len() < cells {
+        scratch.near.head.push(u32::MAX);
+    }
+    while scratch.near.next.len() < n {
+        scratch.near.next.push(u32::MAX);
+    }
+    let mut i = 0;
+    while i < n {
+        scratch.xs[i] = s.players[i].x;
+        scratch.ys[i] = s.players[i].y;
+        scratch.ids[i] = s.players[i].id;
+        scratch.moving[i] = 0;
+        scratch.cand_x[i] = s.players[i].x;
+        scratch.cand_y[i] = s.players[i].y;
+        scratch.cand_fx[i] = s.players[i].face_dx;
+        scratch.cand_fy[i] = s.players[i].face_dy;
+        scratch.cand_speed[i] = 0;
+        if s.players[i].pf == PF_MOVE {
+            if let Some(pose) = path_pose_at(s, i, now, scratch) {
+                scratch.moving[i] = 1;
+                scratch.cand_x[i] = pose.x;
+                scratch.cand_y[i] = pose.y;
+                scratch.cand_fx[i] = pose.face_dx;
+                scratch.cand_fy[i] = pose.face_dy;
+                scratch.cand_speed[i] = pose.speed;
+            }
+        }
+        i += 1;
+    }
+    let ok = crate::step::tick_round(
+        &mut scratch.xs[..n],
+        &mut scratch.ys[..n],
+        &scratch.moving[..n],
+        &scratch.cand_x[..n],
+        &scratch.cand_y[..n],
+        &scratch.ids[..n],
+        &s.terrain.mask,
+        s.meta.width,
+        s.meta.height,
+        &mut scratch.near.head[..cells],
+        &mut scratch.near.next[..n],
+        &mut scratch.prop_x[..n],
+        &mut scratch.prop_y[..n],
+        &mut scratch.prop_on[..n],
+    );
+    if !ok {
+        return;
+    }
+    scratch.nclear = 0;
+    i = 0;
+    while i < n {
+        if scratch.prop_on[i] != 0 {
+            s.players[i].x = scratch.xs[i];
+            s.players[i].y = scratch.ys[i];
+            s.players[i].face_dx = scratch.cand_fx[i];
+            s.players[i].face_dy = scratch.cand_fy[i];
+            s.players[i].speed = scratch.cand_speed[i];
+            if s.players[i].x == s.players[i].dest_x && s.players[i].y == s.players[i].dest_y {
+                let id = s.players[i].id;
+                stop_motion(&mut s.players[i]);
+                if scratch.nclear < scratch.clear.len() {
+                    scratch.clear[scratch.nclear] = id;
+                } else {
+                    scratch.clear.push(id);
+                }
+                scratch.nclear += 1;
+            }
+        } else if scratch.moving[i] != 0 {
+            s.players[i].pf = PF_WAIT;
+            let stagger = s.players[i].id % 1000;
+            s.players[i].wait_until = now.wrapping_add(1).wrapping_add(stagger);
+            s.players[i].speed = 0;
+        } else {
+            s.players[i].speed = 0;
+        }
         i += 1;
     }
     if scratch.nclear > 0 {
@@ -814,16 +969,9 @@ fn path_of(paths: &Vec<PathNode>, player: u64) -> Vec<PathNode> {
     out
 }
 
-fn move_one(s: &mut Snapshot, i: usize, now: u64, scratch: &mut TickScratch) {
-    if i >= s.players.len() {
-        return;
-    }
+fn path_pose_at(s: &Snapshot, i: usize, now: u64, scratch: &TickScratch) -> Option<geom::Pose> {
     let id = s.players[i].id;
-    if s.players[i].pf != PF_MOVE {
-        s.players[i].speed = 0;
-        return;
-    }
-    let pose = if scratch.grouped {
+    if scratch.grouped {
         let idn = id as usize;
         if idn < scratch.start.len() && idn < scratch.end.len() && scratch.start[idn] != u32::MAX {
             let end_i = scratch.end[idn] as usize;
@@ -837,7 +985,19 @@ fn move_one(s: &mut Snapshot, i: usize, now: u64, scratch: &mut TickScratch) {
     } else {
         let path = path_of(&s.paths, id);
         path_pose(&path, now)
-    };
+    }
+}
+
+fn move_one(s: &mut Snapshot, i: usize, now: u64, scratch: &mut TickScratch) {
+    if i >= s.players.len() {
+        return;
+    }
+    let id = s.players[i].id;
+    if s.players[i].pf != PF_MOVE {
+        s.players[i].speed = 0;
+        return;
+    }
+    let pose = path_pose_at(s, i, now, scratch);
     let Some(pose) = pose else {
         s.players[i].speed = 0;
         return;
@@ -1275,6 +1435,14 @@ pub fn command(actor_user: u64, now: u64, s: &Snapshot, cmd: &Command) -> Result
             }
             ok!(require_world(&next));
             let ticks = run_ticks(&mut next, now);
+            Reply::Stepped { now_ms: next.meta.now_ms, ticks }
+        }
+        Command::StepSeq => {
+            if actor_user != ENGINE {
+                return Err(Error::Forbidden);
+            }
+            ok!(require_world(&next));
+            let ticks = run_ticks_seq(&mut next, now);
             Reply::Stepped { now_ms: next.meta.now_ms, ticks }
         }
         Command::Relocate { x, y } => {

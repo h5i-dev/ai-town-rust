@@ -59,8 +59,13 @@ fn drain_enabled() -> bool {
     std::env::var("AI_TOWN_DRAIN").ok().as_deref() != Some("off")
 }
 
+fn sequential_ticks() -> bool {
+    std::env::var("AI_TOWN_TICK").ok().as_deref() == Some("seq")
+}
+
 async fn cpu_step(engine: &Engine<Town, TownStore>) {
-    match engine.execute(&crate::user_actor(ENGINE), &Command::Step).await {
+    let cmd = if sequential_ticks() { Command::StepSeq } else { Command::Step };
+    match engine.execute(&crate::user_actor(ENGINE), &cmd).await {
         Ok(Ok(_)) => {}
         Ok(Err(e)) => tracing::warn!(?e, "step refused"),
         Err(_) => tracing::error!("step failed"),

@@ -11,9 +11,9 @@ mod rules;
 mod step;
 
 pub use batch::{batch_seek, scalar_seek};
-pub use geom::{dist_sq, isqrt, manhattan, mask_blocked, near_index, path_pose, set_blocked, grid_hit, MinHeap, NearIndex, Pose};
-pub use rules::{collision_safe, diff, exclusive, members_consistent, motion_isolated, paths_isolated, run_ticks, same_motion};
-pub use step::{agent_step, tick_moves, tick_players, Landing};
+pub use geom::{dist_sq, grid_build, grid_hit, grid_yield, isqrt, manhattan, mask_blocked, near_index, path_pose, set_blocked, MinHeap, NearIndex, Pose};
+pub use rules::{collision_safe, diff, exclusive, members_consistent, motion_isolated, paths_isolated, run_ticks, run_ticks_seq, same_motion};
+pub use step::{agent_step, propose_one, resolve_one, scan_hit, scan_yield, tick_moves, tick_players, tick_players_round, tick_round, Landing, Proposal};
 
 /// One tile, in milli-tiles.
 pub const MILLI: u32 = 1000;
@@ -206,6 +206,8 @@ pub enum Command {
     Remember { summary: Vec<u8> },
     Activity { kind: u32 },
     Step,
+    /// Engine-only. The original sequential movement tick.
+    StepSeq,
     /// Engine-only. Writes positions from a GPU seek and drops paths.
     /// `pf` and `dest_*` stay so the next seek still knows who is walking.
     Relocate { x: Vec<u32>, y: Vec<u32> },
