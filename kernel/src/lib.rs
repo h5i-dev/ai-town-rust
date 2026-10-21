@@ -11,7 +11,7 @@ mod rules;
 
 pub use batch::{batch_seek, scalar_seek};
 pub use geom::{dist_sq, isqrt, manhattan, mask_blocked, set_blocked, MinHeap};
-pub use rules::{collision_safe, exclusive, members_consistent, motion_isolated, paths_isolated, same_motion};
+pub use rules::{collision_safe, diff, exclusive, members_consistent, motion_isolated, paths_isolated, run_ticks, same_motion};
 
 /// One tile, in milli-tiles.
 pub const MILLI: u32 = 1000;
@@ -252,11 +252,47 @@ pub fn transition(actor: &Principal, snap: &Snapshot, cmd: &Command) -> Result<(
     rules::command(actor.user, actor.now_ms, snap, cmd)
 }
 
+fn put_player(v: &mut Vec<Player>, x: Player) {
+    let mut lo = 0usize;
+    let mut hi = v.len();
+    while lo < hi {
+        let mid = lo + (hi - lo) / 2;
+        if v[mid].id < x.id {
+            lo = mid + 1;
+        } else {
+            hi = mid;
+        }
+    }
+    if lo < v.len() && v[lo].id == x.id {
+        v[lo] = x;
+    } else {
+        Player::put(v, x);
+    }
+}
+
+fn put_agent(v: &mut Vec<Agent>, x: Agent) {
+    let mut lo = 0usize;
+    let mut hi = v.len();
+    while lo < hi {
+        let mid = lo + (hi - lo) / 2;
+        if v[mid].id < x.id {
+            lo = mid + 1;
+        } else {
+            hi = mid;
+        }
+    }
+    if lo < v.len() && v[lo].id == x.id {
+        v[lo] = x;
+    } else {
+        Agent::put(v, x);
+    }
+}
+
 fn apply_write(s: &mut Snapshot, w: Write) {
     match w {
         Write::PutMeta(m) => s.meta = m,
         Write::PutTerrain(t) => s.terrain = t,
-        Write::PutPlayer(p) => Player::put(&mut s.players, p),
+        Write::PutPlayer(p) => put_player(&mut s.players, p),
         Write::DelPlayer(id) => s.players = Player::del(&s.players, id),
         Write::PutPath(n) => PathNode::put(&mut s.paths, n),
         Write::ClearPath(player) => {
@@ -266,7 +302,7 @@ fn apply_write(s: &mut Snapshot, w: Write) {
         Write::DelConv(id) => s.conversations = Conversation::del(&s.conversations, id),
         Write::PutMember(m) => Member::put(&mut s.members, m),
         Write::DelMember(c, p) => s.members = Member::del(&s.members, c, p),
-        Write::PutAgent(a) => Agent::put(&mut s.agents, a),
+        Write::PutAgent(a) => put_agent(&mut s.agents, a),
         Write::DelAgent(id) => s.agents = Agent::del(&s.agents, id),
         Write::PutMemory(m) => Memory::put(&mut s.memories, m),
         Write::PutMessage(m) => Message::put(&mut s.messages, m),

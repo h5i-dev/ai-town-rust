@@ -26,6 +26,26 @@ pub fn player_index(players: &Vec<Player>, id: u64) -> Option<usize> {
     None
 }
 
+/// Tick lookup. Ids are allocated in order, so a hit is the binary probe.
+/// A miss scans, which is what [`player_index`] does for every id. The scan
+/// stays the function the membership proofs unfold.
+pub fn player_at(players: &Vec<Player>, id: u64) -> Option<usize> {
+    let mut lo = 0usize;
+    let mut hi = players.len();
+    while lo < hi {
+        let mid = lo + (hi - lo) / 2;
+        if players[mid].id < id {
+            lo = mid + 1;
+        } else {
+            hi = mid;
+        }
+    }
+    if lo < players.len() && players[lo].id == id {
+        return Some(lo);
+    }
+    player_index(players, id)
+}
+
 pub fn player_by_owner(players: &Vec<Player>, owner: u64) -> Option<usize> {
     let mut i = 0;
     while i < players.len() {
@@ -121,11 +141,7 @@ fn halt(s: &mut Snapshot, id: u64) {
     let Some(i) = player_index(&s.players, id) else {
         return;
     };
-    s.players[i].pf = PF_NONE;
-    s.players[i].dest_x = 0;
-    s.players[i].dest_y = 0;
-    s.players[i].speed = 0;
-    s.players[i].wait_until = 0;
+    stop_motion(&mut s.players[i]);
 }
 
 fn drop_paths(paths: &Vec<PathNode>, player: u64) -> Vec<PathNode> {
@@ -298,26 +314,47 @@ fn remove_player(s: &mut Snapshot, id: u64, now: u64) {
     s.agents = drop_agents_for(&s.agents, id);
 }
 
+struct TickScratch {
+    xs: Vec<u32>,
+    ys: Vec<u32>,
+    start: Vec<u32>,
+    end: Vec<u32>,
+    grouped: bool,
+    near: geom::NearIndex,
+    clear: Vec<u64>,
+    nclear: usize,
+}
+
 pub fn run_ticks(s: &mut Snapshot, end_ms: u64) -> u32 {
     if s.meta.frozen || s.meta.width == 0 {
         return 0;
     }
     let mut ticks = 0u32;
     s.meta.pathfinds = 0;
+    let mut scratch = TickScratch {
+        xs: Vec::new(),
+        ys: Vec::new(),
+        start: Vec::new(),
+        end: Vec::new(),
+        grouped: false,
+        near: geom::NearIndex { width: 0, height: 0, head: Vec::new(), next: Vec::new() },
+        clear: Vec::new(),
+        nclear: 0,
+    };
     while ticks < MAX_TICKS && s.meta.now_ms.saturating_add(TICK_MS) <= end_ms {
         s.meta.now_ms += TICK_MS;
-        tick(s, s.meta.now_ms);
+        tick(s, s.meta.now_ms, &mut scratch);
         ticks += 1;
     }
     ticks
 }
 
-fn tick(s: &mut Snapshot, now: u64) {
+fn tick(s: &mut Snapshot, now: u64, scratch: &mut TickScratch) {
     idle(s, now);
     agents(s, now);
     conversations(s, now);
     pathfind(s, now);
-    positions(s, now);
+    positions(s, now, scratch);
 }
 
 fn idle(s: &mut Snapshot, now: u64) {
@@ -364,7 +401,7 @@ fn tick_agent(s: &mut Snapshot, i: usize, now: u64) {
         return;
     }
     let Some(mi) = member_index(&s.members, player_id) else {
-        let pi = player_index(&s.players, player_id);
+        let pi = player_at(&s.players, player_id);
         let busy = match pi {
             Some(p) => s.players[p].activity_until > now || s.players[p].pf != PF_NONE,
             None => true,
@@ -387,7 +424,7 @@ fn tick_agent(s: &mut Snapshot, i: usize, now: u64) {
     let other = other_member(s, conv, player_id);
     if status == ST_INVITED {
         let other_human = match other {
-            Some(id) => match player_index(&s.players, id) {
+            Some(id) => match player_at(&s.players, id) {
                 Some(p) => s.players[p].is_human,
                 None => false,
             },
@@ -413,10 +450,10 @@ fn tick_agent(s: &mut Snapshot, i: usize, now: u64) {
         let Some(oid) = other else {
             return;
         };
-        let Some(pi) = player_index(&s.players, player_id) else {
+        let Some(pi) = player_at(&s.players, player_id) else {
             return;
         };
-        let Some(oi) = player_index(&s.players, oid) else {
+        let Some(oi) = player_at(&s.players, oid) else {
             return;
         };
         let d = geom::dist_sq(s.players[pi].x, s.players[pi].y, s.players[oi].x, s.players[oi].y);
@@ -635,12 +672,118 @@ fn pathfind_one(s: &mut Snapshot, i: usize, now: u64) {
     }
 }
 
-fn positions(s: &mut Snapshot, now: u64) {
+fn positions(s: &mut Snapshot, now: u64, scratch: &mut TickScratch) {
+    let limit = match id_limit_one(s) {
+        Some(n) => n,
+        None => 0,
+    };
+    scratch.grouped = if limit == 0 { false } else { fill_path_spans(&s.paths, limit, &mut scratch.start, &mut scratch.end) };
+    let n = s.players.len();
+    while scratch.xs.len() < n {
+        scratch.xs.push(0);
+    }
+    while scratch.ys.len() < n {
+        scratch.ys.push(0);
+    }
     let mut i = 0;
-    while i < s.players.len() {
-        move_one(s, i, now);
+    while i < n {
+        scratch.xs[i] = s.players[i].x;
+        scratch.ys[i] = s.players[i].y;
         i += 1;
     }
+    geom::near_fill(&mut scratch.near, s.meta.width, s.meta.height, &scratch.xs[..n], &scratch.ys[..n]);
+    scratch.nclear = 0;
+    i = 0;
+    while i < s.players.len() {
+        move_one(s, i, now, scratch);
+        i += 1;
+    }
+    if scratch.nclear > 0 {
+        let nclear = scratch.nclear;
+        s.paths = drop_path_ids(&s.paths, &scratch.clear[..nclear]);
+    }
+}
+
+fn id_limit_one(s: &Snapshot) -> Option<usize> {
+    let n = s.meta.next_id;
+    if n == 0 || n > 2_000_000 {
+        None
+    } else {
+        Some(n as usize)
+    }
+}
+
+fn id_limit(a: &Snapshot, b: &Snapshot) -> Option<usize> {
+    let n = if a.meta.next_id > b.meta.next_id { a.meta.next_id } else { b.meta.next_id };
+    if n == 0 || n > 2_000_000 {
+        None
+    } else {
+        Some(n as usize)
+    }
+}
+
+/// True when every player's nodes are one contiguous run.
+/// `start[id] == u32::MAX` means that player has no nodes.
+fn fill_path_spans(paths: &Vec<PathNode>, limit: usize, start: &mut Vec<u32>, end: &mut Vec<u32>) -> bool {
+    while start.len() < limit {
+        start.push(u32::MAX);
+    }
+    while end.len() < limit {
+        end.push(0);
+    }
+    let mut i = 0;
+    while i < limit {
+        start[i] = u32::MAX;
+        end[i] = 0;
+        i += 1;
+    }
+    let mut ok = true;
+    i = 0;
+    while i < paths.len() {
+        let id = paths[i].player as usize;
+        if id >= limit {
+            ok = false;
+        } else if start[id] == u32::MAX {
+            start[id] = i as u32;
+            end[id] = (i as u32).wrapping_add(1);
+        } else if end[id] != i as u32 {
+            ok = false;
+        } else {
+            end[id] = (i as u32).wrapping_add(1);
+        }
+        i += 1;
+    }
+    ok
+}
+
+fn path_spans(paths: &Vec<PathNode>, limit: usize) -> Option<(Vec<u32>, Vec<u32>)> {
+    let mut start = Vec::new();
+    let mut end = Vec::new();
+    if fill_path_spans(paths, limit, &mut start, &mut end) {
+        Some((start, end))
+    } else {
+        None
+    }
+}
+
+fn drop_path_ids(paths: &Vec<PathNode>, ids: &[u64]) -> Vec<PathNode> {
+    let mut out = Vec::new();
+    let mut i = 0;
+    while i < paths.len() {
+        let mut drop = false;
+        let mut j = 0;
+        while j < ids.len() {
+            if paths[i].player == ids[j] {
+                drop = true;
+            }
+            j += 1;
+        }
+        if !drop {
+            out.push(paths[i].clone());
+        }
+        i += 1;
+    }
+    out
 }
 
 fn path_of(paths: &Vec<PathNode>, player: u64) -> Vec<PathNode> {
@@ -655,7 +798,7 @@ fn path_of(paths: &Vec<PathNode>, player: u64) -> Vec<PathNode> {
     out
 }
 
-fn move_one(s: &mut Snapshot, i: usize, now: u64) {
+fn move_one(s: &mut Snapshot, i: usize, now: u64, scratch: &mut TickScratch) {
     if i >= s.players.len() {
         return;
     }
@@ -664,12 +807,30 @@ fn move_one(s: &mut Snapshot, i: usize, now: u64) {
         s.players[i].speed = 0;
         return;
     }
-    let path = path_of(&s.paths, id);
-    let Some(pose) = path_pose(&path, now) else {
+    let pose = if scratch.grouped {
+        let idn = id as usize;
+        if idn < scratch.start.len() && idn < scratch.end.len() && scratch.start[idn] != u32::MAX {
+            let end_i = scratch.end[idn] as usize;
+            let hi = if end_i < s.paths.len() { end_i } else { s.paths.len() };
+            let start_i = scratch.start[idn] as usize;
+            let lo = if start_i < hi { start_i } else { hi };
+            path_pose(&s.paths[lo..hi], now)
+        } else {
+            None
+        }
+    } else {
+        let path = path_of(&s.paths, id);
+        path_pose(&path, now)
+    };
+    let Some(pose) = pose else {
         s.players[i].speed = 0;
         return;
     };
-    if occupied(s, pose.x, pose.y, id) {
+    // Same blocked test as `occupied`, over the tile neighborhood instead of
+    // every player. `xs`/`ys` track positions already accepted this tick.
+    let blocked = geom::mask_blocked(&s.terrain.mask, s.meta.width, s.meta.height, pose.x, pose.y)
+        || geom::near_hit(&scratch.near, &scratch.xs, &scratch.ys, pose.x, pose.y, i as u32);
+    if blocked {
         s.players[i].pf = PF_WAIT;
         // `BACKOFF_MS` is 1000. A checked `+` of the remainder stays
         // `AddChecked`, which does not translate; wrapping add does, and
@@ -684,9 +845,30 @@ fn move_one(s: &mut Snapshot, i: usize, now: u64) {
     s.players[i].face_dx = pose.face_dx;
     s.players[i].face_dy = pose.face_dy;
     s.players[i].speed = pose.speed;
-    if pose.x == s.players[i].dest_x && pose.y == s.players[i].dest_y {
-        halt(s, id);
+    if i < scratch.xs.len() {
+        scratch.xs[i] = pose.x;
     }
+    if i < scratch.ys.len() {
+        scratch.ys[i] = pose.y;
+    }
+    if pose.x == s.players[i].dest_x && pose.y == s.players[i].dest_y {
+        // Drop the path after the whole tick so the spans above stay valid.
+        stop_motion(&mut s.players[i]);
+        if scratch.nclear < scratch.clear.len() {
+            scratch.clear[scratch.nclear] = id;
+        } else {
+            scratch.clear.push(id);
+        }
+        scratch.nclear += 1;
+    }
+}
+
+fn stop_motion(p: &mut Player) {
+    p.pf = PF_NONE;
+    p.dest_x = 0;
+    p.dest_y = 0;
+    p.speed = 0;
+    p.wait_until = 0;
 }
 
 fn require_world(s: &Snapshot) -> Result<(), Error> {
@@ -1079,14 +1261,6 @@ pub fn command(actor_user: u64, now: u64, s: &Snapshot, cmd: &Command) -> Result
     Ok((diff(s, &next), reply))
 }
 
-fn rows_changed_player(before: &Vec<Player>, after: &Vec<Player>, id: u64) -> bool {
-    match (player_index(before, id), player_index(after, id)) {
-        (Some(i), Some(j)) => before[i] != after[j],
-        (None, None) => false,
-        _ => true,
-    }
-}
-
 pub fn diff(before: &Snapshot, after: &Snapshot) -> Vec<Write> {
     let mut ws = Vec::new();
     if before.meta != after.meta {
@@ -1095,24 +1269,7 @@ pub fn diff(before: &Snapshot, after: &Snapshot) -> Vec<Write> {
     if before.terrain != after.terrain {
         ws.push(Write::PutTerrain(after.terrain.clone()));
     }
-    let mut i = 0;
-    while i < before.players.len() {
-        if player_index(&after.players, before.players[i].id).is_none() {
-            ws.push(Write::DelPlayer(before.players[i].id));
-            ws.push(Write::ClearPath(before.players[i].id));
-        }
-        i += 1;
-    }
-    i = 0;
-    while i < after.players.len() {
-        let id = after.players[i].id;
-        if rows_changed_player(&before.players, &after.players, id) && player_index(&before.players, id).is_some() {
-            ws.push(Write::PutPlayer(after.players[i].clone()));
-        } else if player_index(&before.players, id).is_none() {
-            ws.push(Write::PutPlayer(after.players[i].clone()));
-        }
-        i += 1;
-    }
+    diff_player_rows(&before.players, &after.players, &mut ws);
     diff_paths(before, after, &mut ws);
     diff_convs(before, after, &mut ws);
     diff_members(before, after, &mut ws);
@@ -1122,7 +1279,121 @@ pub fn diff(before: &Snapshot, after: &Snapshot) -> Vec<Write> {
     ws
 }
 
+fn diff_player_rows(before: &Vec<Player>, after: &Vec<Player>, ws: &mut Vec<Write>) {
+    let mut i = 0;
+    let mut j = 0;
+    while i < before.len() || j < after.len() {
+        if i < before.len() && (j == after.len() || before[i].id < after[j].id) {
+            ws.push(Write::DelPlayer(before[i].id));
+            ws.push(Write::ClearPath(before[i].id));
+            i += 1;
+        } else if j < after.len() && (i == before.len() || after[j].id < before[i].id) {
+            ws.push(Write::PutPlayer(after[j].clone()));
+            j += 1;
+        } else {
+            if before[i] != after[j] {
+                ws.push(Write::PutPlayer(after[j].clone()));
+            }
+            i += 1;
+            j += 1;
+        }
+    }
+}
+
 fn diff_paths(before: &Snapshot, after: &Snapshot, ws: &mut Vec<Write>) {
+    if let Some(limit) = id_limit(before, after) {
+        if let (Some(bspan), Some(aspan)) = (path_spans(&before.paths, limit), path_spans(&after.paths, limit)) {
+            diff_paths_indexed(before, after, &bspan, &aspan, limit, ws);
+            return;
+        }
+    }
+    diff_paths_scan(before, after, ws);
+}
+
+fn diff_paths_indexed(
+    before: &Snapshot,
+    after: &Snapshot,
+    bspan: &(Vec<u32>, Vec<u32>),
+    aspan: &(Vec<u32>, Vec<u32>),
+    limit: usize,
+    ws: &mut Vec<Write>,
+) {
+    let mut was = Vec::new();
+    let mut now = Vec::new();
+    let mut i = 0;
+    while i < limit {
+        was.push(false);
+        now.push(false);
+        i += 1;
+    }
+    i = 0;
+    while i < before.players.len() {
+        let id = before.players[i].id as usize;
+        if id < was.len() {
+            was[id] = true;
+        }
+        i += 1;
+    }
+    i = 0;
+    while i < after.players.len() {
+        let id = after.players[i].id as usize;
+        if id < now.len() {
+            now[id] = true;
+        }
+        i += 1;
+    }
+    i = 0;
+    while i < limit {
+        let id = i as u64;
+        if was[i] && !now[i] {
+            i += 1;
+            continue;
+        }
+        let (b0, b1) = span_at(&bspan.0, &bspan.1, i);
+        let (a0, a1) = span_at(&aspan.0, &aspan.1, i);
+        if !span_eq(&before.paths, b0, b1, &after.paths, a0, a1) {
+            ws.push(Write::ClearPath(id));
+            let mut j = a0;
+            while j < a1 {
+                if (j as usize) >= after.paths.len() {
+                    break;
+                }
+                ws.push(Write::PutPath(after.paths[j as usize].clone()));
+                j = j.wrapping_add(1);
+            }
+        }
+        i += 1;
+    }
+}
+
+fn span_at(start: &Vec<u32>, end: &Vec<u32>, id: usize) -> (u32, u32) {
+    if id >= start.len() || id >= end.len() || start[id] == u32::MAX {
+        (0, 0)
+    } else {
+        (start[id], end[id])
+    }
+}
+
+fn span_eq(a: &Vec<PathNode>, a0: u32, a1: u32, b: &Vec<PathNode>, b0: u32, b1: u32) -> bool {
+    if a1 < a0 || b1 < b0 {
+        return false;
+    }
+    let an = a1.wrapping_sub(a0) as usize;
+    let bn = b1.wrapping_sub(b0) as usize;
+    if an != bn || (a0 as usize) + an > a.len() || (b0 as usize) + bn > b.len() {
+        return false;
+    }
+    let mut k = 0;
+    while k < an {
+        if a[(a0 as usize) + k] != b[(b0 as usize) + k] {
+            return false;
+        }
+        k += 1;
+    }
+    true
+}
+
+fn diff_paths_scan(before: &Snapshot, after: &Snapshot, ws: &mut Vec<Write>) {
     let mut ids = Vec::new();
     let mut i = 0;
     while i < before.paths.len() {
@@ -1132,15 +1403,6 @@ fn diff_paths(before: &Snapshot, after: &Snapshot, ws: &mut Vec<Write>) {
     i = 0;
     while i < after.paths.len() {
         push_id(&mut ids, after.paths[i].player);
-        i += 1;
-    }
-    i = 0;
-    while i < before.players.len() {
-        if player_index(&after.players, before.players[i].id).is_none() {
-            // Cleared with the player delete.
-            i += 1;
-            continue;
-        }
         i += 1;
     }
     i = 0;
@@ -1233,23 +1495,21 @@ fn diff_members(before: &Snapshot, after: &Snapshot, ws: &mut Vec<Write>) {
 
 fn diff_agents(before: &Snapshot, after: &Snapshot, ws: &mut Vec<Write>) {
     let mut i = 0;
-    while i < before.agents.len() {
-        if agent_index(after, before.agents[i].id).is_none() {
+    let mut j = 0;
+    while i < before.agents.len() || j < after.agents.len() {
+        if i < before.agents.len() && (j == after.agents.len() || before.agents[i].id < after.agents[j].id) {
             ws.push(Write::DelAgent(before.agents[i].id));
+            i += 1;
+        } else if j < after.agents.len() && (i == before.agents.len() || after.agents[j].id < before.agents[i].id) {
+            ws.push(Write::PutAgent(after.agents[j].clone()));
+            j += 1;
+        } else {
+            if before.agents[i] != after.agents[j] {
+                ws.push(Write::PutAgent(after.agents[j].clone()));
+            }
+            i += 1;
+            j += 1;
         }
-        i += 1;
-    }
-    i = 0;
-    while i < after.agents.len() {
-        let id = after.agents[i].id;
-        let changed = match agent_index(before, id) {
-            Some(j) => before.agents[j] != after.agents[i],
-            None => true,
-        };
-        if changed {
-            ws.push(Write::PutAgent(after.agents[i].clone()));
-        }
-        i += 1;
     }
 }
 

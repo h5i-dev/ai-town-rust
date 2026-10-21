@@ -4,7 +4,7 @@
 //! avoids a square root on the collision check. The heap is the 1-indexed
 //! algorithm from `convex/util/minheap.ts`.
 
-use crate::{PathNode, FACE_BIAS, MILLI, SPEED};
+use crate::{PathNode, COLLISION_SQ, FACE_BIAS, MILLI, SPEED};
 
 pub fn abs_diff(a: u32, b: u32) -> u64 {
     if a >= b {
@@ -416,4 +416,116 @@ pub fn set_blocked(mask: &mut Vec<u8>, width: u32, height: u32, tx: u32, ty: u32
     let byte = i / 8;
     let bit = i % 8;
     mask[byte] |= 1 << bit;
+}
+
+/// Buckets of point indices, one tile wide. A collision radius below one tile
+/// only needs the 3 by 3 neighborhood. `head[cell]` and `next[i]` are `u32::MAX`
+/// when the chain ends. Callers that move a point by less than a tile between
+/// checks may leave it in the old cell; the 3 by 3 neighborhood still reaches it
+/// while the radius plus the step stays under one tile.
+pub struct NearIndex {
+    pub width: u32,
+    pub height: u32,
+    pub head: Vec<u32>,
+    pub next: Vec<u32>,
+}
+
+fn grow_max(v: &mut Vec<u32>, n: usize) {
+    while v.len() < n {
+        v.push(u32::MAX);
+    }
+}
+
+/// Fill `index`, reusing its buffers when the caller steps many ticks.
+pub fn near_fill(index: &mut NearIndex, width: u32, height: u32, xs: &[u32], ys: &[u32]) {
+    let cells = (width as usize) * (height as usize);
+    let n = if xs.len() < ys.len() { xs.len() } else { ys.len() };
+    grow_max(&mut index.head, cells);
+    grow_max(&mut index.next, n);
+    let mut i = 0;
+    while i < cells {
+        index.head[i] = u32::MAX;
+        i += 1;
+    }
+    i = 0;
+    while i < n {
+        index.next[i] = u32::MAX;
+        i += 1;
+    }
+    index.width = width;
+    index.height = height;
+    i = 0;
+    while i < n {
+        let tx = xs[i] / MILLI;
+        let ty = ys[i] / MILLI;
+        if height > 0 && tx < width && ty < height {
+            let c = (tx as usize) * (height as usize) + (ty as usize);
+            if c < cells {
+                index.next[i] = index.head[c];
+                index.head[c] = i as u32;
+            }
+        }
+        i += 1;
+    }
+}
+
+pub fn near_index(width: u32, height: u32, xs: &[u32], ys: &[u32]) -> NearIndex {
+    let mut index = NearIndex { width: 0, height: 0, head: Vec::new(), next: Vec::new() };
+    near_fill(&mut index, width, height, xs, ys);
+    index
+}
+
+/// True when some point other than `skip` is strictly inside the collision radius.
+pub fn near_hit(index: &NearIndex, xs: &[u32], ys: &[u32], x: u32, y: u32, skip: u32) -> bool {
+    if index.width == 0 || index.height == 0 {
+        return false;
+    }
+    let cx = x / MILLI;
+    let cy = y / MILLI;
+    if cx >= index.width || cy >= index.height {
+        return false;
+    }
+    let x0 = if cx == 0 { 0 } else { cx - 1 };
+    let y0 = if cy == 0 { 0 } else { cy - 1 };
+    let x1 = if cx + 1 >= index.width { index.width - 1 } else { cx + 1 };
+    let y1 = if cy + 1 >= index.height { index.height - 1 } else { cy + 1 };
+    let mut hit = false;
+    let mut tx = x0;
+    while tx <= x1 {
+        let mut ty = y0;
+        while ty <= y1 {
+            if !hit {
+                let c = (tx as usize) * (index.height as usize) + (ty as usize);
+                if c < index.head.len() {
+                    let mut p = index.head[c];
+                    let mut guard = 0u32;
+                    while p != u32::MAX {
+                        if (p as usize) >= index.next.len() || (p as usize) >= xs.len() || (p as usize) >= ys.len() {
+                            p = u32::MAX;
+                        } else {
+                            let i = p as usize;
+                            if (i as u32) != skip && dist_sq(xs[i], ys[i], x, y) < COLLISION_SQ {
+                                hit = true;
+                                p = u32::MAX;
+                            } else {
+                                let nxt = index.next[i];
+                                if nxt == p {
+                                    p = u32::MAX;
+                                } else {
+                                    p = nxt;
+                                    guard = guard.wrapping_add(1);
+                                    if guard > index.next.len() as u32 {
+                                        p = u32::MAX;
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+            ty += 1;
+        }
+        tx += 1;
+    }
+    hit
 }

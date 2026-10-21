@@ -298,3 +298,83 @@ fn diff_roundtrip_matches_apply() {
     let again = rules::diff(&s, &next);
     assert_eq!(apply(&s, &again), next);
 }
+
+#[test]
+fn player_index_finds_sorted_ids_and_an_unsorted_row() {
+    let (s, _) = run(&Snapshot::default(), ENGINE, 1_000, Command::Init { width: 8, height: 8, mask: mask(8, 8) });
+    let (mut s, _) = run(&s, ENGINE, 1_000, Command::CreateAgent { name: b"A".to_vec(), character: 0, identity: b"a".to_vec(), plan: b"p".to_vec() });
+    let (s2, _) = run(&s, ENGINE, 1_000, Command::CreateAgent { name: b"B".to_vec(), character: 1, identity: b"b".to_vec(), plan: b"p".to_vec() });
+    s = s2;
+    let (s3, _) = run(&s, ENGINE, 1_000, Command::CreateAgent { name: b"C".to_vec(), character: 2, identity: b"c".to_vec(), plan: b"p".to_vec() });
+    s = s3;
+    assert!(s.players.len() >= 3);
+    let mut i = 0;
+    while i < s.players.len() {
+        let id = s.players[i].id;
+        assert_eq!(rules::player_index(&s.players, id), Some(i));
+        i += 1;
+    }
+    assert_eq!(rules::player_index(&s.players, u64::MAX), None);
+    assert_eq!(rules::player_at(&s.players, s.players[1].id), Some(1));
+    let last = s.players.len() - 1;
+    let moved = s.players[last].id;
+    s.players.swap(0, last);
+    let found = rules::player_at(&s.players, moved).expect("unsorted id");
+    assert_eq!(s.players[found].id, moved);
+    let first = rules::player_index(&s.players, moved).expect("scan");
+    assert_eq!(s.players[first].id, moved);
+}
+
+#[test]
+fn step_plus_collision_radius_fits_in_one_tile() {
+    assert!(u64::from(SPEED) * TICK_MS / 1000 + 750 < u64::from(MILLI));
+}
+
+#[test]
+fn near_grid_matches_full_scan_including_a_short_move() {
+    let w = 16u32;
+    let h = 16u32;
+    let mut xs = Vec::new();
+    let mut ys = Vec::new();
+    let mut i = 0u32;
+    while i < 80 {
+        xs.push((i % 16) * 1000 + (i % 5) * 20);
+        ys.push((i / 16) * 1000 + (i % 3) * 30);
+        i += 1;
+    }
+    let g = geom::near_index(w, h, &xs, &ys);
+    let mut q = 0u32;
+    while q < 40 {
+        let x = (q * 370) % (w * 1000);
+        let y = (q * 910) % (h * 1000);
+        let mut slow = false;
+        let mut k = 0;
+        while k < xs.len() {
+            if k != 3 && dist_sq(xs[k], ys[k], x, y) < COLLISION_SQ {
+                slow = true;
+            }
+            k += 1;
+        }
+        assert_eq!(geom::near_hit(&g, &xs, &ys, x, y, 3), slow);
+        q += 1;
+    }
+    xs[5] = 990;
+    ys[5] = 500;
+    let g = geom::near_index(w, h, &xs, &ys);
+    xs[5] = 1010;
+    let mut q = 0u32;
+    while q < 40 {
+        let x = (q * 410) % (w * 1000);
+        let y = (q * 640) % (h * 1000);
+        let mut slow = false;
+        let mut k = 0;
+        while k < xs.len() {
+            if dist_sq(xs[k], ys[k], x, y) < COLLISION_SQ {
+                slow = true;
+            }
+            k += 1;
+        }
+        assert_eq!(geom::near_hit(&g, &xs, &ys, x, y, u32::MAX), slow);
+        q += 1;
+    }
+}

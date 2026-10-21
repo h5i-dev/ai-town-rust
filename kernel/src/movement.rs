@@ -2,7 +2,7 @@
 //! and, when the player is between centers, the first step snaps to one.
 
 use crate::geom::{self, idx_pop, idx_push};
-use crate::{PathNode, COLLISION_SQ, MILLI};
+use crate::{PathNode, MILLI};
 
 struct Node {
     x: u32,
@@ -29,18 +29,11 @@ fn cell_of(width: u32, height: u32, x: u32, y: u32) -> Option<usize> {
     Some((tx as usize) * (height as usize) + (ty as usize))
 }
 
-fn point_blocked(mask: &[u8], width: u32, height: u32, ox: &[u32], oy: &[u32], x: u32, y: u32) -> bool {
+fn point_blocked(mask: &[u8], width: u32, height: u32, near: &geom::NearIndex, ox: &[u32], oy: &[u32], x: u32, y: u32) -> bool {
     if geom::mask_blocked(mask, width, height, x, y) {
         return true;
     }
-    let mut i = 0;
-    while i < ox.len() && i < oy.len() {
-        if geom::dist_sq(ox[i], oy[i], x, y) < COLLISION_SQ {
-            return true;
-        }
-        i += 1;
-    }
-    false
+    geom::near_hit(near, ox, oy, x, y, u32::MAX)
 }
 
 fn push_neighbor(xs: &mut [u32; 4], ys: &mut [u32; 4], n: &mut usize, x: u32, y: u32) {
@@ -100,6 +93,7 @@ pub fn find_route(
     if sx == dest_x && sy == dest_y {
         return None;
     }
+    let near = geom::near_index(width, height, ox, oy);
     let cells = (width as usize) * (height as usize);
     let mut best = Vec::new();
     let mut i = 0;
@@ -158,7 +152,7 @@ pub fn find_route(
             if nx == node_x && ny == node_y {
                 continue;
             }
-            if point_blocked(mask, width, height, ox, oy, nx, ny) {
+            if point_blocked(mask, width, height, &near, ox, oy, nx, ny) {
                 continue;
             }
             let step = geom::manhattan(node_x, node_y, nx, ny);

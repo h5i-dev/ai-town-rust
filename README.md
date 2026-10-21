@@ -52,7 +52,9 @@ h5i app mutate
 ```
 
 `h5i app prove` needs Charon, Aeneas, and Lean v4.31.0 on `PATH`
-(`h5i app doctor`).
+(`h5i app doctor`). It regenerates `proofs/generated/` from the kernel.
+Those Lean files are committed with the kernel change. `h5i app check`
+builds them and does not extract again.
 
 ## Benchmarks
 
