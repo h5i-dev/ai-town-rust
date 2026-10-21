@@ -862,3 +862,43 @@ fn bucketed_placement_matches_the_all_pairs_scan() {
     }
     assert!(agree[0] > 50 && agree[1] > 50, "{agree:?}");
 }
+
+#[test]
+fn settle_reverts_a_movement_that_overlaps() {
+    let s = world(5_000);
+    let (s, _) = run(&s, ENGINE, 5_000, Command::CreateAgent { name: b"A".to_vec(), character: 0, identity: b"a".to_vec(), plan: b"p".to_vec() });
+    let (s, _) = run(&s, ENGINE, 5_000, Command::CreateAgent { name: b"B".to_vec(), character: 0, identity: b"b".to_vec(), plan: b"p".to_vec() });
+    let xs: Vec<u32> = s.players.iter().map(|p| p.x).collect();
+    let ys: Vec<u32> = s.players.iter().map(|p| p.y).collect();
+    assert!(placement_ok(&s));
+    // A movement pass that lands both players on one point.
+    let mut moved = s.clone();
+    moved.players[1].x = moved.players[0].x;
+    moved.players[1].y = moved.players[0].y;
+    moved.players[1].speed = 750;
+    assert!(settle(&mut moved, &xs, &ys));
+    assert_eq!((moved.players[1].x, moved.players[1].y, moved.players[1].speed), (xs[1], ys[1], 0));
+    assert!(placement_ok(&moved));
+    // An accepted pass is kept as is.
+    let mut fine = s.clone();
+    fine.players[1].x = xs[1] + 10;
+    assert!(!settle(&mut fine, &xs, &ys));
+    assert_eq!(fine.players[1].x, xs[1] + 10);
+}
+
+#[test]
+fn a_normal_step_reverts_nothing() {
+    let s = world(5_000);
+    let (s, _) = run(&s, ENGINE, 5_000, Command::CreateAgent { name: b"A".to_vec(), character: 0, identity: b"a".to_vec(), plan: b"p".to_vec() });
+    let owner = s.players[0].owner;
+    let (s, _) = run(&s, owner, 5_100, Command::MoveTo { x: 4, y: 4 });
+    let (s2, r) = run(&s, ENGINE, 6_100, Command::Step);
+    match r {
+        Ok(Reply::Stepped { ticks, reverted, .. }) => {
+            assert!(ticks > 0);
+            assert_eq!(reverted, 0);
+        }
+        other => panic!("{other:?}"),
+    }
+    assert!(placement_ok(&s2));
+}

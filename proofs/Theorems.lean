@@ -1509,7 +1509,7 @@ def CellClear (s : Snapshot) (slots : List U32) (tx ty : Nat) (x y : U32) (id : 
   ∀ k < 4, SlotClear s slots ((tx * s.meta.height.val + ty) * 4 + k) x y id
 
 @[step] theorem cell_close_spec (s : Snapshot) (slots : alloc.vec.Vec U32) (ux uy x y : U32) (id : U64)
-    (hw : s.meta.width.val ≤ 128) (hh : s.meta.height.val ≤ 128) :
+    (hw : s.meta.width.val ≤ 1024) (hh : s.meta.height.val ≤ 1024) :
     rules.cell_close s slots ux uy x y id ⦃ r => r = false →
       ∀ cx cy, ux.val = cx + 1 → uy.val = cy + 1 → cx < s.meta.width.val → cy < s.meta.height.val →
         CellClear s slots.val cx cy x y id ⦄ := by
@@ -1539,7 +1539,7 @@ def NearClear (s : Snapshot) (slots : List U32) (p : Player) : Prop :=
     CellClear s slots cx cy p.x p.y p.id
 
 @[step] theorem near_any_spec (s : Snapshot) (slots : alloc.vec.Vec U32) (p : Player)
-    (hw : s.meta.width.val ≤ 128) (hh : s.meta.height.val ≤ 128) :
+    (hw : s.meta.width.val ≤ 1024) (hh : s.meta.height.val ≤ 1024) :
     rules.near_any s slots p ⦃ r => r = false → NearClear s slots.val p ⦄ := by
   unfold rules.near_any
   have hm := milli_val
@@ -1561,14 +1561,14 @@ def NearClear (s : Snapshot) (slots : List U32) (p : Player) : Prop :=
     | exact b7_post (f ‹_›) tx ty (by omega) (by omega) htx hty
     | exact r_post r_post1 tx ty (by omega) (by omega) htx hty
 
-/-- `near_any` as a function on maps of at most 128 by 128 tiles. -/
+/-- `near_any` as a function on maps of at most 1024 by 1024 tiles. -/
 noncomputable def nearB (s : Snapshot) (slots : alloc.vec.Vec U32) (p : Player) : Bool :=
-  if h : s.meta.width.val ≤ 128 ∧ s.meta.height.val ≤ 128 then
+  if h : s.meta.width.val ≤ 1024 ∧ s.meta.height.val ≤ 1024 then
     Classical.choose (WP.spec_imp_exists (near_any_spec s slots p h.1 h.2))
   else true
 
 theorem nearB_spec (s : Snapshot) (slots : alloc.vec.Vec U32) (p : Player)
-    (hw : s.meta.width.val ≤ 128) (hh : s.meta.height.val ≤ 128) :
+    (hw : s.meta.width.val ≤ 1024) (hh : s.meta.height.val ≤ 1024) :
     rules.near_any s slots p = ok (nearB s slots p) ∧ (nearB s slots p = false → NearClear s slots.val p) := by
   have hc := Classical.choose_spec (WP.spec_imp_exists (near_any_spec s slots p hw hh))
   unfold nearB
@@ -1576,7 +1576,7 @@ theorem nearB_spec (s : Snapshot) (slots : alloc.vec.Vec U32) (p : Player)
   exact hc
 
 theorem all_clear_spec (s : Snapshot) (slots : alloc.vec.Vec U32)
-    (hw : s.meta.width.val ≤ 128) (hh : s.meta.height.val ≤ 128) :
+    (hw : s.meta.width.val ≤ 1024) (hh : s.meta.height.val ≤ 1024) :
     rules.all_clear s slots ⦃ r => r = s.players.val.all (fun p =>
       !(blockedAt (alloc.vec.Vec.deref s.terrain.mask) s.meta.width s.meta.height p.x p.y || nearB s slots p)) ⦄ := by
   unfold rules.all_clear rules.all_clear_loop
@@ -1669,7 +1669,7 @@ theorem u32_max_val : core.num.U32.MAX.val = 2 ^ 32 - 1 := by
 
 theorem bucket_loop_spec (s : Snapshot) (n : Usize) (slots : alloc.vec.Vec U32) (ok0 : Bool) (i : Usize)
     (hn : n.val = s.players.val.length) (hlt : n.val < 2 ^ 32 - 1)
-    (hw : s.meta.width.val ≤ 128) (hh : s.meta.height.val ≤ 128)
+    (hw : s.meta.width.val ≤ 1024) (hh : s.meta.height.val ≤ 1024)
     (hL : slots.val.length = s.meta.width.val * s.meta.height.val * 4)
     (hi : i.val ≤ n.val) (hinv : ok0 = true → Filled s slots.val i.val ∧ Bounded slots.val i.val) :
     rules.bucket_loop s s.players n slots ok0 i ⦃ r => r.2 = true → Filled s r.1.val n.val ⦄ := by
@@ -1715,19 +1715,19 @@ theorem bucket_loop_spec (s : Snapshot) (n : Usize) (slots : alloc.vec.Vec U32) 
       (by rw [hb]) hF hB
   · exact ⟨hL, hi, hinv⟩
 
-theorem max_dim_val : MAX_DIM.val = 128 := by unfold MAX_DIM; rfl
+theorem place_max_dim_val : rules.PLACE_MAX_DIM.val = 1024 := by unfold rules.PLACE_MAX_DIM; rfl
 
 theorem bucket_spec (s : Snapshot) :
     rules.bucket s ⦃ r => ∀ sl, r = some sl →
-      s.meta.width.val ≤ 128 ∧ s.meta.height.val ≤ 128 ∧ Filled s sl.val s.players.val.length ⦄ := by
+      s.meta.width.val ≤ 1024 ∧ s.meta.height.val ≤ 1024 ∧ Filled s sl.val s.players.val.length ⦄ := by
   unfold rules.bucket
-  have hd := max_dim_val
+  have hd := place_max_dim_val
   have h4 := cell_slots_val
   have hM := u32_max_val
   h5i_steps
   expose_names
-  have hw : s.meta.width.val ≤ 128 := by have := h_2; scalar_tac
-  have hh : s.meta.height.val ≤ 128 := by have := h_3; scalar_tac
+  have hw : s.meta.width.val ≤ 1024 := by have := h_2; scalar_tac
+  have hh : s.meta.height.val ≤ 1024 := by have := h_3; scalar_tac
   have hn : s.players.len.val < 2 ^ 32 - 1 := by
     have : ¬ s.players.len.val ≥ i.val := by scalar_tac
     rw [i_post, U32.cast_Usize_val_eq, hM] at this; omega
@@ -1820,5 +1820,126 @@ theorem relocate_placed (s : Snapshot) (x y : alloc.vec.Vec U32) :
         rename_i hbt
         exact hb hbt
       · simp
+
+/-! ## Movement backstop
+
+Every tick ends with `settle`: the movement pass is kept only when
+`placement_ok` accepts the result, and otherwise every player goes back to
+where it stood before the pass. The pass's grid lookups are tested, not
+proven; `settle_placed` makes the stored positions `Placed` anyway, whenever
+they were `Placed` before the pass. -/
+
+/-- Player `k` of `r` stands at `(xs[k], ys[k])` and kept its id. -/
+def Restored (v0 r : List Player) (xs ys : List U32) (upto : Nat) : Prop :=
+  ∀ k (h1 : k < r.length) (h2 : k < xs.length) (h3 : k < ys.length) (h4 : k < v0.length), k < upto →
+    (r[k]).x = xs[k] ∧ (r[k]).y = ys[k]
+
+def SameIds (v0 r : List Player) : Prop :=
+  r.length = v0.length ∧ ∀ k (h1 : k < r.length) (h2 : k < v0.length), (r[k]).id = (v0[k]).id
+
+theorem settle_loop_spec (v0 : alloc.vec.Vec Player) (xs ys : alloc.vec.Vec U32) (n : Usize)
+    (hv : v0.val.length = n.val) (hx : xs.val.length = n.val) (hy : ys.val.length = n.val) :
+    rules.settle_loop v0 xs ys n 0#usize ⦃ r =>
+      SameIds v0.val r.val ∧ Restored v0.val r.val xs.val ys.val n.val ⦄ := by
+  unfold rules.settle_loop
+  apply loop.spec_decr_nat
+    (measure := fun (st : alloc.vec.Vec Player × Usize) => n.val - st.2.val)
+    (inv := fun st => st.2.val ≤ n.val ∧ SameIds v0.val st.1.val ∧ Restored v0.val st.1.val xs.val ys.val st.2.val)
+    (post := fun r => SameIds v0.val r.val ∧ Restored v0.val r.val xs.val ys.val n.val)
+    (body := fun (v, i) => rules.settle_loop.body xs ys n v i)
+  · rintro ⟨v, i⟩ ⟨hi, ⟨hlen, hid⟩, hR⟩
+    simp only at hi hlen hid hR
+    unfold rules.settle_loop.body
+    h5i_steps
+    all_goals (try (subst_vars; simp_all [alloc.vec.Vec.set_val_eq]; scalar_tac))
+    · -- one more player put back
+      have hin : i.val < n.val := by scalar_tac
+      subst_vars
+      refine ⟨by scalar_tac, ⟨?_, ?_⟩, ?_, by scalar_tac⟩
+      · simp [alloc.vec.Vec.set_val_eq, hlen]
+      · intro k h1 h2
+        simp only [alloc.vec.Vec.set_val_eq, List.getElem_set] at h1 ⊢
+        by_cases hk : k = i.val
+        · subst hk; simp; exact hid _ (by omega) h2
+        · simp [Ne.symm hk]; exact hid _ (by simpa using h1) h2
+      · intro k h1 h2 h3 h4 hk
+        simp only [alloc.vec.Vec.set_val_eq, List.getElem_set] at h1 ⊢
+        by_cases hki : k = i.val
+        · subst hki; simp
+        · have := hR k (by simpa using h1) h2 h3 h4 (by scalar_tac)
+          simp [Ne.symm hki, this]
+    · -- done: i = n
+      have hin : i.val = n.val := by scalar_tac
+      exact ⟨⟨hlen, hid⟩, fun k h1 h2 h3 h4 hk => hR k h1 h2 h3 h4 (by omega)⟩
+  · refine ⟨by simp, ⟨rfl, fun _ _ _ => rfl⟩, fun k _ _ _ _ hk => absurd hk (by simp)⟩
+
+/-- `settle` keeps a movement pass only when the result is `Placed`; otherwise
+every player is back at `(xs[k], ys[k])` with its id, and nothing but the
+players changed. -/
+theorem settle_spec (s : Snapshot) (xs ys : alloc.vec.Vec U32)
+    (hx : xs.val.length = s.players.val.length) (hy : ys.val.length = s.players.val.length) :
+    rules.settle s xs ys ⦃ r =>
+      (r.1 = false → r.2 = s ∧ Placed s) ∧
+      (r.1 = true → r.2 = { s with players := r.2.players } ∧
+        SameIds s.players.val r.2.players.val ∧
+        Restored s.players.val r.2.players.val xs.val ys.val s.players.val.length) ⦄ := by
+  unfold rules.settle
+  apply WP.spec_bind (placement_ok_sound s)
+  intro b hb
+  beta_reduce
+  split
+  · simp only [WP.spec_ok]
+    exact ⟨fun _ => ⟨trivial, hb ‹_›⟩, fun h => absurd h (by simp)⟩
+  · simp only []
+    split
+    · split
+      · apply WP.spec_bind (settle_loop_spec s.players xs ys _ (by simp) (by simpa using hx) (by simpa using hy))
+        intro v hv
+        simp only [WP.spec_ok]
+        refine ⟨fun h => absurd h (by simp), fun _ => ⟨trivial, hv.1, ?_⟩⟩
+        have := hv.2
+        simpa using this
+      · rename_i h; exfalso; apply h; scalar_tac
+    · rename_i h; exfalso; apply h; scalar_tac
+
+/-- If the players were `Placed` at `(xs, ys)` before the movement pass (same
+map, same ids in the same order), the state `settle` keeps is `Placed`. -/
+theorem settle_placed (s s0 : Snapshot) (xs ys : alloc.vec.Vec U32)
+    (hx : xs.val.length = s.players.val.length) (hy : ys.val.length = s.players.val.length)
+    (hT : s0.terrain = s.terrain) (hW : s0.meta.width = s.meta.width) (hH : s0.meta.height = s.meta.height)
+    (hL : s0.players.val.length = s.players.val.length)
+    (hP : ∀ k (h0 : k < s0.players.val.length) (h : k < s.players.val.length)
+        (hx' : k < xs.val.length) (hy' : k < ys.val.length),
+        (s0.players.val[k]).id = (s.players.val[k]).id ∧
+        (s0.players.val[k]).x = xs.val[k] ∧ (s0.players.val[k]).y = ys.val[k])
+    (h0 : Placed s0) :
+    rules.settle s xs ys ⦃ r => Placed r.2 ⦄ := by
+  apply WP.spec_mono (settle_spec s xs ys hx hy)
+  rintro ⟨rev, s'⟩ ⟨hkeep, hback⟩
+  cases rev with
+  | false => obtain ⟨h1, h2⟩ := hkeep rfl; simp only at h1; rw [h1]; exact h2
+  | true =>
+    obtain ⟨hs', ⟨hlen, hid⟩, hR⟩ := hback rfl
+    simp only at hs' hlen hid hR
+    -- player k of s' is player k of s0: same id, same position.
+    have same : ∀ k (hk : k < s'.players.val.length),
+        (s'.players.val[k]).id = (s0.players.val[k]'(by omega)).id ∧
+        (s'.players.val[k]).x = (s0.players.val[k]'(by omega)).x ∧
+        (s'.players.val[k]).y = (s0.players.val[k]'(by omega)).y := by
+      intro k hk
+      have hks : k < s.players.val.length := by omega
+      obtain ⟨hpid, hpx, hpy⟩ := hP k (by omega) hks (by omega) (by omega)
+      obtain ⟨hrx, hry⟩ := hR k hk (by omega) (by omega) hks hks
+      exact ⟨by rw [hid k hk hks, hpid], by rw [hrx, hpx], by rw [hry, hpy]⟩
+    rw [hs']
+    intro i hi
+    simp only at hi ⊢
+    obtain ⟨ii, ix, iy⟩ := same i hi
+    obtain ⟨hb0, hc0⟩ := h0 i (by omega)
+    refine ⟨by rw [ix, iy, ← hT, ← hW, ← hH]; exact hb0, ?_⟩
+    intro j hj hne
+    obtain ⟨jj, jx, jy⟩ := same j hj
+    rw [ix, iy, jx, jy]
+    exact hc0 j (by omega) (by rw [← ii, ← jj]; exact hne)
 
 end ai_town_kernel

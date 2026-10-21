@@ -103,15 +103,20 @@ pub fn occupied(s: &Snapshot, x: u32, y: u32, ignore: u64) -> bool {
 /// [`CELL_SLOTS`] slots each, sees every player that could be too close.
 pub const CELL_SLOTS: usize = 4;
 
+/// Widest map [`bucket`] accepts. `Init` caps worlds at [`MAX_DIM`]; this is
+/// larger so in-memory crowds on wider maps (the benchmarks) still move. The
+/// slot vector is at most 1024 * 1024 * 4 words, so no index can overflow.
+pub const PLACE_MAX_DIM: u32 = 1024;
+
 /// Bucket every player into the [`CELL_SLOTS`] slots of its own tile: slot
 /// `(tx * height + ty) * CELL_SLOTS + k` holds a player index, or `u32::MAX`
-/// when empty. `None` when the map is empty or wider than [`MAX_DIM`], a
+/// when empty. `None` when the map is empty or wider than [`PLACE_MAX_DIM`], a
 /// player is off the map, or a tile holds more than [`CELL_SLOTS`] players.
 /// The caller refuses on `None`, which is always safe.
 pub fn bucket(s: &Snapshot) -> Option<Vec<u32>> {
     let w = s.meta.width;
     let h = s.meta.height;
-    if w == 0 || h == 0 || w > MAX_DIM || h > MAX_DIM {
+    if w == 0 || h == 0 || w > PLACE_MAX_DIM || h > PLACE_MAX_DIM {
         return None;
     }
     let n = s.players.len();
@@ -552,40 +557,79 @@ fn fresh_scratch() -> TickScratch {
 
 /// Default tick. Movement is the two-phase round in `step::tick_round`.
 pub fn run_ticks(s: &mut Snapshot, end_ms: u64) -> u32 {
-    run_ticks_mode(s, end_ms, false)
+    run_ticks_mode(s, end_ms, false).0
 }
 
 /// The original AI Town tick. Each agent sees landings accepted earlier in
 /// the same tick. `AI_TOWN_TICK=seq` selects this from the shell.
 pub fn run_ticks_seq(s: &mut Snapshot, end_ms: u64) -> u32 {
-    run_ticks_mode(s, end_ms, true)
+    run_ticks_mode(s, end_ms, true).0
 }
 
-fn run_ticks_mode(s: &mut Snapshot, end_ms: u64, sequential: bool) -> u32 {
+/// Ticks run, and how many of them had their movement reverted by [`settle`].
+fn run_ticks_mode(s: &mut Snapshot, end_ms: u64, sequential: bool) -> (u32, u32) {
     if s.meta.frozen || s.meta.width == 0 {
-        return 0;
+        return (0, 0);
     }
     let mut ticks = 0u32;
+    let mut reverted = 0u32;
     s.meta.pathfinds = 0;
     let mut scratch = fresh_scratch();
     while ticks < MAX_TICKS && s.meta.now_ms.saturating_add(TICK_MS) <= end_ms {
         s.meta.now_ms += TICK_MS;
-        tick(s, s.meta.now_ms, &mut scratch, sequential);
+        if tick(s, s.meta.now_ms, &mut scratch, sequential) {
+            reverted += 1;
+        }
         ticks += 1;
     }
-    ticks
+    (ticks, reverted)
 }
 
-fn tick(s: &mut Snapshot, now: u64, scratch: &mut TickScratch, sequential: bool) {
+/// One tick. True when [`settle`] reverted this tick's movement.
+fn tick(s: &mut Snapshot, now: u64, scratch: &mut TickScratch, sequential: bool) -> bool {
     idle(s, now);
     agents(s, now);
     conversations(s, now);
     pathfind(s, now);
+    // Positions change only in the movement pass below, and the player list
+    // does not, so index i before and after is the same player.
+    let mut xs = Vec::new();
+    let mut ys = Vec::new();
+    let mut i = 0;
+    while i < s.players.len() {
+        xs.push(s.players[i].x);
+        ys.push(s.players[i].y);
+        i += 1;
+    }
     if sequential {
         positions_seq(s, now, scratch);
     } else {
         positions_round(s, now, scratch);
     }
+    settle(s, &xs, &ys)
+}
+
+/// Keep this tick's movement only when [`placement_ok`] accepts it. Otherwise
+/// put every player back at `(xs[i], ys[i])`, its position before the
+/// movement pass, stopped, and return true. The movement rules are meant to
+/// make this unreachable: their grid lookups are tested but not proven, so
+/// this is the proven backstop. The clock, conversations and agents still
+/// advance, and `Reply::Stepped::reverted` counts the reverted ticks.
+pub fn settle(s: &mut Snapshot, xs: &Vec<u32>, ys: &Vec<u32>) -> bool {
+    if placement_ok(s) {
+        return false;
+    }
+    let n = s.players.len();
+    if xs.len() == n && ys.len() == n {
+        let mut i = 0;
+        while i < n {
+            s.players[i].x = xs[i];
+            s.players[i].y = ys[i];
+            s.players[i].speed = 0;
+            i += 1;
+        }
+    }
+    true
 }
 
 fn idle(s: &mut Snapshot, now: u64) {
@@ -1610,16 +1654,16 @@ pub fn command(actor_user: u64, now: u64, s: &Snapshot, cmd: &Command) -> Result
                 return Err(Error::Forbidden);
             }
             ok!(require_world(&next));
-            let ticks = run_ticks(&mut next, now);
-            Reply::Stepped { now_ms: next.meta.now_ms, ticks }
+            let (ticks, reverted) = run_ticks_mode(&mut next, now, false);
+            Reply::Stepped { now_ms: next.meta.now_ms, ticks, reverted }
         }
         Command::StepSeq => {
             if actor_user != ENGINE {
                 return Err(Error::Forbidden);
             }
             ok!(require_world(&next));
-            let ticks = run_ticks_seq(&mut next, now);
-            Reply::Stepped { now_ms: next.meta.now_ms, ticks }
+            let (ticks, reverted) = run_ticks_mode(&mut next, now, true);
+            Reply::Stepped { now_ms: next.meta.now_ms, ticks, reverted }
         }
         Command::Relocate { x, y } => {
             if actor_user != ENGINE {

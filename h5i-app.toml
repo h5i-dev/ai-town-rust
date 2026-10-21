@@ -11,6 +11,7 @@ start-from = [
   "rules::occupied",
   "rules::placement_ok",
   "rules::relocate",
+  "rules::settle",
   "geom::grid_hit",
   "geom::grid_build",
   "geom::grid_wellformed",
@@ -88,10 +89,13 @@ theorems = [
   "ai_town_kernel.u32_max_val",
   "ai_town_kernel.place_spec",
   "ai_town_kernel.bucket_loop_spec",
-  "ai_town_kernel.max_dim_val",
+  "ai_town_kernel.place_max_dim_val",
   "ai_town_kernel.bucket_spec",
   "ai_town_kernel.placement_ok_sound",
   "ai_town_kernel.relocate_placed",
+  "ai_town_kernel.settle_loop_spec",
+  "ai_town_kernel.settle_spec",
+  "ai_town_kernel.settle_placed",
 ]
 
 # Each `old` occurs once. A proof that does not mention the real check lets the mutant through.
@@ -142,3 +146,9 @@ name = "bucket_ignores_a_full_tile"
 file = "kernel/src/rules.rs"
 old = "            ok = place(&mut slots, b, i as u32);"
 new = "            let _ = place(&mut slots, b, i as u32);"
+
+[[mutant]]
+name = "settle_keeps_any_movement"
+file = "kernel/src/rules.rs"
+old = "    if placement_ok(s) {\n        return false;"
+new = "    if true || placement_ok(s) {\n        return false;"

@@ -143,7 +143,11 @@ impl Api<Town> for TownStore {
             k::Reply::Ok => Out::obj([("ok", true.into())]),
             k::Reply::Player(id) => Out::obj([("player", (*id).into())]),
             k::Reply::Conversation(id) => Out::obj([("conversation", (*id).into())]),
-            k::Reply::Stepped { now_ms, ticks } => Out::obj([("nowMs", (*now_ms).into()), ("ticks", u64::from(*ticks).into())]),
+            k::Reply::Stepped { now_ms, ticks, reverted } => Out::obj([
+                ("nowMs", (*now_ms).into()),
+                ("ticks", u64::from(*ticks).into()),
+                ("reverted", u64::from(*reverted).into()),
+            ]),
         }
     }
 
@@ -178,7 +182,7 @@ impl ReplyCodec<Town> for TownStore {
             k::Reply::Ok => b"ok".to_vec(),
             k::Reply::Player(id) => format!("p:{id}").into_bytes(),
             k::Reply::Conversation(id) => format!("c:{id}").into_bytes(),
-            k::Reply::Stepped { now_ms, ticks } => format!("s:{now_ms}:{ticks}").into_bytes(),
+            k::Reply::Stepped { now_ms, ticks, reverted } => format!("s:{now_ms}:{ticks}:{reverted}").into_bytes(),
         }
     }
 
@@ -194,10 +198,13 @@ impl ReplyCodec<Town> for TownStore {
             return rest.parse().map(k::Reply::Conversation).map_err(|_| "bad conversation reply".into());
         }
         if let Some(rest) = text.strip_prefix("s:") {
-            let (now, ticks) = rest.split_once(':').ok_or("bad step reply")?;
+            let (now, rest) = rest.split_once(':').ok_or("bad step reply")?;
+            // Replies stored before `reverted` existed have two fields.
+            let (ticks, reverted) = rest.split_once(':').unwrap_or((rest, "0"));
             let now_ms = now.parse().map_err(|_| "bad step time")?;
             let ticks = ticks.parse().map_err(|_| "bad step ticks")?;
-            return Ok(k::Reply::Stepped { now_ms, ticks });
+            let reverted = reverted.parse().map_err(|_| "bad step reverted")?;
+            return Ok(k::Reply::Stepped { now_ms, ticks, reverted });
         }
         Err("unknown reply".into())
     }

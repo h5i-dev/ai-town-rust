@@ -12,7 +12,7 @@ mod step;
 
 pub use batch::{batch_seek, scalar_seek};
 pub use geom::{cell_index, cell_of, dist_sq, grid_build, grid_hit, grid_wellformed, grid_yield, isqrt, manhattan, mask_blocked, near_index, path_pose, set_blocked, MinHeap, NearIndex, Pose};
-pub use rules::{collision_safe, diff, exclusive, members_consistent, motion_isolated, paths_isolated, placement_ok, placement_ok_scan, relocate, run_ticks, run_ticks_seq, same_motion};
+pub use rules::{collision_safe, diff, exclusive, members_consistent, motion_isolated, paths_isolated, placement_ok, placement_ok_scan, relocate, settle, run_ticks, run_ticks_seq, same_motion};
 pub use step::{agent_step, propose_one, resolve_one, scan_hit, scan_yield, tick_moves, tick_players, tick_players_round, tick_round, Landing, Proposal};
 
 include!("consts.rs");
@@ -234,7 +234,8 @@ pub enum Reply {
     Ok,
     Player(u64),
     Conversation(u64),
-    Stepped { now_ms: u64, ticks: u32 },
+    /// `reverted` counts ticks whose movement `settle` put back.
+    Stepped { now_ms: u64, ticks: u32, reverted: u32 },
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]

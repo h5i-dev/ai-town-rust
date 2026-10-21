@@ -151,7 +151,10 @@ else inside the collision radius, and the loop then runs the CPU step instead.
 `relocate_placed` in `proofs/Theorems.lean` proves that check, so a wrong GPU
 result cannot be stored. The check is linear (each player is filed into four
 slots of its own tile, then compared with the 36 slots around it): about
-1.4 ms at 16,384 players.
+1.4 ms at 16,384 players. The CPU step uses the same check: every tick ends
+with `settle`, which keeps the movement only when `placement_ok` accepts it
+and otherwise puts every player back (`settle_placed`). `Reply::Stepped`
+counts such ticks as `reverted`.
 Conversations and the clock advance on `Step`. The pipe below is this two-phase
 round on database `ai_town_pipe` with `AI_TOWN_DRAIN=off`. The joined player is
 a session whose spawn tile has a free orthogonal step, and `move_to` targets
