@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Compile kernel seek_one to PTX. Toolchain, LLVM, and the target dir stay
+# Compile kernel tick_moves to PTX. Toolchain, LLVM, and the target dir stay
 # under /dev/shm/ai-town-rust. One GPU. Pass extra cargo args after -- .
 set -euo pipefail
 cd "$(dirname "$0")/device"

@@ -1,8 +1,9 @@
-//! Device image for the seek decision in `kernel/src/batch.rs`.
+//! Device image for the movement decision in `kernel/src/step.rs`.
 //!
 //! This crate is `no_std` and is built only for `nvptx64-nvidia-cuda` with
-//! `rustc_codegen_nvvm`. It includes the kernel sources with `#[path]` so the
-//! GPU runs the same `seek_one` the host extracts to Lean.
+//! `rustc_codegen_nvvm`. It includes the kernel sources with `#[path]`.
+//! `step_batch` runs `step::tick_moves` on thread 0, the same sequential
+//! accept/refuse the CPU tick uses. `seek_batch` stays as the greedy baseline.
 
 #![cfg(feature = "gpu")]
 #![allow(improper_ctypes_definitions)]
@@ -19,6 +20,8 @@ pub const SPEED: u32 = 750;
 mod geom;
 #[path = "../../../../kernel/src/batch.rs"]
 mod batch;
+#[path = "../../../../kernel/src/step.rs"]
+mod step;
 #[path = "../../../src/layout.rs"]
 mod layout;
 
@@ -59,6 +62,53 @@ pub unsafe fn seek_batch(
             *out_x.add(i) = nx;
             *out_y.add(i) = ny;
             *errors.add(i) = error;
+        }
+    }
+}
+
+/// One thread runs the whole tick, in index order, so a later agent sees an
+/// earlier landing. Error 0 is success. Error 1 means `n` is past
+/// [`MAX_AGENTS`] or a position slice is shorter than `n`.
+#[kernel]
+pub unsafe fn step_batch(
+    xs: *mut u32,
+    xs_len: usize,
+    ys: *mut u32,
+    ys_len: usize,
+    moving: &[u32],
+    cand_x: &[u32],
+    cand_y: &[u32],
+    mask: &[u8],
+    head: &[u32],
+    next: &[u32],
+    width: u32,
+    height: u32,
+    error: *mut u32,
+    n: usize,
+) {
+    if thread::index_1d() == 0 {
+        let short = n > MAX_AGENTS || xs_len < n || ys_len < n || moving.len() < n || cand_x.len() < n || cand_y.len() < n;
+        let code = if short {
+            1u32
+        } else {
+            let xs_all = unsafe { core::slice::from_raw_parts_mut(xs, xs_len) };
+            let ys_all = unsafe { core::slice::from_raw_parts_mut(ys, ys_len) };
+            let ok = step::tick_moves(
+                &mut xs_all[..n],
+                &mut ys_all[..n],
+                &moving[..n],
+                &cand_x[..n],
+                &cand_y[..n],
+                mask,
+                width,
+                height,
+                head,
+                next,
+            );
+            if ok { 0 } else { 1 }
+        };
+        unsafe {
+            *error = code;
         }
     }
 }

@@ -1,8 +1,9 @@
-//! Launch the PTX image of `kernel`'s `seek_one`.
+//! Launch the PTX image of `kernel`'s `tick_moves`, and the `seek_one` baseline.
 //!
 //! The handwritten cubin in `seek.cu` stays as a baseline. This launcher uses
 //! the same driver API and does not depend on the `cust` crate. The CUDA
-//! context is tied to the thread that opened it.
+//! context is tied to the thread that opened it. `step` runs the sequential
+//! tick on one thread, so later agents see earlier landings.
 
 use crate::{GpuError, MAX_AGENTS};
 use std::ffi::c_void;
@@ -75,10 +76,28 @@ pub struct SeekReport {
     pub wall_ms: f64,
 }
 
+/// Positions after one sequential tick. `error` 0 means `tick_moves` ran.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct StepOut {
+    pub xs: Vec<u32>,
+    pub ys: Vec<u32>,
+    pub error: u32,
+}
+
+/// Kernel time is the CUDA-event interval around the single-thread launch.
+/// Wall time includes the copies.
+#[derive(Clone, Debug, PartialEq)]
+pub struct StepReport {
+    pub out: StepOut,
+    pub kernel_ms: f32,
+    pub wall_ms: f64,
+}
+
 pub struct RustDevice {
     ctx: CUcontext,
     module: CUmodule,
     func: CUfunction,
+    step_func: CUfunction,
     _thread: PhantomData<*const ()>,
 }
 
@@ -145,7 +164,15 @@ impl RustDevice {
                 let _ = cuCtxDestroy_v2(ctx);
                 return Err(GpuError { op: "cuModuleGetFunction", code: got });
             }
-            Ok(RustDevice { ctx, module, func, _thread: PhantomData })
+            let mut step_func: CUfunction = std::ptr::null_mut();
+            let step_name = c"step_batch";
+            let got_step = cuModuleGetFunction(&mut step_func, module, step_name.as_ptr());
+            if got_step != 0 {
+                let _ = cuModuleUnload(module);
+                let _ = cuCtxDestroy_v2(ctx);
+                return Err(GpuError { op: "cuModuleGetFunction", code: got_step });
+            }
+            Ok(RustDevice { ctx, module, func, step_func, _thread: PhantomData })
         }
     }
 
@@ -315,6 +342,141 @@ impl RustDevice {
         check("cuMemcpyDtoH err", unsafe { cuMemcpyDtoH_v2(errors.as_mut_ptr().cast(), d_err, bytes) })?;
         Ok(SeekReport {
             out: SeekOut { xs: out_x, ys: out_y, errors },
+            kernel_ms,
+            wall_ms: wall.elapsed().as_secs_f64() * 1000.0,
+        })
+    }
+
+    /// One sequential tick. The slices of positions, flags, and candidates must
+    /// share a length. `head` and `next` are the start-of-tick spatial grid.
+    pub fn step(
+        &self,
+        xs: &[u32],
+        ys: &[u32],
+        moving: &[u32],
+        cand_x: &[u32],
+        cand_y: &[u32],
+        mask: &[u8],
+        width: u32,
+        height: u32,
+        head: &[u32],
+        next: &[u32],
+    ) -> Result<StepReport, GpuError> {
+        let n = xs.len();
+        if ys.len() != n || moving.len() != n || cand_x.len() != n || cand_y.len() != n {
+            return Err(GpuError { op: "shape", code: -3 });
+        }
+        if n > MAX_AGENTS {
+            return Err(GpuError { op: "capacity", code: -2 });
+        }
+        if n == 0 {
+            return Ok(StepReport {
+                out: StepOut { xs: Vec::new(), ys: Vec::new(), error: 0 },
+                kernel_ms: 0.0,
+                wall_ms: 0.0,
+            });
+        }
+        let wall = Instant::now();
+        check("cuCtxSetCurrent", unsafe { cuCtxSetCurrent(self.ctx) })?;
+        let mut bufs = GpuBufs::new();
+        let d_xs = bufs.alloc(n * 4)?;
+        let d_ys = bufs.alloc(n * 4)?;
+        let d_moving = bufs.alloc(n * 4)?;
+        let d_cx = bufs.alloc(n * 4)?;
+        let d_cy = bufs.alloc(n * 4)?;
+        let d_mask = bufs.alloc(mask.len())?;
+        let d_head = bufs.alloc(head.len() * 4)?;
+        let d_next = bufs.alloc(next.len() * 4)?;
+        let d_err = bufs.alloc(4)?;
+        h2d(d_xs, xs)?;
+        h2d(d_ys, ys)?;
+        h2d(d_moving, moving)?;
+        h2d(d_cx, cand_x)?;
+        h2d(d_cy, cand_y)?;
+        h2d(d_mask, mask)?;
+        h2d(d_head, head)?;
+        h2d(d_next, next)?;
+        let zero = 0u32;
+        check("cuMemcpyHtoD err", unsafe { cuMemcpyHtoD_v2(d_err, &zero as *const u32 as *const c_void, 4) })?;
+
+        let mut start_ev: CUevent = std::ptr::null_mut();
+        let mut end_ev: CUevent = std::ptr::null_mut();
+        check("cuEventCreate", unsafe { cuEventCreate(&mut start_ev, 0) })?;
+        let end_ok = unsafe { cuEventCreate(&mut end_ev, 0) };
+        if end_ok != 0 {
+            unsafe { let _ = cuEventDestroy_v2(start_ev); }
+            return Err(GpuError { op: "cuEventCreate", code: end_ok });
+        }
+
+        let xs_len = n as u64;
+        let ys_len = n as u64;
+        let moving_len = n as u64;
+        let cx_len = n as u64;
+        let cy_len = n as u64;
+        let mask_len = mask.len() as u64;
+        let head_len = head.len() as u64;
+        let next_len = next.len() as u64;
+        let width_arg = width;
+        let height_arg = height;
+        let n_arg = n as u64;
+        let launch_result = (|| {
+            check("cuEventRecord", unsafe { cuEventRecord(start_ev, std::ptr::null_mut()) })?;
+            let mut args = [
+                &d_xs as *const CUdeviceptr as *mut c_void,
+                &xs_len as *const u64 as *mut c_void,
+                &d_ys as *const CUdeviceptr as *mut c_void,
+                &ys_len as *const u64 as *mut c_void,
+                &d_moving as *const CUdeviceptr as *mut c_void,
+                &moving_len as *const u64 as *mut c_void,
+                &d_cx as *const CUdeviceptr as *mut c_void,
+                &cx_len as *const u64 as *mut c_void,
+                &d_cy as *const CUdeviceptr as *mut c_void,
+                &cy_len as *const u64 as *mut c_void,
+                &d_mask as *const CUdeviceptr as *mut c_void,
+                &mask_len as *const u64 as *mut c_void,
+                &d_head as *const CUdeviceptr as *mut c_void,
+                &head_len as *const u64 as *mut c_void,
+                &d_next as *const CUdeviceptr as *mut c_void,
+                &next_len as *const u64 as *mut c_void,
+                &width_arg as *const u32 as *mut c_void,
+                &height_arg as *const u32 as *mut c_void,
+                &d_err as *const CUdeviceptr as *mut c_void,
+                &n_arg as *const u64 as *mut c_void,
+            ];
+            check("cuLaunchKernel", unsafe {
+                cuLaunchKernel(
+                    self.step_func,
+                    1,
+                    1,
+                    1,
+                    1,
+                    1,
+                    1,
+                    0,
+                    std::ptr::null_mut(),
+                    args.as_mut_ptr(),
+                    std::ptr::null_mut(),
+                )
+            })?;
+            check("cuEventRecord", unsafe { cuEventRecord(end_ev, std::ptr::null_mut()) })?;
+            check("cuEventSynchronize", unsafe { cuEventSynchronize(end_ev) })?;
+            let mut ms = 0f32;
+            check("cuEventElapsedTime", unsafe { cuEventElapsedTime(&mut ms, start_ev, end_ev) })?;
+            Ok(ms)
+        })();
+        unsafe {
+            let _ = cuEventDestroy_v2(start_ev);
+            let _ = cuEventDestroy_v2(end_ev);
+        }
+        let kernel_ms = launch_result?;
+        let mut out_x = vec![0u32; n];
+        let mut out_y = vec![0u32; n];
+        let mut error = 0u32;
+        check("cuMemcpyDtoH x", unsafe { cuMemcpyDtoH_v2(out_x.as_mut_ptr().cast(), d_xs, n * 4) })?;
+        check("cuMemcpyDtoH y", unsafe { cuMemcpyDtoH_v2(out_y.as_mut_ptr().cast(), d_ys, n * 4) })?;
+        check("cuMemcpyDtoH err", unsafe { cuMemcpyDtoH_v2((&mut error) as *mut u32 as *mut c_void, d_err, 4) })?;
+        Ok(StepReport {
+            out: StepOut { xs: out_x, ys: out_y, error },
             kernel_ms,
             wall_ms: wall.elapsed().as_secs_f64() * 1000.0,
         })

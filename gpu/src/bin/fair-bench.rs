@@ -1,13 +1,14 @@
-//! Spatial-grid `run_ticks` versus the PTX `seek_one` batch.
+//! Spatial-grid `run_ticks` versus the same tick on the PTX image.
 //!
-//! The CPU number is one product step: up to 60 ticks of path following on the
-//! one-tile grid. The GPU number is 60 greedy steps of 12 milli-tiles, which is
-//! the same per-tick distance budget (`SPEED * TICK_MS / 1000`) but not the
-//! same algorithm. The O(n^2) scalar scan is not timed here.
+//! The CPU number is one product step: 60 ticks of path following. The GPU
+//! number is those 60 ticks of `tick_moves`: the host asks `path_pose` for
+//! each candidate, rebuilds the one-tile grid, and launches one thread. The
+//! O(n^2) `seek_one` scan is not timed here.
 
 use ai_town_gpu::RustDevice;
 use ai_town_kernel::{
-    run_ticks, transition, Command, PathNode, Player, Principal, Snapshot, ENGINE, FACE_BIAS, MILLI, PF_MOVE, TICK_MS,
+    near_index, path_pose, run_ticks, transition, Command, PathNode, Player, Principal, Snapshot, ENGINE, FACE_BIAS, MILLI,
+    PF_MOVE, TICK_MS,
 };
 use std::path::PathBuf;
 use std::time::Instant;
@@ -38,32 +39,78 @@ fn main() {
         let cpu_step_ms = step_started.elapsed().as_secs_f64() * 1_000.0;
         let _ = stepped;
 
-        let (xs, ys, txs, tys, mask, width, height) = columns(&world);
-        let step = 12u32;
-        let _ = dev
-            .seek(&xs, &ys, &txs, &tys, step, &mask, width, height)
-            .unwrap_or_else(|err| panic!("warmup {}: {}", err.op, err.code));
-        let one = dev
-            .seek_repeat(&xs, &ys, &txs, &tys, step, &mask, width, height, n, 1)
-            .unwrap_or_else(|err| panic!("seek {}: {}", err.op, err.code));
-        assert!(one.out.errors.iter().all(|e| *e == 0), "gpu error at {n}");
-        let sixty = dev
-            .seek_repeat(&xs, &ys, &txs, &tys, step, &mask, width, height, n, 60)
-            .unwrap_or_else(|err| panic!("seek60 {}: {}", err.op, err.code));
-        assert_ne!(sixty.out.xs[0], xs[0], "gpu seek did not move agent 0 at {n}");
+        let _ = gpu_rounds(&dev, &world, 1);
+        let one = gpu_rounds(&dev, &world, 1);
+        let sixty = gpu_rounds(&dev, &world, 60);
+        assert_ne!(sixty.2[0], world.players[0].x, "gpu tick did not move agent 0 at {n}");
+        let mut i = 0;
+        while i < n {
+            assert_eq!(sixty.2[i], timed.players[i].x, "x {i} at {n}");
+            assert_eq!(sixty.3[i], timed.players[i].y, "y {i} at {n}");
+            i += 1;
+        }
         let row = format!(
             "{n},{cpu_tick_ms:.3},{cpu_step_ms:.3},{:.3},{:.3},{:.3},{:.3}",
-            one.kernel_ms, one.wall_ms, sixty.kernel_ms, sixty.wall_ms
+            one.0, one.1, sixty.0, sixty.1
         );
         println!(
             "fair agents={n} cpu_tick_ms={cpu_tick_ms:.2} cpu_step_ms={cpu_step_ms:.2} gpu60_kernel_ms={:.2} gpu60_wall_ms={:.2}",
-            sixty.kernel_ms, sixty.wall_ms
+            sixty.0, sixty.1
         );
         rows.push(row);
     }
     let path = format!("{dir}/fair.csv");
     std::fs::write(&path, rows.join("\n") + "\n").unwrap_or_else(|err| panic!("write {path}: {err}"));
     println!("wrote {path}");
+}
+
+/// Kernel milliseconds, wall milliseconds, and the landed positions.
+fn gpu_rounds(dev: &RustDevice, world: &Snapshot, rounds: u32) -> (f32, f64, Vec<u32>, Vec<u32>) {
+    let n = world.players.len();
+    let mut xs = Vec::with_capacity(n);
+    let mut ys = Vec::with_capacity(n);
+    let mut moving = Vec::with_capacity(n);
+    let mut i = 0;
+    while i < n {
+        xs.push(world.players[i].x);
+        ys.push(world.players[i].y);
+        moving.push(if world.players[i].pf == PF_MOVE { 1 } else { 0 });
+        i += 1;
+    }
+    let width = world.meta.width;
+    let height = world.meta.height;
+    let now = world.meta.now_ms;
+    let wall = Instant::now();
+    let mut kernel_ms = 0f32;
+    let mut round = 0u32;
+    while round < rounds {
+        let t = now + TICK_MS * (u64::from(round) + 1);
+        let mut cand_x = vec![0u32; n];
+        let mut cand_y = vec![0u32; n];
+        let mut i = 0;
+        while i < n {
+            if moving[i] != 0 {
+                let lo = i * 2;
+                let pose = path_pose(&world.paths[lo..lo + 2], t).unwrap_or_else(|| panic!("path {i}"));
+                cand_x[i] = pose.x;
+                cand_y[i] = pose.y;
+            } else {
+                cand_x[i] = xs[i];
+                cand_y[i] = ys[i];
+            }
+            i += 1;
+        }
+        let g = near_index(width, height, &xs, &ys);
+        let report = dev
+            .step(&xs, &ys, &moving, &cand_x, &cand_y, &world.terrain.mask, width, height, &g.head, &g.next)
+            .unwrap_or_else(|err| panic!("step {}: {}", err.op, err.code));
+        assert_eq!(report.out.error, 0, "device error at round {round}");
+        xs = report.out.xs;
+        ys = report.out.ys;
+        kernel_ms += report.kernel_ms;
+        round += 1;
+    }
+    (kernel_ms, wall.elapsed().as_secs_f64() * 1_000.0, xs, ys)
 }
 
 fn side_for(n: usize) -> u32 {
@@ -90,8 +137,10 @@ fn world(n: usize) -> Snapshot {
         let ty = (i / side as usize) as u32;
         let x = tx * MILLI;
         let y = ty * MILLI;
-        let dest_tx = if tx + 3 < side { tx + 3 } else { tx - 3 };
-        let dest_x = dest_tx * MILLI;
+        // Every agent walks east by the same amount. A neighbor who stayed
+        // would fall inside the collision radius within 60 ticks, and the
+        // CPU tick would then wait while the device kept retrying.
+        let dest_x = x + 3 * MILLI;
         let id = (i as u64) + 1;
         snap.players.push(Player {
             id,
@@ -135,21 +184,4 @@ fn world(n: usize) -> Snapshot {
         i += 1;
     }
     snap
-}
-
-fn columns(snap: &Snapshot) -> (Vec<u32>, Vec<u32>, Vec<u32>, Vec<u32>, Vec<u8>, u32, u32) {
-    let n = snap.players.len();
-    let mut xs = Vec::with_capacity(n);
-    let mut ys = Vec::with_capacity(n);
-    let mut txs = Vec::with_capacity(n);
-    let mut tys = Vec::with_capacity(n);
-    let mut i = 0;
-    while i < n {
-        xs.push(snap.players[i].x);
-        ys.push(snap.players[i].y);
-        txs.push(snap.players[i].dest_x / MILLI);
-        tys.push(snap.players[i].dest_y / MILLI);
-        i += 1;
-    }
-    (xs, ys, txs, tys, snap.terrain.mask.clone(), snap.meta.width, snap.meta.height)
 }

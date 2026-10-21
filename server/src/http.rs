@@ -76,19 +76,8 @@ async fn gpu_step(engine: &Engine<Town, TownStore>, mover: &std::sync::mpsc::Sen
     if snap.meta.width == 0 {
         return false;
     }
-    let (xs, ys, txs, tys, moving) = crate::gpu_move::columns(&snap);
     let (reply_tx, reply_rx) = tokio::sync::oneshot::channel();
-    let req = crate::gpu_move::MoveReq {
-        xs,
-        ys,
-        txs,
-        tys,
-        moving,
-        mask: snap.terrain.mask.clone(),
-        width: snap.meta.width,
-        height: snap.meta.height,
-        reply: reply_tx,
-    };
+    let req = crate::gpu_move::from_snapshot(&snap, reply_tx);
     if mover.send(req).is_err() {
         return false;
     }
@@ -107,7 +96,7 @@ async fn sim_loop(engine: Arc<Engine<Town, TownStore>>, events: tokio::sync::bro
     let mover = if gpu_requested() { Some(crate::gpu_move::spawn_mover()) } else { None };
     #[cfg(not(feature = "gpu"))]
     if gpu_requested() {
-        tracing::error!("gpu seek unavailable");
+        tracing::error!("gpu step unavailable");
     }
     #[cfg(feature = "gpu")]
     let mut gpu_warned = false;

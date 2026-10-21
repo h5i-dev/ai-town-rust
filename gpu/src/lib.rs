@@ -4,8 +4,9 @@
 //! depend on h5i. `h5i-app-gpu` is not published on crates.io and is not a
 //! dependency: it is wired to a different example and an older h5i-app git rev.
 //!
-//! [`Device::seek`] is the hand-written cubin baseline. [`RustDevice`] loads
-//! PTX compiled from `kernel`'s `seek_one`.
+//! [`Device::seek`] is the hand-written cubin baseline. [`RustDevice::step`]
+//! loads PTX compiled from `kernel`'s `tick_moves`. [`RustDevice::seek`] is
+//! the `seek_one` baseline in that same image.
 
 mod arena;
 mod layout;
@@ -13,7 +14,7 @@ mod rust_seek;
 
 pub use arena::{LayoutError, SeekArena, SeekRow};
 pub use layout::MAX_AGENTS;
-pub use rust_seek::{RustDevice, SeekOut, SeekReport};
+pub use rust_seek::{RustDevice, SeekOut, SeekReport, StepOut, StepReport};
 
 use std::ffi::c_void;
 use std::marker::PhantomData;

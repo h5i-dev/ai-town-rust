@@ -1,11 +1,12 @@
-//! Differential check: PTX compiled from `kernel`'s `seek_one` against `scalar_seek`.
+//! Differential check: PTX `step_batch` against host `tick_moves`.
 //!
-//! Skips when the PTX image is absent, so the cubin tests still pass on a
-//! machine that has not run `gpu/nvvm/build-device.sh`. `AI_TOWN_REQUIRE_PTX=1`
-//! turns that skip into a failure.
+//! Both sides use the spatial grid built at the start of the tick. The device
+//! runs that tick on one thread, so a later agent sees an earlier landing.
+//! Skips when the PTX image is absent. `AI_TOWN_REQUIRE_PTX=1` turns the skip
+//! into a failure. `seek_one` remains a one-row baseline in the same image.
 
-use ai_town_gpu::{Device, LayoutError, RustDevice, SeekArena, SeekOut, SeekRow, MAX_AGENTS};
-use ai_town_kernel::{scalar_seek, set_blocked};
+use ai_town_gpu::{LayoutError, RustDevice, SeekArena, SeekRow, StepOut, MAX_AGENTS};
+use ai_town_kernel::{near_index, scalar_seek, set_blocked, tick_moves};
 use std::path::PathBuf;
 use std::sync::Mutex;
 
@@ -24,48 +25,50 @@ fn ptx_path() -> Option<PathBuf> {
     }
 }
 
-fn oracle(xs: &[u32], ys: &[u32], txs: &[u32], tys: &[u32], step: u32, mask: &[u8], width: u32, height: u32, n: usize) -> SeekOut {
-    let (sx, sy) = scalar_seek(xs, ys, txs, tys, step, mask, width, height);
-    let mut out_x = vec![0u32; n];
-    let mut out_y = vec![0u32; n];
-    let mut errors = vec![0u32; n];
-    let mut i = 0;
-    while i < n {
-        if i >= MAX_AGENTS || i >= xs.len() || i >= ys.len() {
-            errors[i] = 1;
-        } else {
-            out_x[i] = sx[i];
-            out_y[i] = sy[i];
-        }
-        i += 1;
-    }
-    SeekOut { xs: out_x, ys: out_y, errors }
+fn open_mask(width: u32, height: u32) -> Vec<u8> {
+    let cells = (width as usize) * (height as usize);
+    vec![0u8; cells.div_ceil(8)]
 }
 
-fn columns(n: usize, width: u32) -> (Vec<u32>, Vec<u32>, Vec<u32>, Vec<u32>) {
-    let mut xs = Vec::new();
-    let mut ys = Vec::new();
-    let mut txs = Vec::new();
-    let mut tys = Vec::new();
-    let mut i = 0u32;
-    while (i as usize) < n {
-        xs.push((i % width) * 1000 + (i % 5) * 10);
-        ys.push((i / width) * 1000 + (i % 3) * 20);
-        txs.push((i * 3) % width);
-        tys.push((i * 5) % width.max(1));
-        i += 1;
-    }
-    (xs, ys, txs, tys)
+fn cpu_tick(
+    xs: &[u32],
+    ys: &[u32],
+    moving: &[u32],
+    cand_x: &[u32],
+    cand_y: &[u32],
+    mask: &[u8],
+    width: u32,
+    height: u32,
+) -> (Vec<u32>, Vec<u32>) {
+    let g = near_index(width, height, xs, ys);
+    let mut xs = xs.to_vec();
+    let mut ys = ys.to_vec();
+    assert!(tick_moves(&mut xs, &mut ys, moving, cand_x, cand_y, mask, width, height, &g.head, &g.next));
+    (xs, ys)
 }
 
-fn assert_gpu(dev: &RustDevice, xs: &[u32], ys: &[u32], txs: &[u32], tys: &[u32], step: u32, mask: &[u8], width: u32, height: u32, n: usize) {
-    let cpu = oracle(xs, ys, txs, tys, step, mask, width, height, n);
-    let gpu = dev.seek_n(xs, ys, txs, tys, step, mask, width, height, n).unwrap_or_else(|err| panic!("{} {}", err.op, err.code));
-    assert_eq!(gpu, cpu, "n={n} step={step}");
+fn assert_step(
+    dev: &RustDevice,
+    xs: &[u32],
+    ys: &[u32],
+    moving: &[u32],
+    cand_x: &[u32],
+    cand_y: &[u32],
+    mask: &[u8],
+    width: u32,
+    height: u32,
+) {
+    let g = near_index(width, height, xs, ys);
+    let (cx, cy) = cpu_tick(xs, ys, moving, cand_x, cand_y, mask, width, height);
+    let gpu = dev
+        .step(xs, ys, moving, cand_x, cand_y, mask, width, height, &g.head, &g.next)
+        .unwrap_or_else(|err| panic!("{} {}", err.op, err.code));
+    assert_eq!(gpu.out.error, 0, "device error");
+    assert_eq!(StepOut { xs: gpu.out.xs, ys: gpu.out.ys, error: 0 }, StepOut { xs: cx, ys: cy, error: 0 });
 }
 
 #[test]
-fn ptx_matches_scalar_seek() {
+fn ptx_matches_tick_moves() {
     let path = match ptx_path() {
         Some(path) => path,
         None => {
@@ -79,36 +82,48 @@ fn ptx_matches_scalar_seek() {
     let _guard = LOCK.lock().unwrap_or_else(|err| err.into_inner());
     let dev = RustDevice::open_path(&path).unwrap_or_else(|err| panic!("open {}: {}", err.op, err.code));
 
-    assert_gpu(&dev, &[], &[], &[], &[], 200, &[], 8, 8, 0);
+    let empty = dev.step(&[], &[], &[], &[], &[], &[], 8, 8, &[], &[]).unwrap_or_else(|err| panic!("{} {}", err.op, err.code));
+    assert_eq!(empty.out, StepOut { xs: Vec::new(), ys: Vec::new(), error: 0 });
 
-    let width = 64u32;
-    let height = 80u32;
-    let cells = (width as usize) * (height as usize);
-    let open = vec![0u8; (cells - 1) / 8 + 1];
-    let mut mask = open.clone();
-    set_blocked(&mut mask, width, height, 1, 0);
+    let open = open_mask(8, 8);
+    // The second agent wants 800. After the first lands on 200 the gap is 600,
+    // inside the radius, so the second stays at 1000.
+    assert_step(&dev, &[0, 1000], &[0, 0], &[1, 1], &[200, 800], &[0, 0], &open, 8, 8);
 
-    for n in [0usize, 1, 127, 128, 129, 1025] {
-        let (xs, ys, txs, tys) = columns(n, width);
-        for step in [0u32, 12, 200, 5_000] {
-            assert_gpu(&dev, &xs, &ys, &txs, &tys, step, &mask, width, height, n);
-            assert_gpu(&dev, &xs, &ys, &txs, &tys, step, &open, width, height, n);
-        }
-        if n > 0 {
-            assert_gpu(&dev, &xs[..n - 1], &ys[..n - 1], &txs, &tys, 200, &mask, width, height, n);
-        }
+    let mut wall = open_mask(8, 8);
+    set_blocked(&mut wall, 8, 8, 1, 0);
+    assert_step(&dev, &[0], &[0], &[1], &[1000], &[0], &wall, 8, 8);
+
+    assert_step(&dev, &[0, 1000], &[0, 0], &[1, 0], &[500, 1000], &[0, 0], &open, 8, 8);
+    assert_step(&dev, &[0, 3000], &[0, 0], &[1, 0], &[500, 3000], &[0, 0], &open, 8, 8);
+    assert_step(&dev, &[0], &[0], &[0], &[500], &[0], &open, 8, 8);
+
+    let n = 128usize;
+    let width = 16u32;
+    let mut xs = Vec::new();
+    let mut ys = Vec::new();
+    let mut moving = Vec::new();
+    let mut cand_x = Vec::new();
+    let mut cand_y = Vec::new();
+    let mut i = 0usize;
+    while i < n {
+        let x = ((i % width as usize) as u32) * 1000;
+        let y = ((i / width as usize) as u32) * 1000;
+        xs.push(x);
+        ys.push(y);
+        moving.push(1);
+        cand_x.push(x + 12);
+        cand_y.push(y);
+        i += 1;
     }
+    let lattice = open_mask(width, 8);
+    assert_step(&dev, &xs, &ys, &moving, &cand_x, &cand_y, &lattice, width, 8);
 
-    // Landing on the blocked tile (1, 0) is refused. A neighbor inside the
-    // 750 milli radius refuses the step; one outside it does not.
-    assert_gpu(&dev, &[0], &[0], &[2], &[0], 5_000, &mask, width, height, 1);
-    assert_gpu(&dev, &[0, 700], &[0, 0], &[8, 0], &[0, 0], 200, &[], width, height, 2);
-    assert_gpu(&dev, &[0, 3000], &[0, 0], &[8, 0], &[0, 0], 200, &[], width, height, 2);
-
-    let (xs, ys, txs, tys) = columns(200, width);
-    assert_gpu(&dev, &xs, &ys, &txs, &tys, 180, &mask, width, height, 200);
-    let (xs, ys, txs, tys) = columns(5_000, width);
-    assert_gpu(&dev, &xs, &ys, &txs, &tys, 180, &[], width, height, 5_000);
+    let mismatch = dev.step(&[0, 1], &[0], &[1, 1], &[0, 1], &[0, 0], &open, 8, 8, &[], &[]);
+    assert_eq!(mismatch.err().map(|err| err.op), Some("shape"));
+    let big = vec![0u32; MAX_AGENTS + 1];
+    let too_many = dev.step(&big, &big, &big, &big, &big, &[], 4, 4, &[], &[]);
+    assert_eq!(too_many.err().map(|err| err.op), Some("capacity"));
 
     let rows = vec![
         SeekRow { x: 0, y: 0, tx: 4, ty: 1 },
@@ -116,20 +131,10 @@ fn ptx_matches_scalar_seek() {
     ];
     let arena = SeekArena::pack(&rows, 2).unwrap();
     assert_eq!(arena.unpack(), rows);
-    assert_gpu(&dev, &arena.xs, &arena.ys, &arena.txs, &arena.tys, 250, &[], 16, 16, 2);
     assert_eq!(SeekArena::pack(&rows, MAX_AGENTS + 1).err(), Some(LayoutError::Capacity));
 
-    let too_many = dev.seek_n(&[], &[], &[], &[], 12, &[], 4, 4, MAX_AGENTS + 1);
-    assert_eq!(too_many.err().map(|err| err.op), Some("capacity"));
-
-    // Hand-written cubin, on the same inputs, after this context is dropped.
-    let (xs, ys, txs, tys) = columns(64, 16);
-    let cpu = scalar_seek(&xs, &ys, &txs, &tys, 200, &[], 16, 16);
-    let ptx_out = dev.seek(&xs, &ys, &txs, &tys, 200, &[], 16, 16).unwrap_or_else(|err| panic!("{} {}", err.op, err.code));
-    drop(dev);
-    let cubin = Device::open().unwrap_or_else(|err| panic!("cubin {}: {}", err.op, err.code));
-    let cubin_out = cubin.seek(&xs, &ys, &txs, &tys, 200, &[], 16, 16).unwrap_or_else(|err| panic!("cubin seek {}: {}", err.op, err.code));
-    assert_eq!(ptx_out.errors, vec![0u32; 64]);
-    assert_eq!((ptx_out.xs, ptx_out.ys), cpu);
-    assert_eq!(cubin_out, cpu);
+    let (sx, sy) = scalar_seek(&[0], &[0], &[3], &[0], 100, &open, 8, 8);
+    let seek = dev.seek(&[0], &[0], &[3], &[0], 100, &open, 8, 8).unwrap_or_else(|err| panic!("seek {} {}", err.op, err.code));
+    assert_eq!((seek.xs, seek.ys), (sx, sy));
+    assert_eq!(seek.errors, vec![0]);
 }
