@@ -1,12 +1,14 @@
-//! Differential check: PTX `step_batch` against host `tick_moves`.
+//! Differential check: PTX `round_phase` against host `tick_round`.
 //!
-//! Both sides use the spatial grid built at the start of the tick. The device
-//! runs that tick on one thread, so a later agent sees an earlier landing.
-//! Skips when the PTX image is absent. `AI_TOWN_REQUIRE_PTX=1` turns the skip
-//! into a failure. `seek_one` remains a one-row baseline in the same image.
+//! Both sides propose from the previous positions and accept a candidate only
+//! when no better-priority proposal (lower player id, then lower index) lies
+//! inside the collision radius. Chain order on the device may differ. The
+//! landed positions must match. `step_batch` remains the sequential baseline.
+//! `seek_one` remains a one-row baseline. Skips when the PTX image is absent.
+//! `AI_TOWN_REQUIRE_PTX=1` turns the skip into a failure.
 
 use ai_town_gpu::{LayoutError, RustDevice, SeekArena, SeekRow, StepOut, MAX_AGENTS};
-use ai_town_kernel::{near_index, scalar_seek, set_blocked, tick_moves};
+use ai_town_kernel::{near_index, scalar_seek, set_blocked, tick_moves, tick_round};
 use std::path::PathBuf;
 use std::sync::Mutex;
 
@@ -30,45 +32,67 @@ fn open_mask(width: u32, height: u32) -> Vec<u8> {
     vec![0u8; cells.div_ceil(8)]
 }
 
-fn cpu_tick(
+fn cpu_round(
     xs: &[u32],
     ys: &[u32],
     moving: &[u32],
     cand_x: &[u32],
     cand_y: &[u32],
+    ids: &[u64],
     mask: &[u8],
     width: u32,
     height: u32,
 ) -> (Vec<u32>, Vec<u32>) {
-    let g = near_index(width, height, xs, ys);
+    let n = xs.len();
+    let cells = (width as usize) * (height as usize);
+    let mut head = vec![u32::MAX; cells];
+    let mut next = vec![u32::MAX; n];
+    let mut prop_x = vec![0u32; n];
+    let mut prop_y = vec![0u32; n];
+    let mut prop_on = vec![0u32; n];
     let mut xs = xs.to_vec();
     let mut ys = ys.to_vec();
-    assert!(tick_moves(&mut xs, &mut ys, moving, cand_x, cand_y, mask, width, height, &g.head, &g.next));
+    assert!(tick_round(
+        &mut xs,
+        &mut ys,
+        moving,
+        cand_x,
+        cand_y,
+        ids,
+        mask,
+        width,
+        height,
+        &mut head,
+        &mut next,
+        &mut prop_x,
+        &mut prop_y,
+        &mut prop_on,
+    ));
     (xs, ys)
 }
 
-fn assert_step(
+fn assert_round(
     dev: &RustDevice,
     xs: &[u32],
     ys: &[u32],
     moving: &[u32],
     cand_x: &[u32],
     cand_y: &[u32],
+    ids: &[u64],
     mask: &[u8],
     width: u32,
     height: u32,
 ) {
-    let g = near_index(width, height, xs, ys);
-    let (cx, cy) = cpu_tick(xs, ys, moving, cand_x, cand_y, mask, width, height);
+    let (cx, cy) = cpu_round(xs, ys, moving, cand_x, cand_y, ids, mask, width, height);
     let gpu = dev
-        .step(xs, ys, moving, cand_x, cand_y, mask, width, height, &g.head, &g.next)
+        .round(xs, ys, moving, cand_x, cand_y, ids, mask, width, height)
         .unwrap_or_else(|err| panic!("{} {}", err.op, err.code));
     assert_eq!(gpu.out.error, 0, "device error");
     assert_eq!(StepOut { xs: gpu.out.xs, ys: gpu.out.ys, error: 0 }, StepOut { xs: cx, ys: cy, error: 0 });
 }
 
 #[test]
-fn ptx_matches_tick_moves() {
+fn ptx_matches_tick_round() {
     let path = match ptx_path() {
         Some(path) => path,
         None => {
@@ -82,21 +106,58 @@ fn ptx_matches_tick_moves() {
     let _guard = LOCK.lock().unwrap_or_else(|err| err.into_inner());
     let dev = RustDevice::open_path(&path).unwrap_or_else(|err| panic!("open {}: {}", err.op, err.code));
 
-    let empty = dev.step(&[], &[], &[], &[], &[], &[], 8, 8, &[], &[]).unwrap_or_else(|err| panic!("{} {}", err.op, err.code));
+    let empty = dev
+        .round(&[], &[], &[], &[], &[], &[], &[], 8, 8)
+        .unwrap_or_else(|err| panic!("{} {}", err.op, err.code));
     assert_eq!(empty.out, StepOut { xs: Vec::new(), ys: Vec::new(), error: 0 });
 
     let open = open_mask(8, 8);
-    // The second agent wants 800. After the first lands on 200 the gap is 600,
-    // inside the radius, so the second stays at 1000.
-    assert_step(&dev, &[0, 1000], &[0, 0], &[1, 1], &[200, 800], &[0, 0], &open, 8, 8);
+    // Both propose. The lower id keeps 200. The other stays at 1000.
+    assert_round(&dev, &[0, 1000], &[0, 0], &[1, 1], &[200, 800], &[0, 0], &[1, 2], &open, 8, 8);
+    assert_round(&dev, &[0, 1000], &[0, 0], &[1, 1], &[200, 800], &[0, 0], &[9, 1], &open, 8, 8);
 
     let mut wall = open_mask(8, 8);
     set_blocked(&mut wall, 8, 8, 1, 0);
-    assert_step(&dev, &[0], &[0], &[1], &[1000], &[0], &wall, 8, 8);
+    assert_round(&dev, &[0], &[0], &[1], &[1000], &[0], &[1], &wall, 8, 8);
 
-    assert_step(&dev, &[0, 1000], &[0, 0], &[1, 0], &[500, 1000], &[0, 0], &open, 8, 8);
-    assert_step(&dev, &[0, 3000], &[0, 0], &[1, 0], &[500, 3000], &[0, 0], &open, 8, 8);
-    assert_step(&dev, &[0], &[0], &[0], &[500], &[0], &open, 8, 8);
+    assert_round(&dev, &[0, 1000], &[0, 0], &[1, 0], &[500, 1000], &[0, 0], &[1, 2], &open, 8, 8);
+    assert_round(&dev, &[0, 3000], &[0, 0], &[1, 0], &[500, 3000], &[0, 0], &[1, 2], &open, 8, 8);
+    assert_round(&dev, &[0], &[0], &[0], &[500], &[0], &[1], &open, 8, 8);
+
+    // Same cell, gap 762. Each candidate is 750 from the other old position
+    // and 738 from the other candidate. The lower id wins.
+    assert_round(&dev, &[1000, 1762], &[1000, 1000], &[1, 1], &[1012, 1750], &[1000, 1000], &[1, 5], &open, 8, 8);
+    assert_round(&dev, &[1000, 1762], &[1000, 1000], &[1, 1], &[1012, 1750], &[1000, 1000], &[5, 1], &open, 8, 8);
+
+    // Eight agents share one cell and one point. A broken chain would let
+    // somebody move. All of them stay.
+    let mut pile_x = vec![1000u32; 8];
+    let mut pile_y = vec![1000u32; 8];
+    let pile_m = vec![1u32; 8];
+    let pile_c = vec![1012u32; 8];
+    let pile_cy = vec![1000u32; 8];
+    let mut pile_ids = Vec::new();
+    let mut i = 0u64;
+    while i < 8 {
+        pile_ids.push(i + 1);
+        i += 1;
+    }
+    assert_round(&dev, &pile_x, &pile_y, &pile_m, &pile_c, &pile_cy, &pile_ids, &open, 8, 8);
+    let _ = (&mut pile_x, &mut pile_y);
+
+    // The sequential rule lets B step into the shell A vacated. Two-phase
+    // still sees A's previous position, so B stays.
+    assert_round(&dev, &[2000, 1248], &[0, 0], &[1, 1], &[2012, 1260], &[0, 0], &[1, 2], &open, 8, 8);
+    let g = near_index(8, 8, &[2000, 1248], &[0, 0]);
+    let mut seq_x = vec![2000u32, 1248];
+    let mut seq_y = vec![0u32, 0];
+    assert!(tick_moves(&mut seq_x, &mut seq_y, &[1, 1], &[2012, 1260], &[0, 0], &open, 8, 8, &g.head, &g.next));
+    let seq = dev
+        .step(&[2000, 1248], &[0, 0], &[1, 1], &[2012, 1260], &[0, 0], &open, 8, 8, &g.head, &g.next)
+        .unwrap_or_else(|err| panic!("step {} {}", err.op, err.code));
+    assert_eq!(seq.out.xs, seq_x);
+    assert_eq!(seq.out.ys, seq_y);
+    assert_eq!(seq_x, vec![2012, 1260]);
 
     let n = 128usize;
     let width = 16u32;
@@ -105,6 +166,7 @@ fn ptx_matches_tick_moves() {
     let mut moving = Vec::new();
     let mut cand_x = Vec::new();
     let mut cand_y = Vec::new();
+    let mut ids = Vec::new();
     let mut i = 0usize;
     while i < n {
         let x = ((i % width as usize) as u32) * 1000;
@@ -114,15 +176,33 @@ fn ptx_matches_tick_moves() {
         moving.push(1);
         cand_x.push(x + 12);
         cand_y.push(y);
+        ids.push((i as u64) + 1);
         i += 1;
     }
     let lattice = open_mask(width, 8);
-    assert_step(&dev, &xs, &ys, &moving, &cand_x, &cand_y, &lattice, width, 8);
+    assert_round(&dev, &xs, &ys, &moving, &cand_x, &cand_y, &ids, &lattice, width, 8);
 
-    let mismatch = dev.step(&[0, 1], &[0], &[1, 1], &[0, 1], &[0, 0], &open, 8, 8, &[], &[]);
+    // Round 2 must see the landing from round 1. A stale grid would let B
+    // step to 900, which is clear of A's old tile and inside A's new one.
+    let cand_x2 = vec![200u32, 1000, 200, 900];
+    let cand_y2 = vec![0u32, 0, 0, 0];
+    let cand_on = vec![1u32, 1, 1, 1];
+    let gpu2 = dev
+        .rounds(&[0, 1000], &[0, 0], &[1, 1], &cand_x2, &cand_y2, &cand_on, &[1, 2], &open, 8, 8, 2)
+        .unwrap_or_else(|err| panic!("rounds {} {}", err.op, err.code));
+    let (mut hx, mut hy) = cpu_round(&[0, 1000], &[0, 0], &[1, 1], &[200, 1000], &[0, 0], &[1, 2], &open, 8, 8);
+    let (hx2, hy2) = cpu_round(&hx, &hy, &[1, 1], &[200, 900], &[0, 0], &[1, 2], &open, 8, 8);
+    hx = hx2;
+    hy = hy2;
+    assert_eq!(gpu2.out.xs, hx);
+    assert_eq!(gpu2.out.ys, hy);
+    assert_eq!(hx, vec![200, 1000]);
+
+    let mismatch = dev.round(&[0, 1], &[0], &[1, 1], &[0, 1], &[0, 0], &[1, 2], &open, 8, 8);
     assert_eq!(mismatch.err().map(|err| err.op), Some("shape"));
     let big = vec![0u32; MAX_AGENTS + 1];
-    let too_many = dev.step(&big, &big, &big, &big, &big, &[], 4, 4, &[], &[]);
+    let big_ids = vec![0u64; MAX_AGENTS + 1];
+    let too_many = dev.round(&big, &big, &big, &big, &big, &big_ids, &[], 4, 4);
     assert_eq!(too_many.err().map(|err| err.op), Some("capacity"));
 
     let rows = vec![

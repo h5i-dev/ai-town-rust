@@ -4,9 +4,10 @@
 //! depend on h5i. `h5i-app-gpu` is not published on crates.io and is not a
 //! dependency: it is wired to a different example and an older h5i-app git rev.
 //!
-//! [`Device::seek`] is the hand-written cubin baseline. [`RustDevice::step`]
-//! loads PTX compiled from `kernel`'s `tick_moves`. [`RustDevice::seek`] is
-//! the `seek_one` baseline in that same image.
+//! [`Device::seek`] is the hand-written cubin baseline. [`RustDevice::rounds`]
+//! loads PTX of the two-phase tick, one thread per agent. [`RustDevice::step`]
+//! keeps the sequential `tick_moves` baseline. [`RustDevice::seek`] is the
+//! `seek_one` baseline in that same image.
 
 mod arena;
 mod layout;

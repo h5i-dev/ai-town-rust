@@ -1,15 +1,15 @@
 //! GPU movement on a thread that owns the CUDA context.
 //!
-//! One sim second is 60 sequential calls of `tick_moves`. Each round asks
-//! `path_pose` for a candidate at `now + 16ms * round`, rebuilds the spatial
-//! grid from the latest positions, and launches one device thread. Players
-//! who are not already walking stay where they are and stay in the grid.
-//! A refused step is retried from the later path pose. The CPU tick would
-//! instead enter `PF_WAIT` for about a second. This pass does not advance
+//! One sim second is 60 two-phase rounds. Candidates come from `path_pose` at
+//! `now + 16ms * round` and are copied once. The device rebuilds the spatial
+//! grid from the positions of the previous round and runs one thread per agent
+//! for propose and for resolve. Players who are not already walking stay where
+//! they are. A refused step is retried from the later path pose. The CPU tick
+//! would instead enter `PF_WAIT` for about a second. This pass does not advance
 //! `now_ms`, conversations, or facing. `Relocate` writes the positions.
 
 use ai_town_gpu::RustDevice;
-use ai_town_kernel::{near_index, path_pose, PathNode, Snapshot, PF_MOVE, TICK_MS};
+use ai_town_kernel::{path_pose, PathNode, Snapshot, PF_MOVE, TICK_MS};
 use std::collections::HashMap;
 use std::path::PathBuf;
 use tokio::sync::oneshot;
@@ -18,6 +18,7 @@ pub struct MoveReq {
     pub xs: Vec<u32>,
     pub ys: Vec<u32>,
     pub moving: Vec<u32>,
+    pub ids: Vec<u64>,
     pub paths: Vec<PathNode>,
     pub path_lo: Vec<u32>,
     pub path_hi: Vec<u32>,
@@ -33,6 +34,7 @@ pub fn from_snapshot(snap: &Snapshot, reply: oneshot::Sender<Option<(Vec<u32>, V
     let mut xs = Vec::with_capacity(n);
     let mut ys = Vec::with_capacity(n);
     let mut moving = Vec::with_capacity(n);
+    let mut ids = Vec::with_capacity(n);
     let mut slot = HashMap::with_capacity(n);
     let mut i = 0;
     while i < n {
@@ -40,6 +42,7 @@ pub fn from_snapshot(snap: &Snapshot, reply: oneshot::Sender<Option<(Vec<u32>, V
         xs.push(p.x);
         ys.push(p.y);
         moving.push(if p.pf == PF_MOVE { 1 } else { 0 });
+        ids.push(p.id);
         slot.insert(p.id, i);
         i += 1;
     }
@@ -74,6 +77,7 @@ pub fn from_snapshot(snap: &Snapshot, reply: oneshot::Sender<Option<(Vec<u32>, V
         xs,
         ys,
         moving,
+        ids,
         paths,
         path_lo,
         path_hi,
@@ -110,16 +114,17 @@ fn mover_loop(rx: std::sync::mpsc::Receiver<MoveReq>) {
         }
     };
     while let Ok(job) = rx.recv() {
-        let MoveReq { xs, ys, moving, paths, path_lo, path_hi, now_ms, mask, width, height, reply } = job;
-        let _ = reply.send(step_minute(&dev, xs, ys, moving, paths, path_lo, path_hi, now_ms, &mask, width, height));
+        let MoveReq { xs, ys, moving, ids, paths, path_lo, path_hi, now_ms, mask, width, height, reply } = job;
+        let _ = reply.send(step_minute(&dev, xs, ys, moving, ids, paths, path_lo, path_hi, now_ms, &mask, width, height));
     }
 }
 
 fn step_minute(
     dev: &RustDevice,
-    mut xs: Vec<u32>,
-    mut ys: Vec<u32>,
+    xs: Vec<u32>,
+    ys: Vec<u32>,
     moving: Vec<u32>,
+    ids: Vec<u64>,
     paths: Vec<PathNode>,
     path_lo: Vec<u32>,
     path_hi: Vec<u32>,
@@ -129,14 +134,17 @@ fn step_minute(
     height: u32,
 ) -> Option<(Vec<u32>, Vec<u32>)> {
     let n = xs.len();
-    if n == 0 || ys.len() != n || moving.len() != n || path_lo.len() != n || path_hi.len() != n {
+    if n == 0 || ys.len() != n || moving.len() != n || ids.len() != n || path_lo.len() != n || path_hi.len() != n {
         return None;
     }
-    let mut cand_x = vec![0u32; n];
-    let mut cand_y = vec![0u32; n];
-    let mut round = 0u32;
-    while round < 60 {
-        let t = now_ms.wrapping_add(TICK_MS.wrapping_mul(u64::from(round) + 1));
+    let rounds = 60usize;
+    let mut cand_x = vec![0u32; n * rounds];
+    let mut cand_y = vec![0u32; n * rounds];
+    let mut cand_on = vec![0u32; n * rounds];
+    let mut round = 0usize;
+    while round < rounds {
+        let t = now_ms.wrapping_add(TICK_MS.wrapping_mul((round as u64).wrapping_add(1)));
+        let base = round * n;
         let mut i = 0;
         while i < n {
             if moving[i] != 0 {
@@ -144,30 +152,23 @@ fn step_minute(
                 let hi = path_hi[i] as usize;
                 if lo <= hi && hi <= paths.len() {
                     if let Some(pose) = path_pose(&paths[lo..hi], t) {
-                        cand_x[i] = pose.x;
-                        cand_y[i] = pose.y;
-                    } else {
-                        cand_x[i] = xs[i];
-                        cand_y[i] = ys[i];
+                        cand_x[base + i] = pose.x;
+                        cand_y[base + i] = pose.y;
+                        cand_on[base + i] = 1;
                     }
-                } else {
-                    cand_x[i] = xs[i];
-                    cand_y[i] = ys[i];
                 }
             } else {
-                cand_x[i] = xs[i];
-                cand_y[i] = ys[i];
+                cand_x[base + i] = xs[i];
+                cand_y[base + i] = ys[i];
+                cand_on[base + i] = 1;
             }
             i += 1;
         }
-        let g = near_index(width, height, &xs, &ys);
-        let report = dev.step(&xs, &ys, &moving, &cand_x, &cand_y, &mask, width, height, &g.head, &g.next).ok()?;
-        if report.out.error != 0 || report.out.xs.len() != n || report.out.ys.len() != n {
-            return None;
-        }
-        xs = report.out.xs;
-        ys = report.out.ys;
         round += 1;
     }
-    Some((xs, ys))
+    let report = dev.rounds(&xs, &ys, &moving, &cand_x, &cand_y, &cand_on, &ids, mask, width, height, 60).ok()?;
+    if report.out.error != 0 || report.out.xs.len() != n || report.out.ys.len() != n {
+        return None;
+    }
+    Some((report.out.xs, report.out.ys))
 }

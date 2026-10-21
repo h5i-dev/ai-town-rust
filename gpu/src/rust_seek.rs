@@ -1,9 +1,10 @@
-//! Launch the PTX image of `kernel`'s `tick_moves`, and the `seek_one` baseline.
+//! Launch the PTX image of the shared movement kernels, and the `seek_one` baseline.
 //!
 //! The handwritten cubin in `seek.cu` stays as a baseline. This launcher uses
 //! the same driver API and does not depend on the `cust` crate. The CUDA
 //! context is tied to the thread that opened it. `step` runs the sequential
-//! tick on one thread, so later agents see earlier landings.
+//! tick on one thread. `rounds` runs the two-phase rule, one thread per agent,
+//! and leaves positions on the device across rounds.
 
 use crate::{GpuError, MAX_AGENTS};
 use std::ffi::c_void;
@@ -52,6 +53,7 @@ unsafe extern "C" {
     fn cuEventSynchronize(event: CUevent) -> CUresult;
     fn cuEventElapsedTime(ms: *mut f32, start: CUevent, end: CUevent) -> CUresult;
     fn cuEventDestroy_v2(event: CUevent) -> CUresult;
+    fn cuMemsetD32_v2(dst: CUdeviceptr, value: u32, n: usize) -> CUresult;
 }
 
 fn check(op: &'static str, code: CUresult) -> Result<(), GpuError> {
@@ -84,8 +86,8 @@ pub struct StepOut {
     pub error: u32,
 }
 
-/// Kernel time is the CUDA-event interval around the single-thread launch.
-/// Wall time includes the copies.
+/// Kernel time is the CUDA-event interval around the device work.
+/// Wall time includes the copies. `rounds` copies once for the whole batch.
 #[derive(Clone, Debug, PartialEq)]
 pub struct StepReport {
     pub out: StepOut,
@@ -98,6 +100,7 @@ pub struct RustDevice {
     module: CUmodule,
     func: CUfunction,
     step_func: CUfunction,
+    round_func: CUfunction,
     _thread: PhantomData<*const ()>,
 }
 
@@ -172,7 +175,15 @@ impl RustDevice {
                 let _ = cuCtxDestroy_v2(ctx);
                 return Err(GpuError { op: "cuModuleGetFunction", code: got_step });
             }
-            Ok(RustDevice { ctx, module, func, step_func, _thread: PhantomData })
+            let mut round_func: CUfunction = std::ptr::null_mut();
+            let round_name = c"round_phase";
+            let got_round = cuModuleGetFunction(&mut round_func, module, round_name.as_ptr());
+            if got_round != 0 {
+                let _ = cuModuleUnload(module);
+                let _ = cuCtxDestroy_v2(ctx);
+                return Err(GpuError { op: "cuModuleGetFunction", code: got_round });
+            }
+            Ok(RustDevice { ctx, module, func, step_func, round_func, _thread: PhantomData })
         }
     }
 
@@ -479,6 +490,218 @@ impl RustDevice {
             out: StepOut { xs: out_x, ys: out_y, error },
             kernel_ms,
             wall_ms: wall.elapsed().as_secs_f64() * 1000.0,
+        })
+    }
+
+    /// One two-phase round. `cand_on` is all ones: every candidate is explicit.
+    /// Positions match `tick_round` when `ids` are the player ids.
+    pub fn round(
+        &self,
+        xs: &[u32],
+        ys: &[u32],
+        moving: &[u32],
+        cand_x: &[u32],
+        cand_y: &[u32],
+        ids: &[u64],
+        mask: &[u8],
+        width: u32,
+        height: u32,
+    ) -> Result<StepReport, GpuError> {
+        let n = xs.len();
+        let cand_on = vec![1u32; n];
+        self.rounds(xs, ys, moving, cand_x, cand_y, &cand_on, ids, mask, width, height, 1)
+    }
+
+    /// `rounds` two-phase steps. Candidates are round-major: round `r`, agent `i`
+    /// lives at `r * n + i`. A zero `cand_on` entry means "use the position at
+    /// the start of that round". Buffers stay on the device. The grid is rebuilt
+    /// there between propose and resolve, and again at the start of the next round.
+    /// Kernel time covers that device work. Wall time adds one copy in and one copy out.
+    pub fn rounds(
+        &self,
+        xs: &[u32],
+        ys: &[u32],
+        moving: &[u32],
+        cand_x: &[u32],
+        cand_y: &[u32],
+        cand_on: &[u32],
+        ids: &[u64],
+        mask: &[u8],
+        width: u32,
+        height: u32,
+        rounds: u32,
+    ) -> Result<StepReport, GpuError> {
+        let n = xs.len();
+        if ys.len() != n || moving.len() != n || ids.len() != n {
+            return Err(GpuError { op: "shape", code: -3 });
+        }
+        if n > MAX_AGENTS {
+            return Err(GpuError { op: "capacity", code: -2 });
+        }
+        if width == 0 || height == 0 {
+            return Err(GpuError { op: "shape", code: -3 });
+        }
+        let cells = (width as usize).checked_mul(height as usize).ok_or(GpuError { op: "shape", code: -3 })?;
+        if cells == 0 {
+            return Err(GpuError { op: "shape", code: -3 });
+        }
+        if n == 0 || rounds == 0 {
+            return Ok(StepReport {
+                out: StepOut { xs: Vec::new(), ys: Vec::new(), error: 0 },
+                kernel_ms: 0.0,
+                wall_ms: 0.0,
+            });
+        }
+        let rows = (rounds as usize).checked_mul(n).ok_or(GpuError { op: "shape", code: -3 })?;
+        if cand_x.len() != rows || cand_y.len() != rows || cand_on.len() != rows {
+            return Err(GpuError { op: "shape", code: -3 });
+        }
+        let wall = Instant::now();
+        check("cuCtxSetCurrent", unsafe { cuCtxSetCurrent(self.ctx) })?;
+        let mut bufs = GpuBufs::new();
+        let d_xs = bufs.alloc(n * 4)?;
+        let d_ys = bufs.alloc(n * 4)?;
+        let d_moving = bufs.alloc(n * 4)?;
+        let d_cx = bufs.alloc(rows * 4)?;
+        let d_cy = bufs.alloc(rows * 4)?;
+        let d_on = bufs.alloc(rows * 4)?;
+        let d_ids = bufs.alloc(n * 8)?;
+        let d_mask = bufs.alloc(mask.len())?;
+        let d_head = bufs.alloc(cells * 4)?;
+        let d_next = bufs.alloc(n * 4)?;
+        let d_px = bufs.alloc(n * 4)?;
+        let d_py = bufs.alloc(n * 4)?;
+        let d_po = bufs.alloc(n * 4)?;
+        h2d(d_xs, xs)?;
+        h2d(d_ys, ys)?;
+        h2d(d_moving, moving)?;
+        h2d(d_cx, cand_x)?;
+        h2d(d_cy, cand_y)?;
+        h2d(d_on, cand_on)?;
+        h2d(d_ids, ids)?;
+        h2d(d_mask, mask)?;
+
+        let mut start_ev: CUevent = std::ptr::null_mut();
+        let mut end_ev: CUevent = std::ptr::null_mut();
+        check("cuEventCreate", unsafe { cuEventCreate(&mut start_ev, 0) })?;
+        let end_ok = unsafe { cuEventCreate(&mut end_ev, 0) };
+        if end_ok != 0 {
+            unsafe { let _ = cuEventDestroy_v2(start_ev); }
+            return Err(GpuError { op: "cuEventCreate", code: end_ok });
+        }
+
+        let mask_len = mask.len() as u64;
+        let width_arg = width;
+        let height_arg = height;
+        let n_arg = n as u64;
+        let block = 128u32;
+        let grid = ((n as u32) + block - 1) / block;
+        let launch_result = (|| {
+            check("cuEventRecord", unsafe { cuEventRecord(start_ev, std::ptr::null_mut()) })?;
+            let mut round = 0u32;
+            while round < rounds {
+                let byte = (round as u64) * (n as u64) * 4;
+                let cx = d_cx + byte;
+                let cy = d_cy + byte;
+                let on = d_on + byte;
+                self.one_phase(d_xs, d_ys, d_moving, cx, cy, on, d_ids, d_mask, mask_len, d_head, d_next, d_px, d_py, d_po, width_arg, height_arg, 0, n_arg, cells, grid, block)?;
+                self.one_phase(d_xs, d_ys, d_moving, cx, cy, on, d_ids, d_mask, mask_len, d_head, d_next, d_px, d_py, d_po, width_arg, height_arg, 1, n_arg, cells, grid, block)?;
+                self.one_phase(d_xs, d_ys, d_moving, cx, cy, on, d_ids, d_mask, mask_len, d_head, d_next, d_px, d_py, d_po, width_arg, height_arg, 2, n_arg, cells, grid, block)?;
+                self.one_phase(d_xs, d_ys, d_moving, cx, cy, on, d_ids, d_mask, mask_len, d_head, d_next, d_px, d_py, d_po, width_arg, height_arg, 3, n_arg, cells, grid, block)?;
+                round += 1;
+            }
+            check("cuEventRecord", unsafe { cuEventRecord(end_ev, std::ptr::null_mut()) })?;
+            check("cuEventSynchronize", unsafe { cuEventSynchronize(end_ev) })?;
+            let mut ms = 0f32;
+            check("cuEventElapsedTime", unsafe { cuEventElapsedTime(&mut ms, start_ev, end_ev) })?;
+            Ok(ms)
+        })();
+        unsafe {
+            let _ = cuEventDestroy_v2(start_ev);
+            let _ = cuEventDestroy_v2(end_ev);
+        }
+        let kernel_ms = launch_result?;
+        let mut out_x = vec![0u32; n];
+        let mut out_y = vec![0u32; n];
+        check("cuMemcpyDtoH x", unsafe { cuMemcpyDtoH_v2(out_x.as_mut_ptr().cast(), d_xs, n * 4) })?;
+        check("cuMemcpyDtoH y", unsafe { cuMemcpyDtoH_v2(out_y.as_mut_ptr().cast(), d_ys, n * 4) })?;
+        Ok(StepReport {
+            out: StepOut { xs: out_x, ys: out_y, error: 0 },
+            kernel_ms,
+            wall_ms: wall.elapsed().as_secs_f64() * 1000.0,
+        })
+    }
+
+    /// Clear the chains, then launch one phase. Insert phases (0 and 2) need
+    /// the clear. Propose and resolve do not, and skipping it keeps the lists
+    /// built by the previous launch.
+    fn one_phase(
+        &self,
+        d_xs: CUdeviceptr,
+        d_ys: CUdeviceptr,
+        d_moving: CUdeviceptr,
+        d_cx: CUdeviceptr,
+        d_cy: CUdeviceptr,
+        d_on: CUdeviceptr,
+        d_ids: CUdeviceptr,
+        d_mask: CUdeviceptr,
+        mask_len: u64,
+        d_head: CUdeviceptr,
+        d_next: CUdeviceptr,
+        d_px: CUdeviceptr,
+        d_py: CUdeviceptr,
+        d_po: CUdeviceptr,
+        width: u32,
+        height: u32,
+        phase: u32,
+        n: u64,
+        cells: usize,
+        grid: u32,
+        block: u32,
+    ) -> Result<(), GpuError> {
+        if phase == 0 || phase == 2 {
+            check("cuMemsetD32 head", unsafe { cuMemsetD32_v2(d_head, u32::MAX, cells) })?;
+            check("cuMemsetD32 next", unsafe { cuMemsetD32_v2(d_next, u32::MAX, n as usize) })?;
+        }
+        let phase_arg = phase;
+        let width_arg = width;
+        let height_arg = height;
+        let n_arg = n;
+        let mask_len_arg = mask_len;
+        let mut args = [
+            &d_xs as *const CUdeviceptr as *mut c_void,
+            &d_ys as *const CUdeviceptr as *mut c_void,
+            &d_moving as *const CUdeviceptr as *mut c_void,
+            &d_cx as *const CUdeviceptr as *mut c_void,
+            &d_cy as *const CUdeviceptr as *mut c_void,
+            &d_on as *const CUdeviceptr as *mut c_void,
+            &d_ids as *const CUdeviceptr as *mut c_void,
+            &d_mask as *const CUdeviceptr as *mut c_void,
+            &mask_len_arg as *const u64 as *mut c_void,
+            &d_head as *const CUdeviceptr as *mut c_void,
+            &d_next as *const CUdeviceptr as *mut c_void,
+            &d_px as *const CUdeviceptr as *mut c_void,
+            &d_py as *const CUdeviceptr as *mut c_void,
+            &d_po as *const CUdeviceptr as *mut c_void,
+            &width_arg as *const u32 as *mut c_void,
+            &height_arg as *const u32 as *mut c_void,
+            &phase_arg as *const u32 as *mut c_void,
+            &n_arg as *const u64 as *mut c_void,
+        ];
+        check("cuLaunchKernel", unsafe {
+            cuLaunchKernel(
+                self.round_func,
+                grid,
+                1,
+                1,
+                block,
+                1,
+                1,
+                0,
+                std::ptr::null_mut(),
+                args.as_mut_ptr(),
+                std::ptr::null_mut(),
+            )
         })
     }
 }
