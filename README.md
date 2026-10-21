@@ -85,39 +85,51 @@ gpu/nvvm/build-device.sh
 CUDA_VISIBLE_DEVICES=0 cargo run --release --manifest-path gpu/Cargo.toml --bin fair-bench
 ```
 
-`fair-bench` times the two-phase round on the CPU and on the GPU at 1,000,
-10,000, 50,000, and 100,000 agents. Every agent walks east on an open mask, so
-the rules agree and nobody waits. `cpu_tick_ms` is the product `run_ticks`
-(path pose, a refused step's wait, and the round). `cpu_round_ms` is 60 calls
-of `tick_round` on one thread, with candidates prepared before the timer.
-`cpu_parallel_ms` is those rounds on a pool of 8 threads, started once. The
-grid build stays on the main thread. This machine reported 128 hardware
-threads. The GPU columns are `RustDevice::rounds`: buffers stay on the device
-for the minute, with one copy in and one copy out. Kernel time is the CUDA
-events around the memsets and the launches.
+`fair-bench` times 60 two-phase rounds at 1,000, 10,000, 50,000, and 100,000
+agents in two crowds (`AI_TOWN_SCENARIO`). `east`: every agent walks east in
+step, one tile from its neighbors, so no landing is ever contested. `head-on`:
+each row alternates eastbound and westbound agents 1.5 tiles apart, so every
+pair meets within the minute and keeps proposing into a refused landing.
+`Refused` counts (round, agent) proposals that did not land; at 18.5 per
+agent, the head-on crowd spends most of the minute on contested landings.
 
-| Agents | CPU tick | CPU round | CPU 8 threads | GPU one kernel | GPU one wall | GPU 60 kernel | GPU 60 wall |
-|---:|---:|---:|---:|---:|---:|---:|---:|
-| 1,000 | 10.518 ms | 4.442 ms | 7.427 ms | 0.025 ms | 18.314 ms | 1.297 ms | 12.631 ms |
-| 10,000 | 110.665 ms | 47.452 ms | 49.898 ms | 0.030 ms | 15.958 ms | 1.553 ms | 9.339 ms |
-| 50,000 | 570.884 ms | 241.943 ms | 176.000 ms | 0.038 ms | 1.820 ms | 2.011 ms | 8.286 ms |
-| 100,000 | 1,202.314 ms | 481.704 ms | 312.842 ms | 0.059 ms | 1.713 ms | 5.752 ms | 15.447 ms |
+`CPU tick` is the product `run_ticks` (path pose, a refused step's wait, and
+the round). `CPU 1 thread` is 60 calls of `tick_round`, candidates prepared
+before the timer. `CPU pool` runs the same rounds on 8, 16, 32, or 64 worker
+threads (`AI_TOWN_CPU_THREADS`) started once and synchronized by a spinning
+barrier; the workers also clear and fill the grid with atomic pushes, like the
+PTX inserts, so no phase is serial. The table gives the fastest pool and its
+thread count. The GPU columns are `RustDevice::rounds`: one copy in, the
+minute resident on the device, one copy out; kernel time is the CUDA events
+around the memsets and launches. In every row the single-thread round, every
+pool, and the GPU landed on the same coordinates, and in `east` so did
+`run_ticks`.
 
-Positions matched across `run_ticks`, the single-thread round, the 8-thread
-pool, and the GPU. The pool takes 7.427 ms at 1,000 agents, where one thread
-takes 4.442 ms, and 49.898 ms at 10,000, where one thread takes 47.452 ms. It
-takes 176.000 ms at 50,000 and 312.842 ms at 100,000, where one thread takes
-241.943 ms and 481.704 ms. The 60-round GPU kernel takes 1.297 ms, 1.553 ms,
-2.011 ms, and 5.752 ms. The one-round wall of 18.314 ms at 1,000 agents pays
-for device allocation. The one-round walls at 50,000 and 100,000 agents are
-1.820 ms and 1.713 ms.
+| Scenario | Agents | Refused | CPU tick | CPU 1 thread | CPU pool, best | GPU 60 kernel | GPU 60 wall |
+|---|---:|---:|---:|---:|---:|---:|---:|
+| head-on | 1,000 | 18,500 | 8.80 ms | 3.26 ms | 5.30 ms (8) | 1.26 ms | 12.60 ms |
+| head-on | 10,000 | 185,000 | 84.15 ms | 33.41 ms | 15.21 ms (32) | 1.37 ms | 11.00 ms |
+| head-on | 50,000 | 925,000 | 440.86 ms | 170.27 ms | 35.25 ms (32) | 1.90 ms | 12.99 ms |
+| head-on | 100,000 | 1,850,000 | 1,038.02 ms | 396.55 ms | 64.48 ms (32) | 6.35 ms | 20.94 ms |
+| east | 1,000 | 0 | 10.64 ms | 4.47 ms | 4.52 ms (64) | 1.30 ms | 12.58 ms |
+| east | 10,000 | 0 | 111.10 ms | 48.14 ms | 16.22 ms (64) | 1.54 ms | 5.95 ms |
+| east | 50,000 | 0 | 575.35 ms | 243.06 ms | 42.56 ms (32) | 2.07 ms | 9.63 ms |
+| east | 100,000 | 0 | 1,206.79 ms | 488.46 ms | 68.61 ms (32) | 5.71 ms | 35.08 ms |
 
-The run used GPU 2. A snapshot at 2026-10-21T06:43:58-04:00 showed all four
-RTX 3090s busy: 93%, 95%, 100%, and 100% utilization, with 21,440, 21,228,
-22,048, and 23,636 MiB of 24,576 MiB in use. GPU 2, the device that produced
-these times, was at 100% and 22,048 MiB, so the times are an upper bound for
-an idle card. Other processes were left running. The one-thread `tick_moves`
-table and the earlier `seek_one` table stay in `docs/PLAN.md`.
+At 100,000 agents the best CPU pool takes 64 to 69 ms against 21 to 35 ms of
+GPU wall time and 6 ms of kernel time: about 2 to 3 times faster end to end
+and about 10 times in kernel time. Below 10,000 agents the device copies cost
+more than the CPU pool. 128 threads are not in the table: on this shared
+machine (load average 15 to 53 during the run) a spinning pool that large
+oversubscribes the cores and took 1.6 to 3.0 s. An earlier pool woke its
+workers with a condvar and built the grid on the main thread; it bottomed out
+near 210 ms at 100,000 agents, which made the GPU look about 10 times faster
+than it is.
+
+The run used GPU 2 at 2026-10-21 08:20 EDT. All four RTX 3090s were at 98 to
+100% utilization with 16,238 to 17,444 MiB in use by other users' processes,
+which were left running, so the GPU times are an upper bound for an idle card.
+CSVs: `/dev/shm/ai-town-rust/claude/v3/fair-{headon,east}.csv`.
 
 The default server tick is this two-phase round. `AI_TOWN_TICK=seq` selects
 `Command::StepSeq`, which only the engine can send. That is the old

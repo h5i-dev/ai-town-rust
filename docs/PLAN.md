@@ -236,16 +236,51 @@ An earlier fair bench timed `tick_moves` on one device thread against the produc
 | 10,000 | 94.99 ms | 98.11 ms | 42.14 ms | 58.14 ms | 2,588.81 ms | 3,632.88 ms |
 | 50,000 | 481.09 ms | 493.78 ms | 243.17 ms | 251.44 ms | 14,442.59 ms | 14,988.62 ms |
 
-The current fair bench times the two-phase round. `cpu_tick_ms` is the product `run_ticks`. `cpu_round_ms` is 60 calls of `tick_round` on one thread, with candidates prepared before the timer. `cpu_parallel_ms` is those rounds on a pool of 8 threads, started once, with the grid build on the main thread. The machine reported 128 hardware threads. The GPU columns are `RustDevice::rounds`: one copy in, the minute resident on the device, one copy out. Kernel time is the CUDA events around the memsets and launches. Every agent walks east on an open mask, so the rules agree. Agent 0 moved, and the single-thread round, the pool, the GPU, and `run_ticks` landed on the same coordinates.
+`fair-bench` times 60 two-phase rounds at 1,000, 10,000, 50,000, and 100,000
+agents in two crowds (`AI_TOWN_SCENARIO`). `east`: every agent walks east in
+step, one tile from its neighbors, so no landing is ever contested. `head-on`:
+each row alternates eastbound and westbound agents 1.5 tiles apart, so every
+pair meets within the minute and keeps proposing into a refused landing.
+`Refused` counts (round, agent) proposals that did not land; at 18.5 per
+agent, the head-on crowd spends most of the minute on contested landings.
 
-| Agents | CPU tick | CPU round | CPU 8 threads | GPU one kernel | GPU one wall | GPU 60 kernel | GPU 60 wall |
-|---:|---:|---:|---:|---:|---:|---:|---:|
-| 1,000 | 10.518 ms | 4.442 ms | 7.427 ms | 0.025 ms | 18.314 ms | 1.297 ms | 12.631 ms |
-| 10,000 | 110.665 ms | 47.452 ms | 49.898 ms | 0.030 ms | 15.958 ms | 1.553 ms | 9.339 ms |
-| 50,000 | 570.884 ms | 241.943 ms | 176.000 ms | 0.038 ms | 1.820 ms | 2.011 ms | 8.286 ms |
-| 100,000 | 1,202.314 ms | 481.704 ms | 312.842 ms | 0.059 ms | 1.713 ms | 5.752 ms | 15.447 ms |
+`CPU tick` is the product `run_ticks` (path pose, a refused step's wait, and
+the round). `CPU 1 thread` is 60 calls of `tick_round`, candidates prepared
+before the timer. `CPU pool` runs the same rounds on 8, 16, 32, or 64 worker
+threads (`AI_TOWN_CPU_THREADS`) started once and synchronized by a spinning
+barrier; the workers also clear and fill the grid with atomic pushes, like the
+PTX inserts, so no phase is serial. The table gives the fastest pool and its
+thread count. The GPU columns are `RustDevice::rounds`: one copy in, the
+minute resident on the device, one copy out; kernel time is the CUDA events
+around the memsets and launches. In every row the single-thread round, every
+pool, and the GPU landed on the same coordinates, and in `east` so did
+`run_ticks`.
 
-The 8-thread pool takes 7.427 ms at 1,000 agents and 49.898 ms at 10,000, where one thread takes 4.442 ms and 47.452 ms. It takes 176.000 ms at 50,000 and 312.842 ms at 100,000, where one thread takes 241.943 ms and 481.704 ms. The 60-round GPU kernel takes 1.297 ms, 1.553 ms, 2.011 ms, and 5.752 ms. The one-round wall of 18.314 ms at 1,000 agents pays for device allocation. The run used GPU 2. A snapshot at 2026-10-21T06:43:58-04:00 showed all four RTX 3090s busy (93%, 95%, 100%, 100% utilization and 21,440, 21,228, 22,048, 23,636 MiB of 24,576 MiB). GPU 2 was at 100% and 22,048 MiB, so these times are an upper bound for an idle card. Other processes were left running.
+| Scenario | Agents | Refused | CPU tick | CPU 1 thread | CPU pool, best | GPU 60 kernel | GPU 60 wall |
+|---|---:|---:|---:|---:|---:|---:|---:|
+| head-on | 1,000 | 18,500 | 8.80 ms | 3.26 ms | 5.30 ms (8) | 1.26 ms | 12.60 ms |
+| head-on | 10,000 | 185,000 | 84.15 ms | 33.41 ms | 15.21 ms (32) | 1.37 ms | 11.00 ms |
+| head-on | 50,000 | 925,000 | 440.86 ms | 170.27 ms | 35.25 ms (32) | 1.90 ms | 12.99 ms |
+| head-on | 100,000 | 1,850,000 | 1,038.02 ms | 396.55 ms | 64.48 ms (32) | 6.35 ms | 20.94 ms |
+| east | 1,000 | 0 | 10.64 ms | 4.47 ms | 4.52 ms (64) | 1.30 ms | 12.58 ms |
+| east | 10,000 | 0 | 111.10 ms | 48.14 ms | 16.22 ms (64) | 1.54 ms | 5.95 ms |
+| east | 50,000 | 0 | 575.35 ms | 243.06 ms | 42.56 ms (32) | 2.07 ms | 9.63 ms |
+| east | 100,000 | 0 | 1,206.79 ms | 488.46 ms | 68.61 ms (32) | 5.71 ms | 35.08 ms |
+
+At 100,000 agents the best CPU pool takes 64 to 69 ms against 21 to 35 ms of
+GPU wall time and 6 ms of kernel time: about 2 to 3 times faster end to end
+and about 10 times in kernel time. Below 10,000 agents the device copies cost
+more than the CPU pool. 128 threads are not in the table: on this shared
+machine (load average 15 to 53 during the run) a spinning pool that large
+oversubscribes the cores and took 1.6 to 3.0 s. An earlier pool woke its
+workers with a condvar and built the grid on the main thread; it bottomed out
+near 210 ms at 100,000 agents, which made the GPU look about 10 times faster
+than it is.
+
+The run used GPU 2 at 2026-10-21 08:20 EDT. All four RTX 3090s were at 98 to
+100% utilization with 16,238 to 17,444 MiB in use by other users' processes,
+which were left running, so the GPU times are an upper bound for an idle card.
+CSVs: `/dev/shm/ai-town-rust/claude/v3/fair-{headon,east}.csv`.
 
 The sim loop can run that PTX path. Build `ai-town-server` with `--features gpu` and set `AI_TOWN_MOVE=gpu`. A dedicated thread owns the CUDA context. Each second it runs 60 two-phase rounds for the players whose path flag is already moving, leaves everyone else in place as an obstacle, and commits `Command::Relocate`. Candidates for the minute are copied once. A refused CPU walker enters `PF_WAIT`. The GPU minute retries the later path pose. Its last sample is the wall clock when `meta.now_ms` is more than 960 ms behind that clock, because paths are stamped with the command clock. `Relocate` clears every path, and the sim tick and RPC share one lock for the whole step, so a path committed during the device minute is still present when `Relocate` runs. A failed open or a failed tick logs `gpu step failed` and the loop falls back to `Command::Step` for that second. With the feature off, `AI_TOWN_MOVE=gpu` logs `gpu step unavailable` and keeps the CPU step. The CPU step is the two-phase round unless `AI_TOWN_TICK=seq`.
 
@@ -282,3 +317,4 @@ matching the h5i-app tutorials:
 - the agent worker sends commands as the agent user the kernel assigned
 - the model, when enabled, only supplies text and a chosen tile. The kernel still accepts or refuses the command
 - the optional GPU thread loads the PTX image of the two-phase round (`round_phase`) and submits `Relocate` as user 0
+- the spatial grid answers. `step_never_overlap`, `propose_*`, and `resolve_*` take the result of `grid_hit` / `grid_yield` as a hypothesis; no theorem yet says that a grid built by `grid_build` (or accepted by `grid_wellformed`) makes `grid_hit` false only when nobody is inside the radius. Tests check it against the full scan under random chain orders. The PTX image builds its grid with atomic pushes through the kernel's `cell_of`; with `AI_TOWN_GPU_VERIFY=1` every device grid is copied back and must pass `grid_wellformed`, or that second falls back to the CPU step
