@@ -275,4 +275,8 @@ pub struct AppState {
     pub events: tokio::sync::broadcast::Sender<String>,
     pub users: Arc<std::sync::atomic::AtomicU64>,
     pub provider: Arc<Provider>,
+    /// Holds the sim tick, including a GPU minute and its `Relocate`.
+    /// RPC takes the same lock. A `move_to` that arrived during the device
+    /// compute used to be erased, because `Relocate` clears every path.
+    pub tick: Arc<tokio::sync::Mutex<()>>,
 }

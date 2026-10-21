@@ -1,12 +1,18 @@
 //! GPU movement on a thread that owns the CUDA context.
 //!
-//! One sim second is 60 two-phase rounds. Candidates come from `path_pose` at
-//! `now + 16ms * round` and are copied once. The device rebuilds the spatial
-//! grid from the positions of the previous round and runs one thread per agent
-//! for propose and for resolve. Players who are not already walking stay where
-//! they are. A refused step is retried from the later path pose. The CPU tick
-//! would instead enter `PF_WAIT` for about a second. This pass does not advance
-//! `now_ms`, conversations, or facing. `Relocate` writes the positions.
+//! One sim second is 60 two-phase rounds. Candidates come from `path_pose` and
+//! are copied once. The device rebuilds the spatial grid from the positions of
+//! the previous round and runs one thread per agent for propose and for
+//! resolve. Players who are not already walking stay where they are. A refused
+//! step is retried from the later path pose. The CPU tick would instead enter
+//! `PF_WAIT` for about a second. This pass does not advance `now_ms`,
+//! conversations, or facing. `Relocate` writes the positions and clears paths.
+//!
+//! Paths are stamped with the command's wall clock. `meta.now_ms` lags that
+//! clock because this pass does not advance it. Sampling only the lagging
+//! clock stays before the path, every pose is the start point, and `Relocate`
+//! then deletes the path. The minute is therefore anchored so its last sample
+//! is the wall clock when that is later than `meta.now_ms`.
 
 use ai_town_gpu::RustDevice;
 use ai_town_kernel::{path_pose, PathNode, Snapshot, PF_MOVE, TICK_MS};
@@ -138,12 +144,13 @@ fn step_minute(
         return None;
     }
     let rounds = 60usize;
+    let origin = minute_origin(now_ms);
     let mut cand_x = vec![0u32; n * rounds];
     let mut cand_y = vec![0u32; n * rounds];
     let mut cand_on = vec![0u32; n * rounds];
     let mut round = 0usize;
     while round < rounds {
-        let t = now_ms.wrapping_add(TICK_MS.wrapping_mul((round as u64).wrapping_add(1)));
+        let t = origin.wrapping_add(TICK_MS.wrapping_mul((round as u64).wrapping_add(1)));
         let base = round * n;
         let mut i = 0;
         while i < n {
@@ -171,4 +178,15 @@ fn step_minute(
         return None;
     }
     Some((report.out.xs, report.out.ys))
+}
+
+/// Base time for the 60 samples. The last sample is this value plus 960ms.
+/// `meta.now_ms` wins when it is already later than the wall-clock window.
+fn minute_origin(now_ms: u64) -> u64 {
+    let wall = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .map(|d| u64::try_from(d.as_millis()).unwrap_or(now_ms))
+        .unwrap_or(now_ms);
+    let window = wall.saturating_sub(TICK_MS.saturating_mul(60));
+    if now_ms > window { now_ms } else { window }
 }

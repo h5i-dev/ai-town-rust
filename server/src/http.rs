@@ -26,15 +26,24 @@ pub async fn serve(url: &str, secret: &str, addr: &str, provider: Provider) -> R
     let users = Arc::new(AtomicU64::new(next_user_seed(&snap)));
     let (events, _) = tokio::sync::broadcast::channel(32);
     let provider = Arc::new(provider);
+    let tick = Arc::new(tokio::sync::Mutex::new(()));
     tracing::info!(provider = ?provider, agents = snap.agents.len(), "world ready");
 
     let app = h5i_app::http::H5iApp::new(engine.clone(), auth.clone());
-    let state = AppState { engine: engine.clone(), app, auth, events: events.clone(), users, provider: provider.clone() };
+    let state = AppState {
+        engine: engine.clone(),
+        app,
+        auth,
+        events: events.clone(),
+        users,
+        provider: provider.clone(),
+        tick: tick.clone(),
+    };
 
     let sim_engine = engine.clone();
     let sim_events = events.clone();
     let sim_provider = provider.clone();
-    tokio::spawn(async move { sim_loop(sim_engine, sim_events, sim_provider).await });
+    tokio::spawn(async move { sim_loop(sim_engine, sim_events, sim_provider, tick).await });
 
     let router = Router::new()
         .route("/healthz", get(|| async { "ok" }))
@@ -96,7 +105,12 @@ async fn gpu_step(engine: &Engine<Town, TownStore>, mover: &std::sync::mpsc::Sen
     }
 }
 
-async fn sim_loop(engine: Arc<Engine<Town, TownStore>>, events: tokio::sync::broadcast::Sender<String>, provider: Arc<Provider>) {
+async fn sim_loop(
+    engine: Arc<Engine<Town, TownStore>>,
+    events: tokio::sync::broadcast::Sender<String>,
+    provider: Arc<Provider>,
+    tick: Arc<tokio::sync::Mutex<()>>,
+) {
     #[cfg(feature = "gpu")]
     let mover = if gpu_requested() { Some(crate::gpu_move::spawn_mover()) } else { None };
     #[cfg(not(feature = "gpu"))]
@@ -108,6 +122,7 @@ async fn sim_loop(engine: Arc<Engine<Town, TownStore>>, events: tokio::sync::bro
     let busy = Arc::new(AtomicBool::new(false));
     loop {
         let started = std::time::Instant::now();
+        let _hold = tick.lock().await;
         #[cfg(feature = "gpu")]
         let mut used_gpu = false;
         #[cfg(not(feature = "gpu"))]
@@ -127,6 +142,7 @@ async fn sim_loop(engine: Arc<Engine<Town, TownStore>>, events: tokio::sync::bro
         let ms = started.elapsed().as_secs_f64() * 1_000.0;
         tracing::info!(ms, "sim tick");
         publish(&engine, &events).await;
+        drop(_hold);
         if drain_enabled() && busy.compare_exchange(false, true, Ordering::AcqRel, Ordering::Acquire).is_ok() {
             let engine = engine.clone();
             let provider = provider.clone();
@@ -159,6 +175,7 @@ async fn rpc(State(state): State<AppState>, actor: Actor<Town>, headers: HeaderM
         Ok(cmd) => cmd,
         Err(m) => return reply(StatusCode::BAD_REQUEST, error_body(&m)),
     };
+    let _hold = state.tick.lock().await;
     match state.app.run(&actor, cmd, &headers).await {
         Ok(r) => {
             publish(&state.engine, &state.events).await;
