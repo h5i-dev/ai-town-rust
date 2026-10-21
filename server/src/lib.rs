@@ -3,10 +3,10 @@
 
 mod agent;
 mod cast;
+mod http;
 mod map;
 mod world;
 
-use agent::engine_actor;
 use ai_town_kernel as k;
 use axum::http::StatusCode;
 use h5i_app::http::Api;
@@ -16,7 +16,8 @@ use h5i_app::{Kernel, TenantId, Timestamp};
 use serde::Deserialize;
 use std::sync::Arc;
 
-pub use agent::{drain, user_actor, Provider, TENANT};
+pub use agent::{drain, engine_actor, user_actor, Provider, TENANT};
+pub use http::serve;
 pub use map::gentle;
 pub use world::to_json;
 
@@ -229,7 +230,7 @@ async fn accept(engine: &Engine<Town, TownStore>, cmd: k::Command) -> Result<(),
     match engine.execute(&engine_actor(), &cmd).await {
         Ok(Ok(_)) => Ok(()),
         Ok(Err(e)) => Err(format!("bootstrap refused: {e:?}")),
-        Err(e) => Err(format!("bootstrap failed: {e}")),
+        Err(_) => Err("bootstrap failed".into()),
     }
 }
 
@@ -248,7 +249,7 @@ pub async fn publish(engine: &Engine<Town, TownStore>, events: &tokio::sync::bro
         Ok(snap) => {
             let _ = events.send(to_json(&snap));
         }
-        Err(e) => tracing::warn!(error = %e, "snapshot failed"),
+        Err(_) => tracing::warn!("snapshot failed"),
     }
 }
 

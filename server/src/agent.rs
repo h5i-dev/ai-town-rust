@@ -233,8 +233,8 @@ where
 {
     let snap = match engine.snapshot(TenantId(TENANT)).await {
         Ok(s) => s,
-        Err(e) => {
-            tracing::warn!(error = %e, "agent snapshot failed");
+        Err(_) => {
+            tracing::warn!("agent snapshot failed");
             return;
         }
     };
@@ -286,8 +286,8 @@ where
             }
             Err(())
         }
-        Err(e) => {
-            tracing::warn!(error = %e, "agent command failed");
+        Err(_) => {
+            tracing::warn!("agent command failed");
             Err(())
         }
     }
