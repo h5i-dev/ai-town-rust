@@ -1,0 +1,19 @@
+[package]
+name = "ai-town-bench"
+description = "In-memory tick rate and HTTP input latency for AI Town"
+edition = "2024"
+license = "Apache-2.0"
+version = "0.1.0"
+publish = false
+
+[[bin]]
+name = "ai-town-bench"
+path = "src/main.rs"
+
+[dependencies]
+ai-town-kernel = { path = "../kernel" }
+ai-town-server = { path = "../server" }
+h5i-app = "=0.1.2"
+reqwest = { version = "0.12", default-features = false, features = ["json", "rustls-tls"] }
+serde_json = "1"
+tokio = { version = "1", features = ["rt-multi-thread", "macros", "time"] }

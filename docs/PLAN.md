@@ -117,14 +117,13 @@ and the canvas (tiles) share it.
 
 `ai-town-bench` writes under `/dev/shm/ai-town-rust/bench/`:
 
-- in-memory ticks per second against the agent count
-- HTTP input latency against the agent count, with the sim loop running
+- in-memory `Step` rate for 1, 8, 16, 32, and 64 agents (`ticks.csv`)
+- greedy batch seeks for 128, 1024, and 4096 agents, checked against the scalar scan (`batch.csv`)
+- HTTP `move_to` latency for 5, 16, and 32 agents on `127.0.0.1:18080` and database `ai_town_bench`, with the stub provider (`latency.csv`)
 
-`kernel` also has a batch position step. A test checks it against the scalar
-step on the same inputs. That is the CPU side of the later GPU backend. A CUDA
-build is not part of this tree yet. `docs/PLAN.md` is the place that records
-it. The intended check is the same arrays on CPU and on one of the RTX 3090s,
-compared element-wise, with Lean still covering only the extracted CPU kernel.
+The batch seek is the CPU side of a later GPU backend. A CUDA build is not
+part of this tree yet. The intended check is the same arrays on CPU and on one
+of the RTX 3090s, compared element-wise. Lean covers the extracted CPU kernel.
 GPU execution stays trusted, as in h5i's GPU note.
 
 ## Trusted boundary

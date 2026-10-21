@@ -12,6 +12,18 @@ dependencies = [
 ]
 
 [[package]]
+name = "ai-town-bench"
+version = "0.1.0"
+dependencies = [
+ "ai-town-kernel",
+ "ai-town-server",
+ "h5i-app",
+ "reqwest",
+ "serde_json",
+ "tokio",
+]
+
+[[package]]
 name = "ai-town-kernel"
 version = "0.1.0"
 dependencies = [
