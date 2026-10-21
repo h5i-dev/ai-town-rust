@@ -1,0 +1,22 @@
+[workspace]
+
+[package]
+name = "ai-town-seek-device"
+version = "0.1.0"
+edition = "2024"
+publish = false
+license = "Apache-2.0"
+
+[lib]
+crate-type = ["cdylib"]
+
+[features]
+default = []
+gpu = []
+
+[dependencies]
+cuda_std = { git = "https://github.com/Rust-GPU/rust-cuda", rev = "3a82c35a7196731fb60eebdac2a40d2b1bf0ba95" }
+# cuda_std's `glam >= 0.22` resolves to 0.34, which does not build on this NVVM pin.
+# 0.30 and 0.34 are semver-incompatible, so the direct pin is locked with
+# `cargo update -p glam@0.34.1 --precise 0.30.10` (see Cargo.lock).
+glam = { version = "=0.30.10", default-features = false, features = ["libm", "cuda", "bytemuck"] }

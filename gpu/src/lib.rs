@@ -1,9 +1,19 @@
-//! Optional CUDA seek. The game tick stays on the CPU spatial grid in `kernel`.
+//! Optional CUDA seek. The game tick stays on the CPU spatial grid in `kernel`
+//! unless the server is built with the `gpu` feature and `AI_TOWN_MOVE=gpu`.
 //! This crate is outside extraction: Lean does not see it, and it does not
-//! depend on h5i. `h5i-app-gpu` is not published on crates.io.
+//! depend on h5i. `h5i-app-gpu` is not published on crates.io and is not a
+//! dependency: it is wired to a different example and an older h5i-app git rev.
 //!
-//! [`Device::seek`] follows `ai_town_kernel::scalar_seek`. The equivalence
-//! test is the check that the device matched the CPU oracle on the inputs it ran.
+//! [`Device::seek`] is the hand-written cubin baseline. [`RustDevice`] loads
+//! PTX compiled from `kernel`'s `seek_one`.
+
+mod arena;
+mod layout;
+mod rust_seek;
+
+pub use arena::{LayoutError, SeekArena, SeekRow};
+pub use layout::MAX_AGENTS;
+pub use rust_seek::{RustDevice, SeekOut, SeekReport};
 
 use std::ffi::c_void;
 use std::marker::PhantomData;
