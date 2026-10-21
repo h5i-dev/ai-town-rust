@@ -7,7 +7,7 @@
 #[cfg(not(target_arch = "nvptx64"))]
 use crate::{PathNode, COLLISION_SQ, FACE_BIAS, MILLI, SPEED};
 #[cfg(target_arch = "nvptx64")]
-use crate::MILLI;
+use crate::{COLLISION_SQ, MILLI};
 
 pub fn abs_diff(a: u32, b: u32) -> u64 {
     if a >= b {
@@ -502,33 +502,34 @@ pub fn near_index(width: u32, height: u32, xs: &[u32], ys: &[u32]) -> NearIndex 
     index
 }
 
-/// True when some point other than `skip` is strictly inside the collision radius.
-#[cfg(not(target_arch = "nvptx64"))]
-pub fn near_hit(index: &NearIndex, xs: &[u32], ys: &[u32], x: u32, y: u32, skip: u32) -> bool {
-    if index.width == 0 || index.height == 0 {
+/// True when some indexed point other than `skip` is strictly inside the
+/// collision radius. `head` and `next` are the one-tile chains from
+/// [`near_fill`]. The walk has no `return`, so extraction keeps one loop.
+pub fn grid_hit(width: u32, height: u32, head: &[u32], next: &[u32], xs: &[u32], ys: &[u32], x: u32, y: u32, skip: u32) -> bool {
+    if width == 0 || height == 0 {
         return false;
     }
     let cx = x / MILLI;
     let cy = y / MILLI;
-    if cx >= index.width || cy >= index.height {
+    if cx >= width || cy >= height {
         return false;
     }
     let x0 = if cx == 0 { 0 } else { cx - 1 };
     let y0 = if cy == 0 { 0 } else { cy - 1 };
-    let x1 = if cx + 1 >= index.width { index.width - 1 } else { cx + 1 };
-    let y1 = if cy + 1 >= index.height { index.height - 1 } else { cy + 1 };
+    let x1 = if cx + 1 >= width { width - 1 } else { cx + 1 };
+    let y1 = if cy + 1 >= height { height - 1 } else { cy + 1 };
     let mut hit = false;
     let mut tx = x0;
     while tx <= x1 {
         let mut ty = y0;
         while ty <= y1 {
             if !hit {
-                let c = (tx as usize) * (index.height as usize) + (ty as usize);
-                if c < index.head.len() {
-                    let mut p = index.head[c];
+                let c = (tx as usize) * (height as usize) + (ty as usize);
+                if c < head.len() {
+                    let mut p = head[c];
                     let mut guard = 0u32;
                     while p != u32::MAX {
-                        if (p as usize) >= index.next.len() || (p as usize) >= xs.len() || (p as usize) >= ys.len() {
+                        if (p as usize) >= next.len() || (p as usize) >= xs.len() || (p as usize) >= ys.len() {
                             p = u32::MAX;
                         } else {
                             let i = p as usize;
@@ -536,13 +537,13 @@ pub fn near_hit(index: &NearIndex, xs: &[u32], ys: &[u32], x: u32, y: u32, skip:
                                 hit = true;
                                 p = u32::MAX;
                             } else {
-                                let nxt = index.next[i];
+                                let nxt = next[i];
                                 if nxt == p {
                                     p = u32::MAX;
                                 } else {
                                     p = nxt;
                                     guard = guard.wrapping_add(1);
-                                    if guard > index.next.len() as u32 {
+                                    if guard > next.len() as u32 {
                                         p = u32::MAX;
                                     }
                                 }
@@ -556,4 +557,10 @@ pub fn near_hit(index: &NearIndex, xs: &[u32], ys: &[u32], x: u32, y: u32, skip:
         tx += 1;
     }
     hit
+}
+
+/// True when some point other than `skip` is strictly inside the collision radius.
+#[cfg(not(target_arch = "nvptx64"))]
+pub fn near_hit(index: &NearIndex, xs: &[u32], ys: &[u32], x: u32, y: u32, skip: u32) -> bool {
+    grid_hit(index.width, index.height, &index.head, &index.next, xs, ys, x, y, skip)
 }

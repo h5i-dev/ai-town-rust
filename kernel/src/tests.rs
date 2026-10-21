@@ -403,3 +403,119 @@ fn near_grid_matches_full_scan_including_a_short_move() {
         q += 1;
     }
 }
+
+#[test]
+fn agent_step_refuses_a_blocked_tile_and_a_neighbor() {
+    let w = 8u32;
+    let h = 8u32;
+    let mut mask = mask(w, h);
+    set_blocked(&mut mask, w, h, 1, 0);
+    let xs = vec![0u32, 1000];
+    let ys = vec![0u32, 0];
+    let g = near_index(w, h, &xs, &ys);
+    let blocked = agent_step(0, 0, 3, 4, true, 1000, 0, 9, 8, 7, &mask, w, h, &g.head, &g.next, &xs, &ys, 0);
+    assert!(!blocked.moved);
+    assert_eq!((blocked.x, blocked.y, blocked.speed), (0, 0, 0));
+    assert!(mask_blocked(&mask, w, h, 1000, 0));
+    let crowded = agent_step(0, 0, 3, 4, true, 500, 0, 9, 8, 7, &mask, w, h, &g.head, &g.next, &xs, &ys, 0);
+    assert!(!crowded.moved);
+    assert_eq!((crowded.x, crowded.y), (0, 0));
+    assert!(dist_sq(500, 0, xs[1], ys[1]) < COLLISION_SQ);
+    let clear = agent_step(0, 0, 3, 4, true, 0, 0, 9, 8, 7, &mask, w, h, &g.head, &g.next, &xs, &ys, 0);
+    assert!(clear.moved);
+    assert_eq!((clear.x, clear.y, clear.face_dx, clear.face_dy, clear.speed), (0, 0, 9, 8, 7));
+    let still = agent_step(0, 0, 3, 4, false, 0, 0, 9, 8, 7, &mask, w, h, &g.head, &g.next, &xs, &ys, 0);
+    assert!(!still.moved);
+    assert_eq!((still.x, still.y, still.face_dx, still.speed), (0, 0, 3, 0));
+}
+
+#[test]
+fn tick_moves_lets_the_next_agent_see_the_landing() {
+    let w = 8u32;
+    let h = 8u32;
+    let mask = mask(w, h);
+    let mut xs = vec![0u32, 1000];
+    let mut ys = vec![0u32, 0];
+    let g = near_index(w, h, &xs, &ys);
+    let moving = [1u32, 1];
+    let cand_x = [200u32, 800];
+    let cand_y = [0u32, 0];
+    assert!(tick_moves(&mut xs, &mut ys, &moving, &cand_x, &cand_y, &mask, w, h, &g.head, &g.next));
+    // 800 - 200 = 600, inside the radius, so the second agent stays.
+    assert_eq!(xs, vec![200, 1000]);
+    assert_eq!(ys, vec![0, 0]);
+    let mut xs = vec![0u32, 1000];
+    let mut ys = vec![0u32];
+    assert!(!tick_moves(&mut xs, &mut ys, &moving, &cand_x, &cand_y, &mask, w, h, &g.head, &g.next));
+    assert_eq!(xs, vec![0, 1000]);
+}
+
+#[test]
+fn tick_players_matches_one_engine_tick() {
+    let (s, _) = run(&Snapshot::default(), ENGINE, 1_000_000, Command::Init { width: 8, height: 8, mask: mask(8, 8) });
+    let (s, _) = run(&s, 1, 1_000_000, Command::Join { name: b"Ada".to_vec(), character: 0 });
+    let (mut s, _) = run(&s, 2, 1_000_000, Command::Join { name: b"Bea".to_vec(), character: 1 });
+    assert_eq!(s.players.len(), 2);
+    let id0 = s.players[0].id;
+    let id1 = s.players[1].id;
+    let owner0 = s.players[0].owner;
+    let owner1 = s.players[1].owner;
+    s.players[0].x = 0;
+    s.players[0].y = 0;
+    s.players[0].pf = PF_MOVE;
+    s.players[0].dest_x = 5_000;
+    s.players[0].dest_y = 0;
+    s.players[0].pf_started = 1_000_000;
+    s.players[0].last_input = 1_000_000;
+    s.players[1].x = 1_000;
+    s.players[1].y = 0;
+    s.players[1].pf = PF_MOVE;
+    s.players[1].dest_x = 0;
+    s.players[1].dest_y = 0;
+    s.players[1].pf_started = 1_000_000;
+    s.players[1].last_input = 1_000_000;
+    s.meta.now_ms = 1_000_000;
+    let t0 = 1_000_000u64;
+    let t1 = t0 + 80;
+    s.paths = vec![
+        PathNode { player: id0, seq: 0, x: 0, y: 0, face_dx: 1000, face_dy: 0, t: t0 },
+        PathNode { player: id0, seq: 1, x: 1000, y: 0, face_dx: 1000, face_dy: 0, t: t1 },
+        PathNode { player: id1, seq: 0, x: 1000, y: 0, face_dx: 1000, face_dy: 0, t: t0 },
+        PathNode { player: id1, seq: 1, x: 0, y: 0, face_dx: 1000, face_dy: 0, t: t1 },
+    ];
+    s.members.push(Member { conversation: 7, player: id0, invited: 1, status: ST_INVITED, started: 0 });
+    let before = s.clone();
+    assert_eq!(run_ticks(&mut s, t0 + TICK_MS), 1);
+    assert_eq!((s.players[0].x, s.players[0].y), (200, 0));
+    assert_eq!((s.players[1].x, s.players[1].y), (1000, 0));
+    assert!(collision_safe(&s));
+    let mut moving = Vec::new();
+    let mut cand_x = Vec::new();
+    let mut cand_y = Vec::new();
+    let mut xs = Vec::new();
+    let mut ys = Vec::new();
+    let mut i = 0;
+    while i < before.players.len() {
+        let p = &before.players[i];
+        xs.push(p.x);
+        ys.push(p.y);
+        let path = before.paths.iter().filter(|n| n.player == p.id).cloned().collect::<Vec<_>>();
+        let pose = path_pose(&path, before.meta.now_ms + TICK_MS).unwrap();
+        moving.push(if p.pf == PF_MOVE { 1 } else { 0 });
+        cand_x.push(pose.x);
+        cand_y.push(pose.y);
+        i += 1;
+    }
+    let g = near_index(before.meta.width, before.meta.height, &xs, &ys);
+    let stepped = tick_players(before.clone(), &moving, &cand_x, &cand_y, &g.head, &g.next);
+    assert_eq!(stepped.players[0].x, s.players[0].x);
+    assert_eq!(stepped.players[1].x, s.players[1].x);
+    assert_eq!(stepped.players[0].y, s.players[0].y);
+    assert_eq!(stepped.players[1].y, s.players[1].y);
+    assert_eq!(stepped.players[0].id, id0);
+    assert_eq!(stepped.players[1].id, id1);
+    assert_eq!(stepped.players[0].owner, owner0);
+    assert_eq!(stepped.players[1].owner, owner1);
+    assert_eq!(stepped.members, before.members);
+    assert_eq!(stepped.conversations, before.conversations);
+}

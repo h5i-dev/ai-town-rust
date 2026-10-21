@@ -1,9 +1,9 @@
-//! Greedy movement used by the large-population benchmark and the Rust-CUDA
-//! seek. Each agent steps toward its target tile. `batch_seek` and
-//! `scalar_seek` are the same rule. A test checks they agree.
+//! Greedy full-scan baseline. The sim tick and the PTX image use `step::agent_step`
+//! on the spatial grid. `seek_one` stays so the hand-written cubin and this scan
+//! can still be compared. `batch_seek` and `scalar_seek` are the same rule.
 //!
-//! `seek_one` is the decision the device crate compiles. It allocates nothing.
-//! The two scans below are host oracles; the `nvptx64` build does not see them.
+//! `seek_one` allocates nothing. The two scans below are host oracles; the
+//! `nvptx64` build does not see them.
 
 use crate::geom::{self, mask_blocked};
 use crate::{COLLISION_SQ, MILLI};

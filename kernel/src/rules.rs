@@ -842,11 +842,29 @@ fn move_one(s: &mut Snapshot, i: usize, now: u64, scratch: &mut TickScratch) {
         s.players[i].speed = 0;
         return;
     };
-    // Same blocked test as `occupied`, over the tile neighborhood instead of
-    // every player. `xs`/`ys` track positions already accepted this tick.
-    let blocked = geom::mask_blocked(&s.terrain.mask, s.meta.width, s.meta.height, pose.x, pose.y)
-        || geom::near_hit(&scratch.near, &scratch.xs, &scratch.ys, pose.x, pose.y, i as u32);
-    if blocked {
+    // Same accept/refuse as `agent_step`: the tile mask, then the 3 by 3 grid.
+    // `xs`/`ys` already include landings accepted earlier in this tick.
+    let landing = crate::step::agent_step(
+        s.players[i].x,
+        s.players[i].y,
+        s.players[i].face_dx,
+        s.players[i].face_dy,
+        true,
+        pose.x,
+        pose.y,
+        pose.face_dx,
+        pose.face_dy,
+        pose.speed,
+        &s.terrain.mask,
+        s.meta.width,
+        s.meta.height,
+        &scratch.near.head,
+        &scratch.near.next,
+        &scratch.xs,
+        &scratch.ys,
+        i as u32,
+    );
+    if !landing.moved {
         s.players[i].pf = PF_WAIT;
         // `BACKOFF_MS` is 1000. A checked `+` of the remainder stays
         // `AddChecked`, which does not translate; wrapping add does, and
@@ -856,18 +874,18 @@ fn move_one(s: &mut Snapshot, i: usize, now: u64, scratch: &mut TickScratch) {
         s.players[i].speed = 0;
         return;
     }
-    s.players[i].x = pose.x;
-    s.players[i].y = pose.y;
-    s.players[i].face_dx = pose.face_dx;
-    s.players[i].face_dy = pose.face_dy;
-    s.players[i].speed = pose.speed;
+    s.players[i].x = landing.x;
+    s.players[i].y = landing.y;
+    s.players[i].face_dx = landing.face_dx;
+    s.players[i].face_dy = landing.face_dy;
+    s.players[i].speed = landing.speed;
     if i < scratch.xs.len() {
-        scratch.xs[i] = pose.x;
+        scratch.xs[i] = landing.x;
     }
     if i < scratch.ys.len() {
-        scratch.ys[i] = pose.y;
+        scratch.ys[i] = landing.y;
     }
-    if pose.x == s.players[i].dest_x && pose.y == s.players[i].dest_y {
+    if landing.x == s.players[i].dest_x && landing.y == s.players[i].dest_y {
         // Drop the path after the whole tick so the spans above stay valid.
         stop_motion(&mut s.players[i]);
         if scratch.nclear < scratch.clear.len() {

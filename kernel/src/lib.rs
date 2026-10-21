@@ -8,10 +8,12 @@ mod batch;
 mod geom;
 mod movement;
 mod rules;
+mod step;
 
 pub use batch::{batch_seek, scalar_seek};
-pub use geom::{dist_sq, isqrt, manhattan, mask_blocked, set_blocked, MinHeap};
+pub use geom::{dist_sq, isqrt, manhattan, mask_blocked, near_index, path_pose, set_blocked, grid_hit, MinHeap, NearIndex, Pose};
 pub use rules::{collision_safe, diff, exclusive, members_consistent, motion_isolated, paths_isolated, run_ticks, same_motion};
+pub use step::{agent_step, tick_moves, tick_players, Landing};
 
 /// One tile, in milli-tiles.
 pub const MILLI: u32 = 1000;
