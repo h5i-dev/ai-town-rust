@@ -79,6 +79,10 @@ fn conv_index(convs: &Vec<Conversation>, id: u64) -> Option<usize> {
     None
 }
 
+/// Full player scan. Placement and the tick use the spatial grid, which agrees
+/// with this test while one step stays inside a tile. Extraction still starts
+/// here so the collision proof names the same comparison.
+#[allow(dead_code)]
 pub fn occupied(s: &Snapshot, x: u32, y: u32, ignore: u64) -> bool {
     if geom::mask_blocked(&s.terrain.mask, s.meta.width, s.meta.height, x, y) {
         return true;
@@ -238,6 +242,15 @@ fn spawn_at(s: &Snapshot, salt: u64) -> Option<(u32, u32)> {
     if w == 0 || h == 0 {
         return None;
     }
+    let mut xs = Vec::new();
+    let mut ys = Vec::new();
+    let mut i = 0;
+    while i < s.players.len() {
+        xs.push(s.players[i].x);
+        ys.push(s.players[i].y);
+        i += 1;
+    }
+    let near = geom::near_index(s.meta.width, s.meta.height, &xs, &ys);
     let n = w * h;
     let mut k = 0;
     while k < n {
@@ -246,7 +259,10 @@ fn spawn_at(s: &Snapshot, salt: u64) -> Option<(u32, u32)> {
         let ty = (idx % h) as u32;
         let x = tx * MILLI;
         let y = ty * MILLI;
-        if !occupied(s, x, y, u64::MAX) {
+        // Same blocked-tile test as `occupied`. The player scan is the grid.
+        let blocked = geom::mask_blocked(&s.terrain.mask, s.meta.width, s.meta.height, x, y)
+            || geom::near_hit(&near, &xs, &ys, x, y, u32::MAX);
+        if !blocked {
             return Some((x, y));
         }
         k += 1;
@@ -1242,6 +1258,24 @@ pub fn command(actor_user: u64, now: u64, s: &Snapshot, cmd: &Command) -> Result
             ok!(require_world(&next));
             let ticks = run_ticks(&mut next, now);
             Reply::Stepped { now_ms: next.meta.now_ms, ticks }
+        }
+        Command::Relocate { x, y } => {
+            if actor_user != ENGINE {
+                return Err(Error::Forbidden);
+            }
+            ok!(require_world(&next));
+            if x.len() != next.players.len() || y.len() != next.players.len() {
+                return Err(Error::BadState);
+            }
+            let mut i = 0;
+            while i < next.players.len() {
+                next.players[i].x = x[i];
+                next.players[i].y = y[i];
+                next.players[i].speed = 0;
+                i += 1;
+            }
+            next.paths = Vec::new();
+            Reply::Ok
         }
         Command::Freeze => {
             if actor_user != ENGINE {

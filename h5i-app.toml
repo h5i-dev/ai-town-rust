@@ -8,6 +8,7 @@ start-from = [
   "rules::exclusive",
   "rules::members_consistent",
   "rules::collision_safe",
+  "rules::occupied",
   "rules::motion_isolated",
   "rules::paths_isolated",
   "rules::same_motion",

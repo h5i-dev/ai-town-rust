@@ -1,11 +1,16 @@
-//! Greedy movement used by the large-population benchmark and, later, a GPU
-//! kernel. Each agent steps toward its target tile. `batch_seek` and
+//! Greedy movement used by the large-population benchmark and the Rust-CUDA
+//! seek. Each agent steps toward its target tile. `batch_seek` and
 //! `scalar_seek` are the same rule. A test checks they agree.
+//!
+//! `seek_one` is the decision the device crate compiles. It allocates nothing.
+//! The two scans below are host oracles; the `nvptx64` build does not see them.
 
 use crate::geom::{self, mask_blocked};
 use crate::{COLLISION_SQ, MILLI};
 
-fn seek_one(x: u32, y: u32, tx: u32, ty: u32, step: u32, mask: &[u8], width: u32, height: u32, ox: &[u32], oy: &[u32], self_i: usize) -> (u32, u32) {
+/// One greedy step. Refuses the whole step when the landing tile is blocked
+/// or another agent, at its position in `ox`/`oy`, is inside the collision radius.
+pub fn seek_one(x: u32, y: u32, tx: u32, ty: u32, step: u32, mask: &[u8], width: u32, height: u32, ox: &[u32], oy: &[u32], self_i: usize) -> (u32, u32) {
     let goal_x = tx.saturating_mul(MILLI);
     let goal_y = ty.saturating_mul(MILLI);
     let mut nx = x;
@@ -43,6 +48,7 @@ fn seek_one(x: u32, y: u32, tx: u32, ty: u32, step: u32, mask: &[u8], width: u32
     (nx, ny)
 }
 
+#[cfg(not(target_arch = "nvptx64"))]
 pub fn scalar_seek(
     xs: &[u32],
     ys: &[u32],
@@ -77,6 +83,7 @@ pub fn scalar_seek(
 
 /// Same rule as [`scalar_seek`], written out as its own scan so a later GPU
 /// port can replace this body and the scalar test still has an oracle.
+#[cfg(not(target_arch = "nvptx64"))]
 pub fn batch_seek(
     xs: &[u32],
     ys: &[u32],

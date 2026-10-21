@@ -289,6 +289,31 @@ fn batch_seek_matches_scalar_seek() {
 }
 
 #[test]
+fn engine_relocate_writes_positions_and_drops_paths() {
+    let s = world(5_000);
+    let (s, r) = run(&s, ENGINE, 5_000, Command::CreateAgent { name: b"A".to_vec(), character: 0, identity: b"a".to_vec(), plan: b"p".to_vec() });
+    assert!(r.is_ok());
+    let owner = s.players[0].owner;
+    let (s, _) = run(&s, owner, 5_100, Command::MoveTo { x: 4, y: 4 });
+    assert!(!s.paths.is_empty());
+    let (_denied, denied) = run(&s, 1, 5_200, Command::Relocate { x: vec![100], y: vec![100] });
+    assert_eq!(denied, Err(Error::Forbidden));
+    let (_bad, bad) = run(&s, ENGINE, 5_200, Command::Relocate { x: Vec::new(), y: Vec::new() });
+    assert_eq!(bad, Err(Error::BadState));
+    let dest_x = s.players[0].dest_x;
+    let pf = s.players[0].pf;
+    let (s2, r) = run(&s, ENGINE, 5_200, Command::Relocate { x: vec![2_000], y: vec![3_000] });
+    assert_eq!(r, Ok(Reply::Ok));
+    assert_eq!(s2.players[0].x, 2_000);
+    assert_eq!(s2.players[0].y, 3_000);
+    assert_eq!(s2.players[0].dest_x, dest_x);
+    assert_eq!(s2.players[0].pf, pf);
+    assert_eq!(s2.players[0].speed, 0);
+    assert!(s2.paths.is_empty());
+    check(&s, &s2, ENGINE);
+}
+
+#[test]
 fn diff_roundtrip_matches_apply() {
     let s = world(3_000);
     let (s, _) = run(&s, 1, 3_000, Command::Join { name: b"Ada".to_vec(), character: 0 });

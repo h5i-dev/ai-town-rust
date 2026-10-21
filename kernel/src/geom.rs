@@ -4,7 +4,10 @@
 //! avoids a square root on the collision check. The heap is the 1-indexed
 //! algorithm from `convex/util/minheap.ts`.
 
+#[cfg(not(target_arch = "nvptx64"))]
 use crate::{PathNode, COLLISION_SQ, FACE_BIAS, MILLI, SPEED};
+#[cfg(target_arch = "nvptx64")]
+use crate::MILLI;
 
 pub fn abs_diff(a: u32, b: u32) -> u64 {
     if a >= b {
@@ -47,27 +50,33 @@ pub fn isqrt(n: u64) -> u64 {
     x
 }
 
+#[cfg(not(target_arch = "nvptx64"))]
 pub fn face_zero() -> u32 {
     FACE_BIAS
 }
 
+#[cfg(not(target_arch = "nvptx64"))]
 pub fn face_east() -> u32 {
     FACE_BIAS + 1000
 }
 
+#[cfg(not(target_arch = "nvptx64"))]
 pub fn face_west() -> u32 {
     FACE_BIAS - 1000
 }
 
+#[cfg(not(target_arch = "nvptx64"))]
 pub fn face_south() -> u32 {
     FACE_BIAS + 1000
 }
 
+#[cfg(not(target_arch = "nvptx64"))]
 pub fn face_north() -> u32 {
     FACE_BIAS - 1000
 }
 
 /// Unit facing from `a` to `b`, stored as component + [`FACE_BIAS`].
+#[cfg(not(target_arch = "nvptx64"))]
 pub fn face_toward(ax: u32, ay: u32, bx: u32, by: u32) -> (u32, u32) {
     let dx = abs_diff(ax, bx);
     let dy = abs_diff(ay, by);
@@ -87,6 +96,7 @@ pub fn tile_of(milli: u32) -> u32 {
 }
 
 /// Milliseconds to travel `milli` at [`SPEED`] milli-tiles per second.
+#[cfg(not(target_arch = "nvptx64"))]
 pub fn travel_ms(milli: u32) -> u64 {
     (milli as u64) * 1000 / SPEED as u64
 }
@@ -102,6 +112,7 @@ pub fn lerp(a: u32, b: u32, u: u64, dt: u64) -> u32 {
     }
 }
 
+#[cfg(not(target_arch = "nvptx64"))]
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub struct Pose {
     pub x: u32,
@@ -112,6 +123,7 @@ pub struct Pose {
 }
 
 /// Position along a path at `now`. `None` when the path has fewer than two points.
+#[cfg(not(target_arch = "nvptx64"))]
 pub fn path_pose(path: &[PathNode], now: u64) -> Option<Pose> {
     if path.len() < 2 {
         return None;
@@ -146,6 +158,7 @@ pub fn path_pose(path: &[PathNode], now: u64) -> Option<Pose> {
     None
 }
 
+#[cfg(not(target_arch = "nvptx64"))]
 fn between(a: u32, b: u32, c: u32) -> bool {
     if a <= c {
         a <= b && b <= c
@@ -157,6 +170,7 @@ fn between(a: u32, b: u32, c: u32) -> bool {
 /// `b - a` points the same way as `c - a`, or `b` sits on `a`.
 /// A boolean `==` of two comparisons extracts as a proposition, which Lean
 /// then refuses as an `if` condition, so the branches are written out.
+#[cfg(not(target_arch = "nvptx64"))]
 fn axis_same(a: u32, b: u32, c: u32) -> bool {
     if b == a {
         return true;
@@ -169,6 +183,7 @@ fn axis_same(a: u32, b: u32, c: u32) -> bool {
 }
 
 /// True when `b` lies on the segment `a`–`c` and the facing does not change.
+#[cfg(not(target_arch = "nvptx64"))]
 pub fn colinear(a: &PathNode, b: &PathNode, c: &PathNode) -> bool {
     if a.face_dx != b.face_dx || a.face_dy != b.face_dy || b.face_dx != c.face_dx || b.face_dy != c.face_dy {
         return false;
@@ -196,6 +211,7 @@ pub fn colinear(a: &PathNode, b: &PathNode, c: &PathNode) -> bool {
 /// The scan keeps an anchor and one candidate index. A candidate that is
 /// colinear with the anchor and the next point is skipped. The loop is a
 /// single index so Aeneas can find a fixed point (no `Option`, no `continue`).
+#[cfg(not(target_arch = "nvptx64"))]
 pub fn compress(path: &Vec<PathNode>) -> Vec<PathNode> {
     if path.len() <= 2 {
         return path.clone();
@@ -221,6 +237,7 @@ pub fn compress(path: &Vec<PathNode>) -> Vec<PathNode> {
 
 /// Remove the last element by copying the prefix. `Vec::pop` is not in the
 /// Aeneas subset this toolchain translates, and a heap pop is the only caller.
+#[cfg(not(target_arch = "nvptx64"))]
 fn drop_last_u32(tree: &mut Vec<u32>) -> Option<u32> {
     let n = tree.len();
     if n == 0 {
@@ -237,6 +254,7 @@ fn drop_last_u32(tree: &mut Vec<u32>) -> Option<u32> {
     Some(last)
 }
 
+#[cfg(not(target_arch = "nvptx64"))]
 fn drop_last_u64(tree: &mut Vec<u64>) -> Option<u64> {
     let n = tree.len();
     if n == 0 {
@@ -255,11 +273,13 @@ fn drop_last_u64(tree: &mut Vec<u64>) -> Option<u64> {
 
 /// 1-indexed binary heap of `u64`, smallest on top. `compare(a, b)` in the
 /// original is `a > b`.
+#[cfg(not(target_arch = "nvptx64"))]
 #[derive(Clone, Debug)]
 pub struct MinHeap {
     tree: Vec<u64>,
 }
 
+#[cfg(not(target_arch = "nvptx64"))]
 impl MinHeap {
     pub fn new() -> Self {
         let mut tree = Vec::new();
@@ -328,6 +348,7 @@ impl MinHeap {
 
 /// Heap of search-node indices. `cost[node]` decides the order. Index 0 of
 /// `tree` is unused.
+#[cfg(not(target_arch = "nvptx64"))]
 pub fn idx_push(tree: &mut Vec<u32>, cost: &[u32], node: u32) {
     tree.push(node);
     let mut destination = tree.len() - 1;
@@ -343,6 +364,7 @@ pub fn idx_push(tree: &mut Vec<u32>, cost: &[u32], node: u32) {
     tree[destination] = node;
 }
 
+#[cfg(not(target_arch = "nvptx64"))]
 pub fn idx_pop(tree: &mut Vec<u32>, cost: &[u32]) -> Option<u32> {
     if tree.len() <= 1 {
         return None;
@@ -403,6 +425,7 @@ pub fn mask_bytes(cells: usize) -> usize {
     }
 }
 
+#[cfg(not(target_arch = "nvptx64"))]
 pub fn set_blocked(mask: &mut Vec<u8>, width: u32, height: u32, tx: u32, ty: u32) {
     let cells = (width as usize) * (height as usize);
     let bytes = mask_bytes(cells);
@@ -423,6 +446,7 @@ pub fn set_blocked(mask: &mut Vec<u8>, width: u32, height: u32, tx: u32, ty: u32
 /// when the chain ends. Callers that move a point by less than a tile between
 /// checks may leave it in the old cell; the 3 by 3 neighborhood still reaches it
 /// while the radius plus the step stays under one tile.
+#[cfg(not(target_arch = "nvptx64"))]
 pub struct NearIndex {
     pub width: u32,
     pub height: u32,
@@ -430,6 +454,7 @@ pub struct NearIndex {
     pub next: Vec<u32>,
 }
 
+#[cfg(not(target_arch = "nvptx64"))]
 fn grow_max(v: &mut Vec<u32>, n: usize) {
     while v.len() < n {
         v.push(u32::MAX);
@@ -437,6 +462,7 @@ fn grow_max(v: &mut Vec<u32>, n: usize) {
 }
 
 /// Fill `index`, reusing its buffers when the caller steps many ticks.
+#[cfg(not(target_arch = "nvptx64"))]
 pub fn near_fill(index: &mut NearIndex, width: u32, height: u32, xs: &[u32], ys: &[u32]) {
     let cells = (width as usize) * (height as usize);
     let n = if xs.len() < ys.len() { xs.len() } else { ys.len() };
@@ -469,6 +495,7 @@ pub fn near_fill(index: &mut NearIndex, width: u32, height: u32, xs: &[u32], ys:
     }
 }
 
+#[cfg(not(target_arch = "nvptx64"))]
 pub fn near_index(width: u32, height: u32, xs: &[u32], ys: &[u32]) -> NearIndex {
     let mut index = NearIndex { width: 0, height: 0, head: Vec::new(), next: Vec::new() };
     near_fill(&mut index, width, height, xs, ys);
@@ -476,6 +503,7 @@ pub fn near_index(width: u32, height: u32, xs: &[u32], ys: &[u32]) -> NearIndex 
 }
 
 /// True when some point other than `skip` is strictly inside the collision radius.
+#[cfg(not(target_arch = "nvptx64"))]
 pub fn near_hit(index: &NearIndex, xs: &[u32], ys: &[u32], x: u32, y: u32, skip: u32) -> bool {
     if index.width == 0 || index.height == 0 {
         return false;

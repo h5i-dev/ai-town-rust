@@ -204,6 +204,9 @@ pub enum Command {
     Remember { summary: Vec<u8> },
     Activity { kind: u32 },
     Step,
+    /// Engine-only. Writes positions from a GPU seek and drops paths.
+    /// `pf` and `dest_*` stay so the next seek still knows who is walking.
+    Relocate { x: Vec<u32>, y: Vec<u32> },
     Freeze,
     Resume,
 }
