@@ -830,3 +830,35 @@ fn relocate_refuses_overlap_and_blocked_tiles() {
     let (_s4, r) = run(&walled, ENGINE, 5_100, Command::Relocate { x: vec![2_000, 5_500], y: vec![3_000, 5_500] });
     assert_eq!(r, Err(Error::Occupied));
 }
+
+#[test]
+fn bucketed_placement_matches_the_all_pairs_scan() {
+    let mut seed = 0x1234_5678_9abc_def0u64;
+    let mut agree = [0usize; 2];
+    for trial in 0..400 {
+        let (w, h) = (2 + (rand_next(&mut seed) % 10) as u32, 2 + (rand_next(&mut seed) % 10) as u32);
+        let mut s = world(5_000);
+        s.meta.width = w;
+        s.meta.height = h;
+        s.terrain.mask = mask(w, h);
+        if rand_next(&mut seed) % 3 == 0 {
+            set_blocked(&mut s.terrain.mask, w, h, (rand_next(&mut seed) % w as u64) as u32, (rand_next(&mut seed) % h as u64) as u32);
+        }
+        let n = (rand_next(&mut seed) % 30) as usize;
+        // Dense enough that some trials put 5+ players in a tile, and a few
+        // points step off the map.
+        for i in 0..n {
+            let id = if rand_next(&mut seed) % 10 == 0 { 1 } else { i as u64 + 1 };
+            let x = (rand_next(&mut seed) % (w as u64 * 1000 + 300)) as u32;
+            let y = (rand_next(&mut seed) % (h as u64 * 1000 + 300)) as u32;
+            s.players.push(Player {
+                id, owner: id, is_human: false, x, y, face_dx: 0, face_dy: 0, speed: 0, dest_x: 0, dest_y: 0, pf: 0,
+                pf_started: 0, wait_until: 0, last_input: 0, activity: 0, activity_until: 0, character: 0, name: Vec::new(),
+            });
+        }
+        let fast = placement_ok(&s);
+        assert_eq!(fast, placement_ok_scan(&s), "trial {trial}");
+        agree[fast as usize] += 1;
+    }
+    assert!(agree[0] > 50 && agree[1] > 50, "{agree:?}");
+}

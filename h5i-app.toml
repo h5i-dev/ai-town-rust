@@ -77,10 +77,21 @@ theorems = [
   "ai_town_kernel.mask_blocked_ok",
   "ai_town_kernel.mask_blocked_spec",
   "ai_town_kernel.occupied_spec",
-  "ai_town_kernel.placement_ok_spec",
   "ai_town_kernel.relocate_loop_ok",
+  "ai_town_kernel.slot_close_spec",
+  "ai_town_kernel.cell_slots_val",
+  "ai_town_kernel.cell_close_spec",
+  "ai_town_kernel.near_any_spec",
+  "ai_town_kernel.nearB_spec",
+  "ai_town_kernel.all_clear_spec",
+  "ai_town_kernel.fill_set",
+  "ai_town_kernel.u32_max_val",
+  "ai_town_kernel.place_spec",
+  "ai_town_kernel.bucket_loop_spec",
+  "ai_town_kernel.max_dim_val",
+  "ai_town_kernel.bucket_spec",
+  "ai_town_kernel.placement_ok_sound",
   "ai_town_kernel.relocate_placed",
-  "ai_town_kernel.relocate_apart",
 ]
 
 # Each `old` occurs once. A proof that does not mention the real check lets the mutant through.
@@ -113,3 +124,21 @@ name = "relocate_unchecked"
 file = "kernel/src/rules.rs"
 old = "    if !placement_ok(&s) {"
 new = "    if false && !placement_ok(&s) {"
+
+[[mutant]]
+name = "near_any_misses_a_tile"
+file = "kernel/src/rules.rs"
+old = "        || cell_close(s, slots, cx + 2, cy + 2, p.x, p.y, p.id)\n"
+new = "\n"
+
+[[mutant]]
+name = "cell_skips_a_slot"
+file = "kernel/src/rules.rs"
+old = "        || slot_close(s, slots, b + 3, x, y, id)\n"
+new = "\n"
+
+[[mutant]]
+name = "bucket_ignores_a_full_tile"
+file = "kernel/src/rules.rs"
+old = "            ok = place(&mut slots, b, i as u32);"
+new = "            let _ = place(&mut slots, b, i as u32);"

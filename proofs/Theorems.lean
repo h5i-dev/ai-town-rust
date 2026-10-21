@@ -1437,20 +1437,6 @@ noncomputable def occB (s : Snapshot) (x y : U32) (ignore : U64) : Bool :=
     intro r hr
     simp_all [occB]
 
-/-- `placement_ok` holds exactly when no player's own point is occupied. -/
-theorem placement_ok_spec (s : Snapshot) :
-    rules.placement_ok s ⦃ b =>
-      b = s.players.val.all (fun p => !occB s p.x p.y p.id) ⦄ := by
-  unfold rules.placement_ok rules.placement_ok_loop
-  apply WP.spec_mono (loop_search s.players.val (fun p => occB s p.x p.y p.id) id
-      (fun _ _ => false) true (rules.placement_ok_loop.body s) ?_ 0#usize (by simp))
-  · intro r hr
-    simp only [id] at hr
-    exact search_all _ _ _ hr
-  · intro j hj
-    unfold rules.placement_ok_loop.body
-    h5i_step
-
 /-- The position copy in `relocate` returns, and keeps one player per slot. -/
 theorem relocate_loop_ok (v : alloc.vec.Vec Player) (x y : alloc.vec.Vec U32) (n i : Usize)
     (hv : v.val.length = n.val) (hx : x.val.length = n.val) (hy : y.val.length = n.val)
@@ -1469,12 +1455,347 @@ theorem relocate_loop_ok (v : alloc.vec.Vec Player) (x y : alloc.vec.Vec U32) (n
     all_goals (subst_vars; simp_all [alloc.vec.Vec.set_val_eq]; scalar_tac)
   · exact ⟨hi, hv⟩
 
+/-! ## Linear placement check
+
+`placement_ok` buckets every player into four slots of its own tile
+(`bucket`), then looks at the 36 slots of the 3 by 3 tiles around each player
+(`near_any`). `bucket_spec` says every player is in a slot of its own tile;
+`within_radius_neighbor_tile` puts any player inside the collision radius in
+one of those nine tiles; `near_any_spec` says each of their slots was checked.
+Together: `placement_ok_sound`, and `relocate_placed` for `Relocate`. A tile
+with a fifth player is refused, which is always safe. -/
+
+/-- Slot `idx` names no player with another id strictly inside the radius of `(x, y)`. -/
+def SlotClear (s : Snapshot) (slots : List U32) (idx : Nat) (x y : U32) (id : U64) : Prop :=
+  ∀ (hi : idx < slots.length) (hj : slots[idx].val < s.players.val.length),
+    (s.players.val[slots[idx].val]).id ≠ id →
+    ¬ distNat (s.players.val[slots[idx].val]).x (s.players.val[slots[idx].val]).y x y < 562500
+
+@[step] theorem slot_close_spec (s : Snapshot) (slots : alloc.vec.Vec U32) (idx : Usize)
+    (x y : U32) (id : U64) :
+    rules.slot_close s slots idx x y id ⦃ b => b = false → SlotClear s slots.val idx.val x y id ⦄ := by
+  unfold rules.slot_close
+  h5i_steps
+  · -- idx past the end
+    intro _ hi; exfalso; scalar_tac
+  · -- the slot names no player (empty slots are u32::MAX)
+    intro _ hi hj; exfalso
+    rename_i hge _ _
+    have : j.val = i1.val := by rw [j_post, U32.cast_Usize_val_eq]
+    scalar_tac
+  · -- another id, outside the radius
+    intro hd hi hj hne hlt
+    have hj' : j.val = i1.val := by rw [j_post, U32.cast_Usize_val_eq]
+    have hq : (s.players.val[slots.val[idx.val].val]) = q := by
+      subst q_post; subst i1_post; simp only [hj']
+    rw [hq] at hlt
+    have : ¬ (i3 < i4) := by simpa using hd
+    scalar_tac
+  · -- the same id
+    intro _ hi hj hne
+    have hj' : j.val = i1.val := by rw [j_post, U32.cast_Usize_val_eq]
+    have hq : (s.players.val[slots.val[idx.val].val]) = q := by
+      subst q_post; subst i1_post; simp only [hj']
+    rw [hq] at hne
+    exfalso; apply hne
+    have h := ‹¬(q.id != id) = true›
+    simp only [bne_iff_ne, ne_eq, Decidable.not_not] at h
+    exact h
+
+theorem cell_slots_val : rules.CELL_SLOTS.val = 4 := by unfold rules.CELL_SLOTS; rfl
+
+/-- The four slots of tile `(tx, ty)` name nobody too close. -/
+def CellClear (s : Snapshot) (slots : List U32) (tx ty : Nat) (x y : U32) (id : U64) : Prop :=
+  ∀ k < 4, SlotClear s slots ((tx * s.meta.height.val + ty) * 4 + k) x y id
+
+@[step] theorem cell_close_spec (s : Snapshot) (slots : alloc.vec.Vec U32) (ux uy x y : U32) (id : U64)
+    (hw : s.meta.width.val ≤ 128) (hh : s.meta.height.val ≤ 128) :
+    rules.cell_close s slots ux uy x y id ⦃ r => r = false →
+      ∀ cx cy, ux.val = cx + 1 → uy.val = cy + 1 → cx < s.meta.width.val → cy < s.meta.height.val →
+        CellClear s slots.val cx cy x y id ⦄ := by
+  unfold rules.cell_close
+  have h4 := cell_slots_val
+  h5i_steps
+  have hi : i.val = tx.val := by rw [i_post, U32.cast_Usize_val_eq]
+  have hi1 : i1.val = s.meta.height.val := by rw [i1_post, U32.cast_Usize_val_eq]
+  have hi3 : i3.val = ty.val := by rw [i3_post, U32.cast_Usize_val_eq]
+  rename_i cx' cy'
+  have htx : tx.val = cx' := by omega
+  have hty : ty.val = cy' := by omega
+  have hbase : b.val = (cx' * s.meta.height.val + cy') * 4 := by
+    rw [b_post, h4, i4_post, i2_post, hi, hi1, hi3, htx, hty]
+  intro k hk
+  rcases (by omega : k = 0 ∨ k = 1 ∨ k = 2 ∨ k = 3) with rfl | rfl | rfl | rfl
+  · have := b1_post (by simpa using ‹¬b1 = true›); rwa [hbase] at this
+  · have := b2_post (by simpa using ‹¬b2 = true›); rwa [i5_post, hbase] at this
+  · have := b3_post (by simpa using ‹¬b3 = true›); rwa [i6_post, hbase] at this
+  · have := r_post r_post1; rwa [i7_post, hbase] at this
+
+/-- Every tile within one of `p`'s own tile names nobody too close to `p`. -/
+def NearClear (s : Snapshot) (slots : List U32) (p : Player) : Prop :=
+  ∀ cx cy, cx < s.meta.width.val → cy < s.meta.height.val →
+    cx ≤ p.x.val / 1000 + 1 → p.x.val / 1000 ≤ cx + 1 →
+    cy ≤ p.y.val / 1000 + 1 → p.y.val / 1000 ≤ cy + 1 →
+    CellClear s slots cx cy p.x p.y p.id
+
+@[step] theorem near_any_spec (s : Snapshot) (slots : alloc.vec.Vec U32) (p : Player)
+    (hw : s.meta.width.val ≤ 128) (hh : s.meta.height.val ≤ 128) :
+    rules.near_any s slots p ⦃ r => r = false → NearClear s slots.val p ⦄ := by
+  unfold rules.near_any
+  have hm := milli_val
+  h5i_steps
+  intro tx ty htx hty h1 h2 h3 h4
+  have hcx : cx.val = p.x.val / 1000 := by rw [cx_post, hm]
+  have hcy : cy.val = p.y.val / 1000 := by rw [cy_post, hm]
+  have f : ∀ {b : Bool}, ¬ b = true → b = false := by simp
+  rcases (by omega : tx + 1 = cx.val ∨ tx + 1 = cx.val + 1 ∨ tx + 1 = cx.val + 2) with hx | hx | hx <;>
+  rcases (by omega : ty + 1 = cy.val ∨ ty + 1 = cy.val + 1 ∨ ty + 1 = cy.val + 2) with hy | hy | hy
+  all_goals first
+    | exact b_post (f ‹_›) tx ty (by omega) (by omega) htx hty
+    | exact b1_post (f ‹_›) tx ty (by omega) (by omega) htx hty
+    | exact b2_post (f ‹_›) tx ty (by omega) (by omega) htx hty
+    | exact b3_post (f ‹_›) tx ty (by omega) (by omega) htx hty
+    | exact b4_post (f ‹_›) tx ty (by omega) (by omega) htx hty
+    | exact b5_post (f ‹_›) tx ty (by omega) (by omega) htx hty
+    | exact b6_post (f ‹_›) tx ty (by omega) (by omega) htx hty
+    | exact b7_post (f ‹_›) tx ty (by omega) (by omega) htx hty
+    | exact r_post r_post1 tx ty (by omega) (by omega) htx hty
+
+/-- `near_any` as a function on maps of at most 128 by 128 tiles. -/
+noncomputable def nearB (s : Snapshot) (slots : alloc.vec.Vec U32) (p : Player) : Bool :=
+  if h : s.meta.width.val ≤ 128 ∧ s.meta.height.val ≤ 128 then
+    Classical.choose (WP.spec_imp_exists (near_any_spec s slots p h.1 h.2))
+  else true
+
+theorem nearB_spec (s : Snapshot) (slots : alloc.vec.Vec U32) (p : Player)
+    (hw : s.meta.width.val ≤ 128) (hh : s.meta.height.val ≤ 128) :
+    rules.near_any s slots p = ok (nearB s slots p) ∧ (nearB s slots p = false → NearClear s slots.val p) := by
+  have hc := Classical.choose_spec (WP.spec_imp_exists (near_any_spec s slots p hw hh))
+  unfold nearB
+  rw [dif_pos ⟨hw, hh⟩]
+  exact hc
+
+theorem all_clear_spec (s : Snapshot) (slots : alloc.vec.Vec U32)
+    (hw : s.meta.width.val ≤ 128) (hh : s.meta.height.val ≤ 128) :
+    rules.all_clear s slots ⦃ r => r = s.players.val.all (fun p =>
+      !(blockedAt (alloc.vec.Vec.deref s.terrain.mask) s.meta.width s.meta.height p.x p.y || nearB s slots p)) ⦄ := by
+  unfold rules.all_clear rules.all_clear_loop
+  apply WP.spec_mono (loop_search s.players.val
+      (fun p => blockedAt (alloc.vec.Vec.deref s.terrain.mask) s.meta.width s.meta.height p.x p.y || nearB s slots p)
+      id (fun _ _ => false) true (rules.all_clear_loop.body s slots) ?_ 0#usize (by simp))
+  · intro r hr
+    simp only [id] at hr
+    exact search_all _ _ _ hr
+  · intro j hj
+    unfold rules.all_clear_loop.body
+    have hn : ∀ p, rules.near_any s slots p ⦃ r => r = nearB s slots p ⦄ := fun p => by
+      rw [(nearB_spec s slots p hw hh).1]; simp
+    h5i_step [hn]
+
+/-- First slot of `p`'s tile. -/
+def baseOf (s : Snapshot) (p : Player) : Nat :=
+  (p.x.val / 1000 * s.meta.height.val + p.y.val / 1000) * 4
+
+/-- Player `j` is on the map and named by one of its tile's four slots. -/
+def Holds (s : Snapshot) (sl : List U32) (p : Player) (j : Nat) : Prop :=
+  p.x.val / 1000 < s.meta.width.val ∧ p.y.val / 1000 < s.meta.height.val ∧
+    ∃ k < 4, ∃ hk : baseOf s p + k < sl.length, (sl[baseOf s p + k]).val = j
+
+/-- Every player before `i` is bucketed. -/
+def Filled (s : Snapshot) (sl : List U32) (i : Nat) : Prop :=
+  ∀ j (hj : j < s.players.val.length), j < i → Holds s sl (s.players.val[j]) j
+
+/-- Every slot is empty (`u32::MAX`) or names a player before `i`. -/
+def Bounded (sl : List U32) (i : Nat) : Prop :=
+  ∀ idx (h : idx < sl.length), (sl[idx]).val = 2 ^ 32 - 1 ∨ (sl[idx]).val < i
+
+theorem fill_set (s : Snapshot) (sl : List U32) (i idx k : Nat) (v : U32)
+    (hidx : idx < sl.length) (hfree : (sl[idx]).val = 2 ^ 32 - 1) (hi : i < 2 ^ 32 - 1)
+    (hv : v.val = i) (hpi : i < s.players.val.length)
+    (hx : (s.players.val[i]).x.val / 1000 < s.meta.width.val)
+    (hy : (s.players.val[i]).y.val / 1000 < s.meta.height.val)
+    (hk : k < 4) (hbase : idx = baseOf s (s.players.val[i]) + k)
+    (hF : Filled s sl i) (hB : Bounded sl i) :
+    Filled s (sl.set idx v) (i + 1) ∧ Bounded (sl.set idx v) (i + 1) := by
+  constructor
+  · intro j hj hji
+    by_cases hlt : j < i
+    · obtain ⟨hjx, hjy, k', hk', hm, heq⟩ := hF j hj hlt
+      refine ⟨hjx, hjy, k', hk', by simpa using hm, ?_⟩
+      have hne : baseOf s (s.players.val[j]) + k' ≠ idx := by
+        intro h; subst h; omega
+      simp [List.getElem_set, hne.symm, heq]
+    · have hji' : j = i := by omega
+      subst hji'
+      refine ⟨hx, hy, k, hk, by simpa [← hbase] using hidx, ?_⟩
+      simp [List.getElem_set, ← hbase, hv]
+  · intro m hm
+    simp only [List.length_set] at hm
+    by_cases hmi : m = idx
+    · subst hmi; right; simp [hv]
+    · rcases hB m hm with h | h
+      · left; simpa [List.getElem_set, Ne.symm hmi] using h
+      · right; simp [List.getElem_set, Ne.symm hmi]; omega
+
+theorem u32_max_val : core.num.U32.MAX.val = 2 ^ 32 - 1 := by
+  simp [core.num.U32.MAX, U32.max, U32.rMax]
+
+@[step] theorem place_spec (slots : alloc.vec.Vec U32) (b : Usize) (i : U32) :
+    rules.place slots b i ⦃ r => r.2.val.length = slots.val.length ∧
+      (r.1 = true → ∃ k < 4, ∃ h : b.val + k < slots.val.length,
+        (slots.val[b.val + k]).val = 2 ^ 32 - 1 ∧ r.2.val = slots.val.set (b.val + k) i) ⦄ := by
+  unfold rules.place
+  have h4 := cell_slots_val
+  have hM := u32_max_val
+  h5i_steps
+  all_goals
+    subst_vars
+    refine ⟨by simp [alloc.vec.Vec.set_val_eq], fun _ => ?_⟩
+  · refine ⟨0, by omega, by scalar_tac, ?_, by simp [alloc.vec.Vec.set_val_eq]⟩
+    rename_i h _
+    simpa [U32.rMax] using congrArg UScalar.val h
+  · refine ⟨1, by omega, by scalar_tac, ?_, by simp [alloc.vec.Vec.set_val_eq, i5_post]⟩
+    rename_i h _
+    simp only [i5_post] at h
+    simpa [U32.rMax] using congrArg UScalar.val h
+  · refine ⟨2, by omega, by scalar_tac, ?_, by simp [alloc.vec.Vec.set_val_eq, i7_post]⟩
+    rename_i h _
+    simp only [i7_post] at h
+    simpa [U32.rMax] using congrArg UScalar.val h
+  · refine ⟨3, by omega, by scalar_tac, ?_, by simp [alloc.vec.Vec.set_val_eq, i9_post]⟩
+    rename_i h _
+    simp only [i9_post] at h
+    simpa [U32.rMax] using congrArg UScalar.val h
+
+theorem bucket_loop_spec (s : Snapshot) (n : Usize) (slots : alloc.vec.Vec U32) (ok0 : Bool) (i : Usize)
+    (hn : n.val = s.players.val.length) (hlt : n.val < 2 ^ 32 - 1)
+    (hw : s.meta.width.val ≤ 128) (hh : s.meta.height.val ≤ 128)
+    (hL : slots.val.length = s.meta.width.val * s.meta.height.val * 4)
+    (hi : i.val ≤ n.val) (hinv : ok0 = true → Filled s slots.val i.val ∧ Bounded slots.val i.val) :
+    rules.bucket_loop s s.players n slots ok0 i ⦃ r => r.2 = true → Filled s r.1.val n.val ⦄ := by
+  unfold rules.bucket_loop
+  have hm := milli_val
+  have h4 := cell_slots_val
+  apply loop.spec_decr_nat
+    (measure := fun (st : alloc.vec.Vec U32 × Bool × Usize) => n.val + 1 - st.2.2.val - (if st.2.1 then 0 else 1))
+    (inv := fun st => st.1.val.length = s.meta.width.val * s.meta.height.val * 4 ∧ st.2.2.val ≤ n.val ∧
+      (st.2.1 = true → Filled s st.1.val st.2.2.val ∧ Bounded st.1.val st.2.2.val))
+    (post := fun r => r.2 = true → Filled s r.1.val n.val)
+    (body := fun (sl, o, j) => rules.bucket_loop.body s s.players n sl o j)
+  · rintro ⟨sl, o, j⟩ ⟨hl, hj, hI⟩
+    simp only at hl hj hI
+    unfold rules.bucket_loop.body
+    h5i_steps
+    all_goals (try (subst_vars; simp only [U32.cast_Usize_val_eq] at *; scalar_tac))
+    expose_names
+    obtain ⟨ok3, sl2⟩ := x
+    dsimp only at x_post x_post1 ⊢
+    h5i_steps
+    have hjn : j.val < n.val := by scalar_tac
+    refine ⟨by rw [x_post, hl], by omega, ?_, by omega⟩
+    intro hok
+    obtain ⟨hF, hB⟩ := hI h
+    obtain ⟨k, hk, hlen, hfree, hset⟩ := x_post1 hok
+    rw [hset, i1_post]
+    have hj' : j.val < s.players.val.length := by scalar_tac
+    have hpx : p.x.val / 1000 < s.meta.width.val := by
+      have : ¬ tx.val ≥ s.meta.width.val := by scalar_tac
+      rw [tx_post, hm] at this; omega
+    have hpy : p.y.val / 1000 < s.meta.height.val := by
+      have : ¬ ty.val ≥ s.meta.height.val := by scalar_tac
+      rw [ty_post, hm] at this; omega
+    have hb : x_6.val = baseOf s p := by
+      rw [x_post_6, h4, x_post_5, x_post_3, x_post_1, x_post_2, x_post_4]
+      simp only [U32.cast_Usize_val_eq, baseOf, tx_post, ty_post, hm]
+    have h7 : x_7.val = j.val := by
+      rw [x_post_7, UScalar.cast_val_eq]
+      exact Nat.mod_eq_of_lt (by simp [UScalarTy.numBits]; omega)
+    subst p_post
+    exact fill_set s sl.val j.val (x_6.val + k) k x_7 hlen hfree (by omega) h7 hj' hpx hpy hk
+      (by rw [hb]) hF hB
+  · exact ⟨hL, hi, hinv⟩
+
+theorem max_dim_val : MAX_DIM.val = 128 := by unfold MAX_DIM; rfl
+
+theorem bucket_spec (s : Snapshot) :
+    rules.bucket s ⦃ r => ∀ sl, r = some sl →
+      s.meta.width.val ≤ 128 ∧ s.meta.height.val ≤ 128 ∧ Filled s sl.val s.players.val.length ⦄ := by
+  unfold rules.bucket
+  have hd := max_dim_val
+  have h4 := cell_slots_val
+  have hM := u32_max_val
+  h5i_steps
+  expose_names
+  have hw : s.meta.width.val ≤ 128 := by have := h_2; scalar_tac
+  have hh : s.meta.height.val ≤ 128 := by have := h_3; scalar_tac
+  have hn : s.players.len.val < 2 ^ 32 - 1 := by
+    have : ¬ s.players.len.val ≥ i.val := by scalar_tac
+    rw [i_post, U32.cast_Usize_val_eq, hM] at this; omega
+  have hL : slots.val.length = s.meta.width.val * s.meta.height.val * 4 := by
+    rw [slots_post, List.length_replicate, i3_post, h4, cells_post, i1_post, i2_post]
+    simp only [U32.cast_Usize_val_eq]
+  apply WP.spec_bind (bucket_loop_spec s s.players.len slots true 0#usize (by simp) (by simpa using hn)
+    hw hh hL (by simp) (fun _ => ⟨fun j _ hj => absurd hj (by simp), fun m hm => by
+      left; simp [slots_post, hM]⟩))
+  rintro ⟨sl, o⟩ hr
+  simp only at hr
+  apply WP.exists_imp_spec
+  cases o
+  · exact ⟨none, rfl, by simp⟩
+  · refine ⟨some sl, rfl, ?_⟩
+    intro sl' hsl
+    injection hsl with hsl
+    subst hsl
+    exact ⟨hw, hh, by simpa using hr rfl⟩
+/-- Every player on a walkable tile, and every player with another id at
+least the collision radius away. -/
+def Placed (s : Snapshot) : Prop :=
+  ∀ i (hi : i < s.players.val.length),
+    blockedAt (alloc.vec.Vec.deref s.terrain.mask) s.meta.width s.meta.height
+      (s.players.val[i]).x (s.players.val[i]).y = false ∧
+    ∀ j (hj : j < s.players.val.length), (s.players.val[j]).id ≠ (s.players.val[i]).id →
+      ¬ distNat (s.players.val[j]).x (s.players.val[j]).y (s.players.val[i]).x (s.players.val[i]).y < 562500
+
+theorem placement_ok_sound (s : Snapshot) :
+    rules.placement_ok s ⦃ r => r = true → Placed s ⦄ := by
+  unfold rules.placement_ok
+  apply WP.spec_bind (bucket_spec s)
+  intro o ho
+  cases o with
+  | none => simp
+  | some sl =>
+    obtain ⟨hw, hh, hF⟩ := ho sl rfl
+    simp only
+    apply WP.spec_mono (all_clear_spec s sl hw hh)
+    intro r hr hrt
+    rw [hrt] at hr
+    intro i hi
+    have hall := List.all_eq_true.mp hr.symm (s.players.val[i]) (List.getElem_mem hi)
+    simp only [Bool.not_or, Bool.and_eq_true, Bool.not_eq_true'] at hall
+    obtain ⟨hblk, hnear⟩ := hall
+    have hNC := (nearB_spec s sl (s.players.val[i]) hw hh).2 hnear
+    refine ⟨hblk, ?_⟩
+    intro j hj hne hlt
+    obtain ⟨hjx, hjy, k, hk, hidx, heq⟩ := hF j hj hj
+    have hnb := within_radius_neighbor_tile _ _ _ _ hlt
+    have hCC := hNC _ _ hjx hjy hnb.1 hnb.2.1 hnb.2.2.1 hnb.2.2.2 k hk
+    have hSC : SlotClear s sl.val (baseOf s (s.players.val[j]) + k)
+        (s.players.val[i]).x (s.players.val[i]).y (s.players.val[i]).id := hCC
+    have hjv : (sl.val[baseOf s (s.players.val[j]) + k]'hidx).val < s.players.val.length := by
+      rw [heq]; exact hj
+    have hres := hSC hidx hjv
+    have key : ∀ (m : Nat) (hm : m < s.players.val.length), m = j →
+        ((s.players.val[m]).id ≠ (s.players.val[i]).id →
+          ¬ distNat (s.players.val[m]).x (s.players.val[m]).y (s.players.val[i]).x (s.players.val[i]).y < 562500) →
+        ¬ distNat (s.players.val[j]).x (s.players.val[j]).y (s.players.val[i]).x (s.players.val[i]).y < 562500 := by
+      intro m hm hmj h; subst hmj; exact h hne
+    exact key _ hjv heq hres hlt
+
 /-- Whatever positions the shell hands `Relocate` (the GPU movement minute),
-an accepted result has every player on a walkable tile and nobody strictly
-inside another player's collision radius. -/
+an accepted result is `Placed`: every player on a walkable tile, and every
+player with another id at least the collision radius away. -/
 theorem relocate_placed (s : Snapshot) (x y : alloc.vec.Vec U32) :
-    rules.relocate s x y ⦃ r => ∀ s', r = .Ok s' →
-      s'.players.val.all (fun p => !occB s' p.x p.y p.id) = true ⦄ := by
+    rules.relocate s x y ⦃ r => ∀ s', r = .Ok s' → Placed s' ⦄ := by
   unfold rules.relocate
   simp only []
   split
@@ -1488,7 +1809,7 @@ theorem relocate_placed (s : Snapshot) (x y : alloc.vec.Vec U32) :
         simp at hyn; scalar_tac
       apply WP.spec_bind (relocate_loop_ok s.players x y _ 0#usize (by simp) (by simpa using hx) (by simpa using hy) (by simp))
       intro v hv
-      apply WP.spec_bind (placement_ok_spec _)
+      apply WP.spec_bind (placement_ok_sound _)
       intro b hb
       beta_reduce
       split
@@ -1497,21 +1818,7 @@ theorem relocate_placed (s : Snapshot) (x y : alloc.vec.Vec U32) :
         injection hs' with hs'
         subst hs'
         rename_i hbt
-        rw [hbt] at hb
-        simpa [occB] using hb.symm
+        exact hb hbt
       · simp
-
-/-- `relocate_placed` spelled out: on an accepted result, every player's tile
-is walkable and every other player is at least the collision radius away. -/
-theorem relocate_apart (s : Snapshot) (x y : alloc.vec.Vec U32) :
-    rules.relocate s x y ⦃ r => ∀ s', r = .Ok s' → ∀ p ∈ s'.players.val,
-      blockedAt (alloc.vec.Vec.deref s'.terrain.mask) s'.meta.width s'.meta.height p.x p.y = false ∧
-      ∀ q ∈ s'.players.val, q.id ≠ p.id → ¬ distNat q.x q.y p.x p.y < 562500 ⦄ := by
-  apply WP.spec_mono (relocate_placed s x y)
-  intro r h s' hs p hp
-  have hp' := List.all_eq_true.mp (h s' hs) p hp
-  simp only [occB, tooClose, Bool.not_or, Bool.and_eq_true, Bool.not_eq_true',
-    List.any_eq_false, decide_eq_true_eq, not_and] at hp'
-  exact ⟨hp'.1, fun q hq hne => hp'.2 q hq hne⟩
 
 end ai_town_kernel

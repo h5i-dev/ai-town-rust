@@ -98,10 +98,149 @@ pub fn occupied(s: &Snapshot, x: u32, y: u32, ignore: u64) -> bool {
     false
 }
 
-/// True when every player stands on a walkable tile and no other player is
-/// strictly inside its collision radius: `occupied` is false at each player's
-/// own point, ignoring that player. Every pair is compared, so this is O(n^2).
+/// Players [`bucket`] keeps per tile. A pair closer than the collision radius
+/// is at most one tile apart, so a check of the 3 by 3 tiles around a player,
+/// [`CELL_SLOTS`] slots each, sees every player that could be too close.
+pub const CELL_SLOTS: usize = 4;
+
+/// Bucket every player into the [`CELL_SLOTS`] slots of its own tile: slot
+/// `(tx * height + ty) * CELL_SLOTS + k` holds a player index, or `u32::MAX`
+/// when empty. `None` when the map is empty or wider than [`MAX_DIM`], a
+/// player is off the map, or a tile holds more than [`CELL_SLOTS`] players.
+/// The caller refuses on `None`, which is always safe.
+pub fn bucket(s: &Snapshot) -> Option<Vec<u32>> {
+    let w = s.meta.width;
+    let h = s.meta.height;
+    if w == 0 || h == 0 || w > MAX_DIM || h > MAX_DIM {
+        return None;
+    }
+    let n = s.players.len();
+    if n >= u32::MAX as usize {
+        return None;
+    }
+    let cells = (w as usize) * (h as usize);
+    let mut slots = vec![u32::MAX; cells * CELL_SLOTS];
+    // A flag rather than an early return: Aeneas does not extract a return
+    // from inside a loop that owns mutable state.
+    let mut ok = true;
+    let mut i = 0;
+    while ok && i < n {
+        let tx = s.players[i].x / MILLI;
+        let ty = s.players[i].y / MILLI;
+        if tx >= w || ty >= h {
+            ok = false;
+        } else {
+            let b = ((tx as usize) * (h as usize) + (ty as usize)) * CELL_SLOTS;
+            ok = place(&mut slots, b, i as u32);
+        }
+        i += 1;
+    }
+    if ok {
+        Some(slots)
+    } else {
+        None
+    }
+}
+
+/// Write `i` into the first empty one of the [`CELL_SLOTS`] slots from `b`.
+/// False, writing nothing, when they are full or run past the end.
+fn place(slots: &mut Vec<u32>, b: usize, i: u32) -> bool {
+    if b >= slots.len() || slots.len() - b < CELL_SLOTS {
+        return false;
+    }
+    if slots[b] == u32::MAX {
+        slots[b] = i;
+        true
+    } else if slots[b + 1] == u32::MAX {
+        slots[b + 1] = i;
+        true
+    } else if slots[b + 2] == u32::MAX {
+        slots[b + 2] = i;
+        true
+    } else if slots[b + 3] == u32::MAX {
+        slots[b + 3] = i;
+        true
+    } else {
+        false
+    }
+}
+
+/// The player in slot `idx`, when it has another id and stands strictly
+/// inside the collision radius of `(x, y)`.
+fn slot_close(s: &Snapshot, slots: &Vec<u32>, idx: usize, x: u32, y: u32, id: u64) -> bool {
+    if idx >= slots.len() {
+        return false;
+    }
+    let j = slots[idx] as usize;
+    if j >= s.players.len() {
+        return false;
+    }
+    let q = &s.players[j];
+    q.id != id && geom::dist_sq(q.x, q.y, x, y) < COLLISION_SQ
+}
+
+/// [`slot_close`] over the slots of tile `(ux - 1, uy - 1)`. Shifted by one
+/// so the caller can name the tile left of column 0 without underflow.
+fn cell_close(s: &Snapshot, slots: &Vec<u32>, ux: u32, uy: u32, x: u32, y: u32, id: u64) -> bool {
+    if ux == 0 || uy == 0 {
+        return false;
+    }
+    let tx = ux - 1;
+    let ty = uy - 1;
+    if tx >= s.meta.width || ty >= s.meta.height {
+        return false;
+    }
+    let b = ((tx as usize) * (s.meta.height as usize) + (ty as usize)) * CELL_SLOTS;
+    slot_close(s, slots, b, x, y, id)
+        || slot_close(s, slots, b + 1, x, y, id)
+        || slot_close(s, slots, b + 2, x, y, id)
+        || slot_close(s, slots, b + 3, x, y, id)
+}
+
+/// A player with another id strictly inside the collision radius of `p`,
+/// among the tiles around `p`'s own.
+fn near_any(s: &Snapshot, slots: &Vec<u32>, p: &Player) -> bool {
+    let cx = p.x / MILLI;
+    let cy = p.y / MILLI;
+    cell_close(s, slots, cx, cy, p.x, p.y, p.id)
+        || cell_close(s, slots, cx, cy + 1, p.x, p.y, p.id)
+        || cell_close(s, slots, cx, cy + 2, p.x, p.y, p.id)
+        || cell_close(s, slots, cx + 1, cy, p.x, p.y, p.id)
+        || cell_close(s, slots, cx + 1, cy + 1, p.x, p.y, p.id)
+        || cell_close(s, slots, cx + 1, cy + 2, p.x, p.y, p.id)
+        || cell_close(s, slots, cx + 2, cy, p.x, p.y, p.id)
+        || cell_close(s, slots, cx + 2, cy + 1, p.x, p.y, p.id)
+        || cell_close(s, slots, cx + 2, cy + 2, p.x, p.y, p.id)
+}
+
+/// True when every player stands on a walkable tile and no player with
+/// another id is strictly inside its collision radius. Linear: one pass to
+/// [`bucket`], then 36 slots per player. Refuses (false) whenever [`bucket`]
+/// does. [`placement_ok_scan`] is the all-pairs definition it is tested against.
 pub fn placement_ok(s: &Snapshot) -> bool {
+    match bucket(s) {
+        Some(slots) => all_clear(s, &slots),
+        None => false,
+    }
+}
+
+/// Every player on a walkable tile with nobody too close, given its buckets.
+fn all_clear(s: &Snapshot, slots: &Vec<u32>) -> bool {
+    let mut i = 0;
+    while i < s.players.len() {
+        let p = &s.players[i];
+        if geom::mask_blocked(&s.terrain.mask, s.meta.width, s.meta.height, p.x, p.y) || near_any(s, slots, p) {
+            return false;
+        }
+        i += 1;
+    }
+    true
+}
+
+/// The O(n^2) form of [`placement_ok`]: `occupied` is false at each player's
+/// own point, ignoring that player.
+#[cfg(not(target_arch = "nvptx64"))]
+pub fn placement_ok_scan(s: &Snapshot) -> bool {
     let mut i = 0;
     while i < s.players.len() {
         let p = &s.players[i];
