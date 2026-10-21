@@ -35,7 +35,8 @@ impl Provider {
         if key.is_empty() {
             return Provider::Stub;
         }
-        let model = std::env::var("NVIDIA_MODEL").unwrap_or_else(|_| "meta/llama-3.1-8b-instruct".into());
+        // meta/llama-3.1-8b-instruct returned HTTP 410 after its 2026-08-26 end of life.
+        let model = std::env::var("NVIDIA_MODEL").unwrap_or_else(|_| "google/diffusiongemma-26b-a4b-it".into());
         let base = std::env::var("NVIDIA_BASE_URL").unwrap_or_else(|_| "https://integrate.api.nvidia.com/v1".into());
         let client = reqwest::Client::builder()
             .timeout(std::time::Duration::from_secs(20))
@@ -165,14 +166,15 @@ pub async fn speak(provider: &Provider, name: &str, identity: &str, plan: &str, 
         "temperature": 0.7,
     });
     let url = format!("{base}/chat/completions");
+    let started = std::time::Instant::now();
     let sent = client.post(&url).bearer_auth(key).json(&body).send().await;
     let Ok(resp) = sent else {
-        tracing::warn!("nim request failed");
+        tracing::warn!(ms = started.elapsed().as_millis() as u64, "nim request failed");
         return fallback;
     };
     let status = resp.status();
     if !status.is_success() {
-        tracing::warn!(status = status.as_u16(), "nim request failed");
+        tracing::warn!(status = status.as_u16(), ms = started.elapsed().as_millis() as u64, "nim request failed");
         return fallback;
     }
     let Ok(payload) = resp.json::<serde_json::Value>().await else {
@@ -187,6 +189,7 @@ pub async fn speak(provider: &Provider, name: &str, identity: &str, plan: &str, 
     if text.is_empty() {
         fallback
     } else {
+        tracing::info!(ms = started.elapsed().as_millis() as u64, "nim reply");
         clip(text, MAX_TEXT)
     }
 }
@@ -206,13 +209,14 @@ pub async fn remember_text(provider: &Provider, name: &str, other: &str, history
         "temperature": 0.2,
     });
     let url = format!("{base}/chat/completions");
+    let started = std::time::Instant::now();
     let sent = client.post(&url).bearer_auth(key).json(&body).send().await;
     let Ok(resp) = sent else {
-        tracing::warn!("nim request failed");
+        tracing::warn!(ms = started.elapsed().as_millis() as u64, "nim request failed");
         return fallback;
     };
     if !resp.status().is_success() {
-        tracing::warn!(status = resp.status().as_u16(), "nim request failed");
+        tracing::warn!(status = resp.status().as_u16(), ms = started.elapsed().as_millis() as u64, "nim request failed");
         return fallback;
     }
     let Ok(payload) = resp.json::<serde_json::Value>().await else {
@@ -222,6 +226,7 @@ pub async fn remember_text(provider: &Provider, name: &str, other: &str, history
     if text.is_empty() {
         fallback
     } else {
+        tracing::info!(ms = started.elapsed().as_millis() as u64, "nim memory");
         clip(text, MAX_PLAN)
     }
 }
@@ -344,13 +349,13 @@ mod tests {
     #[test]
     fn stub_provider_does_not_print_a_key() {
         let provider = Provider::Nim {
-            model: "meta/llama-3.1-8b-instruct".into(),
+            model: "google/diffusiongemma-26b-a4b-it".into(),
             base: "https://integrate.api.nvidia.com/v1".into(),
             key: "sekret-value".into(),
             client: reqwest::Client::new(),
         };
         let shown = format!("{provider:?}");
-        assert_eq!(shown, "Nim(meta/llama-3.1-8b-instruct)");
+        assert_eq!(shown, "Nim(google/diffusiongemma-26b-a4b-it)");
         assert!(!shown.contains("sekret"));
         assert_eq!(format!("{:?}", Provider::Stub), "Stub");
         let line = stub_line("Lucky", 1);
@@ -402,5 +407,55 @@ mod tests {
             assert!(members_consistent(&snap));
             n += 1;
         }
+    }
+
+    fn nim_at(base: String, timeout_ms: u64) -> Provider {
+        let client = reqwest::Client::builder()
+            .timeout(std::time::Duration::from_millis(timeout_ms))
+            .build()
+            .expect("client");
+        Provider::Nim { model: "meta/llama-3.1-8b-instruct".into(), base, key: "test-key".into(), client }
+    }
+
+    async fn serve_completions(status: axum::http::StatusCode, body: &'static str) -> String {
+        let app = axum::Router::new().route(
+            "/v1/chat/completions",
+            axum::routing::post(move || async move { (status, body) }),
+        );
+        let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.expect("bind");
+        let addr = listener.local_addr().expect("addr");
+        tokio::spawn(async move {
+            let _ = axum::serve(listener, app).await;
+        });
+        format!("http://{addr}/v1")
+    }
+
+    #[tokio::test]
+    async fn rate_limit_and_timeout_fall_back_to_the_stub() {
+        let fallback = stub_line("Lucky", 1);
+        let base = serve_completions(axum::http::StatusCode::TOO_MANY_REQUESTS, "slow down").await;
+        let line = speak(&nim_at(base, 1_000), "Lucky", "curious", "gossip", "", 1).await;
+        assert_eq!(line, fallback);
+
+        let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.expect("bind");
+        let addr = listener.local_addr().expect("addr");
+        tokio::spawn(async move {
+            loop {
+                if listener.accept().await.is_err() {
+                    break;
+                }
+            }
+        });
+        let hung = speak(&nim_at(format!("http://{addr}/v1"), 200), "Lucky", "curious", "gossip", "", 1).await;
+        assert_eq!(hung, fallback);
+    }
+
+    #[tokio::test]
+    async fn a_model_line_is_kept_when_the_request_succeeds() {
+        let body = "{\"choices\":[{\"message\":{\"content\":\"The oaks were arguing.\"}}]}";
+        let base = serve_completions(axum::http::StatusCode::OK, body).await;
+        let line = speak(&nim_at(base, 1_000), "Lucky", "curious", "gossip", "", 1).await;
+        assert_eq!(line, "The oaks were arguing.");
+        assert_ne!(line, stub_line("Lucky", 1));
     }
 }

@@ -98,6 +98,8 @@ Memories are the last summaries for a pair of players. The original embedding
 index is not part of this port. The stub records a fixed summary. NIM, when
 configured, writes the model's summary through the same `Remember` command.
 
+The default model is `google/diffusiongemma-26b-a4b-it`. `NVIDIA_MODEL` overrides it. `meta/llama-3.1-8b-instruct` reached end of life on 2026-08-26, and the API returns HTTP 410. A non-success status, including 429, and a transport timeout store the stub line for that turn. A live call against the retired model logged that failure at 35 ms and 11 ms, and the stored lines were the stub. With the current model, Lucky and Bob exchanged five lines. Those replies took 994 ms, 1,991 ms, 1,000 ms, 819 ms, and 551 ms.
+
 ## Shell
 
 PostgreSQL runs from `docker-compose.yml`. Its data directory is

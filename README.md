@@ -40,8 +40,9 @@ cd frontend && npm install && npm run dev
 The Vite dev server proxies `/rpc`, `/ws`, `/map`, `/snapshot`, `/session`, and `/healthz` to port 8080. The page is `http://127.0.0.1:5173/ai-town/`.
 
 `NVIDIA_API_KEY` selects the NVIDIA NIM provider
-(`https://integrate.api.nvidia.com/v1`). With no key, agents use the
-deterministic stub. The process never prints the key.
+(`https://integrate.api.nvidia.com/v1`). The default model is
+`google/diffusiongemma-26b-a4b-it`, and `NVIDIA_MODEL` overrides it. With no
+key, agents use the deterministic stub. The process never prints the key.
 
 ## Tests and proofs
 
