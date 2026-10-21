@@ -11,6 +11,7 @@ start-from = [
   "rules::occupied",
   "geom::grid_hit",
   "geom::grid_build",
+  "geom::grid_wellformed",
   "geom::grid_yield",
   "step::agent_step",
   "step::tick_moves",

@@ -109,7 +109,7 @@ fn ptx_path() -> PathBuf {
 }
 
 fn mover_loop(rx: std::sync::mpsc::Receiver<MoveReq>) {
-    let dev = match RustDevice::open_path(&ptx_path()) {
+    let mut dev = match RustDevice::open_path(&ptx_path()) {
         Ok(dev) => dev,
         Err(_) => {
             tracing::error!("gpu step unavailable");
@@ -119,6 +119,9 @@ fn mover_loop(rx: std::sync::mpsc::Receiver<MoveReq>) {
             return;
         }
     };
+    // `AI_TOWN_GPU_VERIFY=1` checks every device-built grid with the kernel's
+    // `grid_wellformed`. A refused grid fails the batch like any device error.
+    dev.set_verify_grid(std::env::var("AI_TOWN_GPU_VERIFY").ok().as_deref() == Some("1"));
     while let Ok(job) = rx.recv() {
         let MoveReq { xs, ys, moving, ids, paths, path_lo, path_hi, now_ms, mask, width, height, reply } = job;
         let _ = reply.send(step_minute(&dev, xs, ys, moving, ids, paths, path_lo, path_hi, now_ms, &mask, width, height));

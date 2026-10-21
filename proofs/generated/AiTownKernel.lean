@@ -1188,6 +1188,17 @@ def geom.near_index
       next := (alloc.vec.Vec.new Std.U32)
     } width height xs ys
 
+/-- [ai_town_kernel::geom::cell_index]:
+    Source: 'kernel/src/geom.rs', lines 571:0-573:1
+    Visibility: public -/
+def geom.cell_index
+  (tx : Std.U32) (ty : Std.U32) (height : Std.U32) : Result Std.Usize := do
+  let i ← lift (UScalar.cast .Usize tx)
+  let i1 ← lift (UScalar.cast .Usize height)
+  let i2 ← i * i1
+  let i3 ← lift (UScalar.cast .Usize ty)
+  i2 + i3
+
 /-- [ai_town_kernel::geom::grid_hit]: loop body 2:
     Source: 'kernel/src/geom.rs', lines 531:20-552:21
     Visibility: public -/
@@ -1280,13 +1291,9 @@ def geom.grid_hit_loop0_loop0.body
     then let ty1 ← ty + 1#u32
          ok (cont (true, ty1))
     else
-      let i ← lift (UScalar.cast .Usize tx)
-      let i1 ← lift (UScalar.cast .Usize height)
-      let i2 ← i * i1
-      let i3 ← lift (UScalar.cast .Usize ty)
-      let c ← i2 + i3
-      let i4 := Slice.len head
-      if c < i4
+      let c ← geom.cell_index tx ty height
+      let i := Slice.len head
+      if c < i
       then
         let p ← Slice.index_usize head c
         let hit1 ←
@@ -1398,8 +1405,30 @@ def geom.near_hit
   let s1 := alloc.vec.Vec.deref index.next
   geom.grid_hit index.width index.height s s1 xs ys x y skip
 
+/-- [ai_town_kernel::geom::cell_of]:
+    Source: 'kernel/src/geom.rs', lines 576:0-584:1
+    Visibility: public -/
+def geom.cell_of
+  (x : Std.U32) (y : Std.U32) (width : Std.U32) (height : Std.U32) :
+  Result Std.Usize
+  := do
+  let tx ← x / MILLI
+  let ty ← y / MILLI
+  if width = 0#u32
+  then ok core.num.Usize.MAX
+  else
+    if height = 0#u32
+    then ok core.num.Usize.MAX
+    else
+      if tx >= width
+      then ok core.num.Usize.MAX
+      else
+        if ty >= height
+        then ok core.num.Usize.MAX
+        else geom.cell_index tx ty height
+
 /-- [ai_town_kernel::geom::grid_build]: loop body 0:
-    Source: 'kernel/src/geom.rs', lines 581:4-584:5
+    Source: 'kernel/src/geom.rs', lines 599:4-602:5
     Visibility: public -/
 @[rust_loop_body]
 def geom.grid_build_loop0.body
@@ -1414,7 +1443,7 @@ def geom.grid_build_loop0.body
   else ok (done head)
 
 /-- [ai_town_kernel::geom::grid_build]: loop 0:
-    Source: 'kernel/src/geom.rs', lines 581:4-584:5
+    Source: 'kernel/src/geom.rs', lines 599:4-602:5
     Visibility: public -/
 @[rust_loop]
 def geom.grid_build_loop0
@@ -1426,7 +1455,7 @@ def geom.grid_build_loop0
     (head, c)
 
 /-- [ai_town_kernel::geom::grid_build]: loop body 1:
-    Source: 'kernel/src/geom.rs', lines 586:4-589:5
+    Source: 'kernel/src/geom.rs', lines 604:4-607:5
     Visibility: public -/
 @[rust_loop_body]
 def geom.grid_build_loop1.body
@@ -1441,7 +1470,7 @@ def geom.grid_build_loop1.body
   else ok (done next)
 
 /-- [ai_town_kernel::geom::grid_build]: loop 1:
-    Source: 'kernel/src/geom.rs', lines 586:4-589:5
+    Source: 'kernel/src/geom.rs', lines 604:4-607:5
     Visibility: public -/
 @[rust_loop]
 def geom.grid_build_loop1
@@ -1453,7 +1482,7 @@ def geom.grid_build_loop1
     (next, i)
 
 /-- [ai_town_kernel::geom::grid_build]: loop body 2:
-    Source: 'kernel/src/geom.rs', lines 591:4-604:5
+    Source: 'kernel/src/geom.rs', lines 609:4-618:5
     Visibility: public -/
 @[rust_loop_body]
 def geom.grid_build_loop2.body
@@ -1471,30 +1500,18 @@ def geom.grid_build_loop2.body
       then
         do
         let i2 ← Slice.index_usize xs i
-        let tx ← i2 / MILLI
         let i3 ← Slice.index_usize ys i
-        let ty ← i3 / MILLI
-        if tx < width
+        let cell ← geom.cell_of i2 i3 width height
+        if cell < cells
         then
-          if ty < height
+          let i4 := Slice.len next
+          if i < i4
           then
-            let i4 ← lift (UScalar.cast .Usize tx)
-            let i5 ← lift (UScalar.cast .Usize height)
-            let i6 ← i4 * i5
-            let i7 ← lift (UScalar.cast .Usize ty)
-            let cell ← i6 + i7
-            if cell < cells
-            then
-              let i8 := Slice.len next
-              if i < i8
-              then
-                let i9 ← Slice.index_usize head cell
-                let s ← Slice.update next i i9
-                let i10 ← lift (UScalar.cast .U32 i)
-                let s1 ← Slice.update head cell i10
-                ok (s1, s)
-              else ok (head, next)
-            else ok (head, next)
+            let i5 ← Slice.index_usize head cell
+            let s ← Slice.update next i i5
+            let i6 ← lift (UScalar.cast .U32 i)
+            let s1 ← Slice.update head cell i6
+            ok (s1, s)
           else ok (head, next)
         else ok (head, next)
       else ok (head, next)
@@ -1503,7 +1520,7 @@ def geom.grid_build_loop2.body
   else ok (done (head, next))
 
 /-- [ai_town_kernel::geom::grid_build]: loop 2:
-    Source: 'kernel/src/geom.rs', lines 591:4-604:5
+    Source: 'kernel/src/geom.rs', lines 609:4-618:5
     Visibility: public -/
 @[rust_loop]
 def geom.grid_build_loop2
@@ -1518,7 +1535,7 @@ def geom.grid_build_loop2
     (head, next, i)
 
 /-- [ai_town_kernel::geom::grid_build]:
-    Source: 'kernel/src/geom.rs', lines 571:0-606:1
+    Source: 'kernel/src/geom.rs', lines 589:0-620:1
     Visibility: public -/
 def geom.grid_build
   (head : Slice Std.U32) (next : Slice Std.U32) (width : Std.U32)
@@ -1559,8 +1576,225 @@ def geom.grid_build
                   0#usize
               ok (true, head2, next2)
 
+/-- [ai_town_kernel::geom::grid_wellformed]: loop body 0:
+    Source: 'kernel/src/geom.rs', lines 637:4-640:5
+    Visibility: public -/
+@[rust_loop_body]
+def geom.grid_wellformed_loop0.body
+  (n : Std.Usize) (seen : Slice Std.U32) (i : Std.Usize) :
+  Result (ControlFlow ((Slice Std.U32) × Std.Usize) (Slice Std.U32))
+  := do
+  if i < n
+  then
+    let s ← Slice.update seen i 0#u32
+    let i1 ← i + 1#usize
+    ok (cont (s, i1))
+  else ok (done seen)
+
+/-- [ai_town_kernel::geom::grid_wellformed]: loop 0:
+    Source: 'kernel/src/geom.rs', lines 637:4-640:5
+    Visibility: public -/
+@[rust_loop]
+def geom.grid_wellformed_loop0
+  (seen : Slice Std.U32) (n : Std.Usize) (i : Std.Usize) :
+  Result (Slice Std.U32)
+  := do
+  loop
+    (fun (seen1, i1) => geom.grid_wellformed_loop0.body n seen1 i1)
+    (seen, i)
+
+/-- [ai_town_kernel::geom::grid_wellformed]: loop body 2:
+    Source: 'kernel/src/geom.rs', lines 645:8-653:9
+    Visibility: public -/
+@[rust_loop_body]
+def geom.grid_wellformed_loop1_loop0.body
+  (next : Slice Std.U32) (width : Std.U32) (height : Std.U32)
+  (xs : Slice Std.U32) (ys : Slice Std.U32) (on : Slice Std.U32)
+  (n : Std.Usize) (c : Std.Usize) (seen : Slice Std.U32) (ok1 : Bool)
+  (p : Std.U32) :
+  Result (ControlFlow ((Slice Std.U32) × Bool × Std.U32) ((Slice Std.U32) ×
+    Bool))
+  := do
+  if ok1
+  then
+    if p != core.num.U32.MAX
+    then
+      let k ← lift (UScalar.cast .Usize p)
+      if k >= n
+      then ok (cont (seen, false, p))
+      else
+        let i ← Slice.index_usize on k
+        if i = 0#u32
+        then ok (cont (seen, false, p))
+        else
+          let i1 ← Slice.index_usize seen k
+          if i1 != 0#u32
+          then ok (cont (seen, false, p))
+          else
+            let i2 ← Slice.index_usize xs k
+            let i3 ← Slice.index_usize ys k
+            let i4 ← geom.cell_of i2 i3 width height
+            if i4 != c
+            then ok (cont (seen, false, p))
+            else
+              let s ← Slice.update seen k 1#u32
+              let p1 ← Slice.index_usize next k
+              ok (cont (s, true, p1))
+    else ok (done (seen, true))
+  else ok (done (seen, false))
+
+/-- [ai_town_kernel::geom::grid_wellformed]: loop 2:
+    Source: 'kernel/src/geom.rs', lines 645:8-653:9
+    Visibility: public -/
+@[rust_loop]
+def geom.grid_wellformed_loop1_loop0
+  (next : Slice Std.U32) (width : Std.U32) (height : Std.U32)
+  (xs : Slice Std.U32) (ys : Slice Std.U32) (on : Slice Std.U32)
+  (seen : Slice Std.U32) (n : Std.Usize) (ok1 : Bool) (c : Std.Usize)
+  (p : Std.U32) :
+  Result ((Slice Std.U32) × Bool)
+  := do
+  loop
+    (fun (seen1, ok2, p1) => geom.grid_wellformed_loop1_loop0.body next width
+      height xs ys on n c seen1 ok2 p1)
+    (seen, ok1, p)
+
+/-- [ai_town_kernel::geom::grid_wellformed]: loop body 1:
+    Source: 'kernel/src/geom.rs', lines 643:4-655:5
+    Visibility: public -/
+@[rust_loop_body]
+def geom.grid_wellformed_loop1.body
+  (head : Slice Std.U32) (next : Slice Std.U32) (width : Std.U32)
+  (height : Std.U32) (xs : Slice Std.U32) (ys : Slice Std.U32)
+  (on : Slice Std.U32) (cells : Std.Usize) (n : Std.Usize)
+  (seen : Slice Std.U32) (ok1 : Bool) (c : Std.Usize) :
+  Result (ControlFlow ((Slice Std.U32) × Bool × Std.Usize) ((Slice Std.U32)
+    × Bool))
+  := do
+  if c < cells
+  then
+    let p ← Slice.index_usize head c
+    let (seen1, ok2) ←
+      geom.grid_wellformed_loop1_loop0 next width height xs ys on seen n ok1 c
+        p
+    let c1 ← c + 1#usize
+    ok (cont (seen1, ok2, c1))
+  else ok (done (seen, ok1))
+
+/-- [ai_town_kernel::geom::grid_wellformed]: loop 1:
+    Source: 'kernel/src/geom.rs', lines 643:4-655:5
+    Visibility: public -/
+@[rust_loop]
+def geom.grid_wellformed_loop1
+  (head : Slice Std.U32) (next : Slice Std.U32) (width : Std.U32)
+  (height : Std.U32) (xs : Slice Std.U32) (ys : Slice Std.U32)
+  (on : Slice Std.U32) (seen : Slice Std.U32) (cells : Std.Usize)
+  (n : Std.Usize) (ok1 : Bool) (c : Std.Usize) :
+  Result ((Slice Std.U32) × Bool)
+  := do
+  loop
+    (fun (seen1, ok2, c1) => geom.grid_wellformed_loop1.body head next width
+      height xs ys on cells n seen1 ok2 c1)
+    (seen, ok1, c)
+
+/-- [ai_town_kernel::geom::grid_wellformed]: loop body 3:
+    Source: 'kernel/src/geom.rs', lines 657:4-663:5
+    Visibility: public -/
+@[rust_loop_body]
+def geom.grid_wellformed_loop2.body
+  (width : Std.U32) (height : Std.U32) (xs : Slice Std.U32)
+  (ys : Slice Std.U32) (on : Slice Std.U32) (seen : Slice Std.U32)
+  (cells : Std.Usize) (n : Std.Usize) (i : Std.Usize) (ok1 : Bool) :
+  Result (ControlFlow (Std.Usize × Bool) Bool)
+  := do
+  if ok1
+  then
+    if i < n
+    then
+      let i1 ← Slice.index_usize on i
+      let placed ←
+        if i1 != 0#u32
+        then
+          do
+          let i2 ← Slice.index_usize xs i
+          let i3 ← Slice.index_usize ys i
+          let i4 ← geom.cell_of i2 i3 width height
+          ok (i4 < cells)
+        else ok false
+      let i2 ← Slice.index_usize seen i
+      let ok2 ← if placed != (i2 != 0#u32)
+                  then ok false
+                  else ok true
+      let i3 ← i + 1#usize
+      ok (cont (i3, ok2))
+    else ok (done true)
+  else ok (done false)
+
+/-- [ai_town_kernel::geom::grid_wellformed]: loop 3:
+    Source: 'kernel/src/geom.rs', lines 657:4-663:5
+    Visibility: public -/
+@[rust_loop]
+def geom.grid_wellformed_loop2
+  (width : Std.U32) (height : Std.U32) (xs : Slice Std.U32)
+  (ys : Slice Std.U32) (on : Slice Std.U32) (seen : Slice Std.U32)
+  (cells : Std.Usize) (n : Std.Usize) (i : Std.Usize) (ok1 : Bool) :
+  Result Bool
+  := do
+  loop
+    (fun (i1, ok2) => geom.grid_wellformed_loop2.body width height xs ys on
+      seen cells n i1 ok2)
+    (i, ok1)
+
+/-- [ai_town_kernel::geom::grid_wellformed]:
+    Source: 'kernel/src/geom.rs', lines 627:0-665:1
+    Visibility: public -/
+def geom.grid_wellformed
+  (head : Slice Std.U32) (next : Slice Std.U32) (width : Std.U32)
+  (height : Std.U32) (xs : Slice Std.U32) (ys : Slice Std.U32)
+  (on : Slice Std.U32) (seen : Slice Std.U32) :
+  Result (Bool × (Slice Std.U32))
+  := do
+  if width = 0#u32
+  then ok (false, seen)
+  else
+    if height = 0#u32
+    then ok (false, seen)
+    else
+      let i ← lift (UScalar.cast .Usize width)
+      let i1 ← lift (UScalar.cast .Usize height)
+      let cells ← i * i1
+      let n := Slice.len xs
+      let i2 := Slice.len ys
+      if i2 < n
+      then ok (false, seen)
+      else
+        let i3 := Slice.len on
+        if i3 < n
+        then ok (false, seen)
+        else
+          let i4 := Slice.len next
+          if i4 < n
+          then ok (false, seen)
+          else
+            let i5 := Slice.len seen
+            if i5 < n
+            then ok (false, seen)
+            else
+              let i6 := Slice.len head
+              if i6 < cells
+              then ok (false, seen)
+              else
+                let seen1 ← geom.grid_wellformed_loop0 seen n 0#usize
+                let (seen2, ok1) ←
+                  geom.grid_wellformed_loop1 head next width height xs ys on
+                    seen1 cells n true 0#usize
+                let ok2 ←
+                  geom.grid_wellformed_loop2 width height xs ys on seen2 cells
+                    n 0#usize ok1
+                ok (ok2, seen2)
+
 /-- [ai_town_kernel::geom::grid_yield]: loop body 2:
-    Source: 'kernel/src/geom.rs', lines 646:20-676:21
+    Source: 'kernel/src/geom.rs', lines 705:20-735:21
     Visibility: public -/
 @[rust_loop_body]
 def geom.grid_yield_loop0_loop0_loop0.body
@@ -1651,7 +1885,7 @@ def geom.grid_yield_loop0_loop0_loop0.body
   else ok (done hit)
 
 /-- [ai_town_kernel::geom::grid_yield]: loop 2:
-    Source: 'kernel/src/geom.rs', lines 646:20-676:21
+    Source: 'kernel/src/geom.rs', lines 705:20-735:21
     Visibility: public -/
 @[rust_loop]
 def geom.grid_yield_loop0_loop0_loop0
@@ -1666,7 +1900,7 @@ def geom.grid_yield_loop0_loop0_loop0
     (hit, p, guard)
 
 /-- [ai_town_kernel::geom::grid_yield]: loop body 1:
-    Source: 'kernel/src/geom.rs', lines 640:8-680:9
+    Source: 'kernel/src/geom.rs', lines 699:8-739:9
     Visibility: public -/
 @[rust_loop_body]
 def geom.grid_yield_loop0_loop0.body
@@ -1682,13 +1916,9 @@ def geom.grid_yield_loop0_loop0.body
     then let ty1 ← ty + 1#u32
          ok (cont (true, ty1))
     else
-      let i ← lift (UScalar.cast .Usize tx)
-      let i1 ← lift (UScalar.cast .Usize height)
-      let i2 ← i * i1
-      let i3 ← lift (UScalar.cast .Usize ty)
-      let c ← i2 + i3
-      let i4 := Slice.len head
-      if c < i4
+      let c ← geom.cell_index tx ty height
+      let i := Slice.len head
+      if c < i
       then
         let p ← Slice.index_usize head c
         let hit1 ←
@@ -1701,7 +1931,7 @@ def geom.grid_yield_loop0_loop0.body
   else ok (done hit)
 
 /-- [ai_town_kernel::geom::grid_yield]: loop 1:
-    Source: 'kernel/src/geom.rs', lines 640:8-680:9
+    Source: 'kernel/src/geom.rs', lines 699:8-739:9
     Visibility: public -/
 @[rust_loop]
 def geom.grid_yield_loop0_loop0
@@ -1717,7 +1947,7 @@ def geom.grid_yield_loop0_loop0
     (hit, ty)
 
 /-- [ai_town_kernel::geom::grid_yield]: loop body 0:
-    Source: 'kernel/src/geom.rs', lines 638:4-682:5
+    Source: 'kernel/src/geom.rs', lines 697:4-741:5
     Visibility: public -/
 @[rust_loop_body]
 def geom.grid_yield_loop0.body
@@ -1737,7 +1967,7 @@ def geom.grid_yield_loop0.body
   else ok (done hit)
 
 /-- [ai_town_kernel::geom::grid_yield]: loop 0:
-    Source: 'kernel/src/geom.rs', lines 638:4-682:5
+    Source: 'kernel/src/geom.rs', lines 697:4-741:5
     Visibility: public -/
 @[rust_loop]
 def geom.grid_yield_loop0
@@ -1753,7 +1983,7 @@ def geom.grid_yield_loop0
     (hit, tx)
 
 /-- [ai_town_kernel::geom::grid_yield]:
-    Source: 'kernel/src/geom.rs', lines 611:0-684:1
+    Source: 'kernel/src/geom.rs', lines 670:0-743:1
     Visibility: public -/
 def geom.grid_yield
   (width : Std.U32) (height : Std.U32) (head : Slice Std.U32)

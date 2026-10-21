@@ -11,7 +11,7 @@ mod rules;
 mod step;
 
 pub use batch::{batch_seek, scalar_seek};
-pub use geom::{dist_sq, grid_build, grid_hit, grid_yield, isqrt, manhattan, mask_blocked, near_index, path_pose, set_blocked, MinHeap, NearIndex, Pose};
+pub use geom::{cell_index, cell_of, dist_sq, grid_build, grid_hit, grid_wellformed, grid_yield, isqrt, manhattan, mask_blocked, near_index, path_pose, set_blocked, MinHeap, NearIndex, Pose};
 pub use rules::{collision_safe, diff, exclusive, members_consistent, motion_isolated, paths_isolated, run_ticks, run_ticks_seq, same_motion};
 pub use step::{agent_step, propose_one, resolve_one, scan_hit, scan_yield, tick_moves, tick_players, tick_players_round, tick_round, Landing, Proposal};
 

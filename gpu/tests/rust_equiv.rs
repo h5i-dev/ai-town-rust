@@ -218,3 +218,66 @@ fn ptx_matches_tick_round() {
     assert_eq!((seek.xs, seek.ys), (sx, sy));
     assert_eq!(seek.errors, vec![0]);
 }
+
+/// A crowd that all walks toward the middle of a walled map, so most rounds
+/// have contested landings. Every device grid is checked with the kernel's
+/// `grid_wellformed`, and every round must land where `tick_round` lands.
+#[test]
+fn ptx_matches_tick_round_in_a_crowd_with_checked_grids() {
+    let path = match ptx_path() {
+        Some(path) => path,
+        None => {
+            if std::env::var("AI_TOWN_REQUIRE_PTX").ok().as_deref() == Some("1") {
+                panic!("PTX image missing");
+            }
+            return;
+        }
+    };
+    static LOCK: Mutex<()> = Mutex::new(());
+    let _guard = LOCK.lock().unwrap_or_else(|err| err.into_inner());
+    let mut dev = RustDevice::open_path(&path).unwrap_or_else(|err| panic!("open {}: {}", err.op, err.code));
+    dev.set_verify_grid(true);
+
+    let (w, h) = (40u32, 40u32);
+    let mut mask = open_mask(w, h);
+    let mut seed = 0x5eed_u64;
+    let mut rand = move || {
+        seed ^= seed >> 12;
+        seed ^= seed << 25;
+        seed ^= seed >> 27;
+        seed.wrapping_mul(0x2545_f491_4f6c_dd1d)
+    };
+    for _ in 0..120 {
+        set_blocked(&mut mask, w, h, (rand() % w as u64) as u32, (rand() % h as u64) as u32);
+    }
+    // One agent per open tile on a sparse lattice, so the start is collision-free.
+    let (mut xs, mut ys, mut ids) = (Vec::new(), Vec::new(), Vec::new());
+    for tx in (0..w).step_by(2) {
+        for ty in (0..h).step_by(2) {
+            if !ai_town_kernel::mask_blocked(&mask, w, h, tx * 1000 + 500, ty * 1000 + 500) {
+                xs.push(tx * 1000 + 500);
+                ys.push(ty * 1000 + 500);
+                ids.push(rand() % 50);
+            }
+        }
+    }
+    let n = xs.len();
+    let moving = vec![1u32; n];
+    let toward = |a: u32, b: u32| if a < b { a + (b - a).min(300) } else { a - (a - b).min(300) };
+    let mut contested = 0;
+    for round in 0..40 {
+        let cand_x: Vec<u32> = xs.iter().map(|&x| toward(x, 20_000)).collect();
+        let cand_y: Vec<u32> = ys.iter().map(|&y| toward(y, 20_000)).collect();
+        let (cx, cy) = cpu_round(&xs, &ys, &moving, &cand_x, &cand_y, &ids, &mask, w, h);
+        let gpu = dev
+            .round(&xs, &ys, &moving, &cand_x, &cand_y, &ids, &mask, w, h)
+            .unwrap_or_else(|err| panic!("round {round}: {} {}", err.op, err.code));
+        assert_eq!(gpu.out.error, 0, "round {round}");
+        assert_eq!((&gpu.out.xs, &gpu.out.ys), (&cx, &cy), "round {round}");
+        contested += (0..n).filter(|&i| (cx[i], cy[i]) == (xs[i], ys[i]) && (cand_x[i], cand_y[i]) != (xs[i], ys[i])).count();
+        xs = cx;
+        ys = cy;
+    }
+    assert!(n > 300, "crowd of {n}");
+    assert!(contested > 1000, "only {contested} refused moves; the crowd is not contested");
+}

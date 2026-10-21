@@ -101,6 +101,7 @@ pub struct RustDevice {
     func: CUfunction,
     step_func: CUfunction,
     round_func: CUfunction,
+    verify_grid: bool,
     _thread: PhantomData<*const ()>,
 }
 
@@ -183,8 +184,15 @@ impl RustDevice {
                 let _ = cuCtxDestroy_v2(ctx);
                 return Err(GpuError { op: "cuModuleGetFunction", code: got_round });
             }
-            Ok(RustDevice { ctx, module, func, step_func, round_func, _thread: PhantomData })
+            Ok(RustDevice { ctx, module, func, step_func, round_func, verify_grid: false, _thread: PhantomData })
         }
+    }
+
+    /// When on, [`Self::rounds`] copies every grid the device builds back to
+    /// the host and refuses the batch unless `ai_town_kernel::grid_wellformed`
+    /// accepts it. The copies stall the stream, so leave it off when timing.
+    pub fn set_verify_grid(&mut self, on: bool) {
+        self.verify_grid = on;
     }
 
     pub fn open_path(path: &Path) -> Result<Self, GpuError> {
@@ -605,8 +613,14 @@ impl RustDevice {
                 let cy = d_cy + byte;
                 let on = d_on + byte;
                 self.one_phase(d_xs, d_ys, d_moving, cx, cy, on, d_ids, d_mask, mask_len, d_head, d_next, d_px, d_py, d_po, width_arg, height_arg, 0, n_arg, cells, grid, block)?;
+                if self.verify_grid {
+                    check_grid(d_head, d_next, d_xs, d_ys, None, n, cells, width, height)?;
+                }
                 self.one_phase(d_xs, d_ys, d_moving, cx, cy, on, d_ids, d_mask, mask_len, d_head, d_next, d_px, d_py, d_po, width_arg, height_arg, 1, n_arg, cells, grid, block)?;
                 self.one_phase(d_xs, d_ys, d_moving, cx, cy, on, d_ids, d_mask, mask_len, d_head, d_next, d_px, d_py, d_po, width_arg, height_arg, 2, n_arg, cells, grid, block)?;
+                if self.verify_grid {
+                    check_grid(d_head, d_next, d_px, d_py, Some(d_po), n, cells, width, height)?;
+                }
                 self.one_phase(d_xs, d_ys, d_moving, cx, cy, on, d_ids, d_mask, mask_len, d_head, d_next, d_px, d_py, d_po, width_arg, height_arg, 3, n_arg, cells, grid, block)?;
                 round += 1;
             }
@@ -703,6 +717,43 @@ impl RustDevice {
                 std::ptr::null_mut(),
             )
         })
+    }
+}
+
+fn d2h<T: Copy + Default>(src: CUdeviceptr, len: usize) -> Result<Vec<T>, GpuError> {
+    let mut out = vec![T::default(); len];
+    if len > 0 {
+        check("cuMemcpyDtoH", unsafe { cuMemcpyDtoH_v2(out.as_mut_ptr().cast(), src, std::mem::size_of_val(out.as_slice())) })?;
+    }
+    Ok(out)
+}
+
+/// Copy a device-built grid back and run the kernel's `grid_wellformed` on it.
+/// `on` is `None` for the position grid, where every agent is inserted.
+fn check_grid(
+    d_head: CUdeviceptr,
+    d_next: CUdeviceptr,
+    d_xs: CUdeviceptr,
+    d_ys: CUdeviceptr,
+    d_on: Option<CUdeviceptr>,
+    n: usize,
+    cells: usize,
+    width: u32,
+    height: u32,
+) -> Result<(), GpuError> {
+    let head: Vec<u32> = d2h(d_head, cells)?;
+    let next: Vec<u32> = d2h(d_next, n)?;
+    let xs: Vec<u32> = d2h(d_xs, n)?;
+    let ys: Vec<u32> = d2h(d_ys, n)?;
+    let on: Vec<u32> = match d_on {
+        Some(d) => d2h(d, n)?,
+        None => vec![1; n],
+    };
+    let mut seen = vec![0u32; n];
+    if ai_town_kernel::grid_wellformed(&head, &next, width, height, &xs, &ys, &on, &mut seen) {
+        Ok(())
+    } else {
+        Err(GpuError { op: "grid_wellformed", code: -4 })
     }
 }
 

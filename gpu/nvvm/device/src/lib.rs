@@ -133,18 +133,12 @@ unsafe fn atomic_exch_u32(addr: *mut u32, val: u32) -> u32 {
 
 /// Push agent `i` onto the cell that contains `(xs[i], ys[i])`.
 ///
-/// Out-of-map agents stay unlinked. The chain order differs from the
-/// sequential `grid_build` inserts. Membership matches, and `grid_hit` /
-/// `grid_yield` only care about the set.
+/// The cell is `geom::cell_of`, the kernel's formula. Out-of-map agents stay
+/// unlinked. The chain order differs from the sequential `grid_build` inserts.
+/// `geom::grid_wellformed` accepts either order, and the differential test
+/// runs it on the grid this phase builds.
 unsafe fn insert_cell(head: *mut u32, next: *mut u32, xs: *const u32, ys: *const u32, i: usize, width: u32, height: u32) {
-    let x = unsafe { *xs.add(i) };
-    let y = unsafe { *ys.add(i) };
-    let tx = x / MILLI;
-    let ty = y / MILLI;
-    if tx >= width || ty >= height {
-        return;
-    }
-    let cell = (tx as usize) * (height as usize) + (ty as usize);
+    let cell = geom::cell_of(unsafe { *xs.add(i) }, unsafe { *ys.add(i) }, width, height);
     let cells = (width as usize) * (height as usize);
     if cell >= cells {
         return;

@@ -688,3 +688,121 @@ fn sequential_tick_still_sees_the_earlier_landing() {
     assert!(collision_safe(&sequential));
     assert_eq!(run(&s, 1, t0 + TICK_MS, Command::StepSeq).1, Err(Error::Forbidden));
 }
+
+/// xorshift64*, enough to scatter test points without a dependency.
+fn rand_next(state: &mut u64) -> u64 {
+    *state ^= *state >> 12;
+    *state ^= *state << 25;
+    *state ^= *state >> 27;
+    state.wrapping_mul(0x2545_f491_4f6c_dd1d)
+}
+
+/// Build the grid inserting agents in `order`, the way the PTX atomic pushes
+/// can interleave. Same cells as `grid_build`, different chain order.
+fn grid_build_in(order: &[usize], head: &mut [u32], next: &mut [u32], w: u32, h: u32, xs: &[u32], ys: &[u32], on: &[u32]) {
+    head.fill(u32::MAX);
+    next.fill(u32::MAX);
+    for &i in order {
+        let cell = cell_of(xs[i], ys[i], w, h);
+        if on[i] != 0 && cell < head.len() {
+            next[i] = head[cell];
+            head[cell] = i as u32;
+        }
+    }
+}
+
+#[test]
+fn grid_answers_do_not_depend_on_chain_order() {
+    let (w, h) = (12u32, 9u32);
+    let mut seed = 0x9e37_79b9_7f4a_7c15u64;
+    let mut trial = 0;
+    while trial < 200 {
+        let n = 1 + (rand_next(&mut seed) % 60) as usize;
+        let mut xs = Vec::new();
+        let mut ys = Vec::new();
+        let mut ids = Vec::new();
+        let mut on = Vec::new();
+        for _ in 0..n {
+            // A few points fall off the map, and ids repeat, to reach every branch.
+            xs.push((rand_next(&mut seed) % (w as u64 * 1000 + 800)) as u32);
+            ys.push((rand_next(&mut seed) % (h as u64 * 1000 + 800)) as u32);
+            ids.push(rand_next(&mut seed) % 20);
+            on.push((rand_next(&mut seed) % 4 != 0) as u32);
+        }
+        let mut order: Vec<usize> = (0..n).collect();
+        let mut k = n;
+        while k > 1 {
+            let j = (rand_next(&mut seed) % k as u64) as usize;
+            order.swap(k - 1, j);
+            k -= 1;
+        }
+        let mut head = vec![0u32; (w * h) as usize];
+        let mut next = vec![0u32; n];
+        let mut seen = vec![0u32; n];
+        let ones = vec![1u32; n];
+        grid_build_in(&order, &mut head, &mut next, w, h, &xs, &ys, &ones);
+        assert!(grid_wellformed(&head, &next, w, h, &xs, &ys, &ones, &mut seen), "trial {trial} position grid");
+        let mut q = 0;
+        while q < 20 {
+            let x = (rand_next(&mut seed) % (w as u64 * 1000)) as u32;
+            let y = (rand_next(&mut seed) % (h as u64 * 1000)) as u32;
+            let skip = (rand_next(&mut seed) % (n as u64 + 1)) as u32;
+            // Off-map agents are not in the grid, so compare against in-map ones.
+            let inside: Vec<bool> = (0..n).map(|i| cell_of(xs[i], ys[i], w, h) != usize::MAX).collect();
+            let scan = (0..n).any(|i| inside[i] && i as u32 != skip && dist_sq(xs[i], ys[i], x, y) < COLLISION_SQ);
+            assert_eq!(grid_hit(w, h, &head, &next, &xs, &ys, x, y, skip), scan, "trial {trial} hit");
+            q += 1;
+        }
+        grid_build_in(&order, &mut head, &mut next, w, h, &xs, &ys, &on);
+        assert!(grid_wellformed(&head, &next, w, h, &xs, &ys, &on, &mut seen), "trial {trial} proposal grid");
+        let mut i = 0;
+        while i < n {
+            let on_map: Vec<u32> = (0..n).map(|j| (on[j] != 0 && cell_of(xs[j], ys[j], w, h) != usize::MAX) as u32).collect();
+            if cell_of(xs[i], ys[i], w, h) != usize::MAX {
+                let grid = grid_yield(w, h, &head, &next, &xs, &ys, &ids, xs[i], ys[i], ids[i], i as u32);
+                assert_eq!(grid, scan_yield(&xs, &ys, &ids, &on_map, xs[i], ys[i], ids[i], i as u32), "trial {trial} yield {i}");
+            }
+            i += 1;
+        }
+        trial += 1;
+    }
+}
+
+#[test]
+fn grid_wellformed_rejects_broken_chains() {
+    let (w, h) = (4u32, 4u32);
+    let xs = vec![500u32, 600, 2500, 9000];
+    let ys = vec![500u32, 700, 1500, 500];
+    let on = vec![1u32, 1, 1, 1];
+    let mut head = vec![0u32; 16];
+    let mut next = vec![0u32; 4];
+    let mut seen = vec![0u32; 4];
+    assert!(grid_build(&mut head, &mut next, w, h, &xs, &ys, &on));
+    assert!(grid_wellformed(&head, &next, w, h, &xs, &ys, &on, &mut seen));
+    let c0 = cell_of(500, 500, w, h);
+    let c2 = cell_of(2500, 1500, w, h);
+    // Agent 3 is off the map: linking it is wrong.
+    let (mut h2, mut n2) = (head.clone(), next.clone());
+    n2[3] = h2[c2];
+    h2[c2] = 3;
+    assert!(!grid_wellformed(&h2, &n2, w, h, &xs, &ys, &on, &mut seen), "off-map agent linked");
+    // Dropping agent 2 loses a member.
+    let mut h2 = head.clone();
+    h2[c2] = u32::MAX;
+    assert!(!grid_wellformed(&h2, &next, w, h, &xs, &ys, &on, &mut seen), "missing agent");
+    // Agent 2 filed under agent 0's cell.
+    let (mut h2, mut n2) = (head.clone(), next.clone());
+    h2[c2] = u32::MAX;
+    n2[2] = h2[c0];
+    h2[c0] = 2;
+    assert!(!grid_wellformed(&h2, &n2, w, h, &xs, &ys, &on, &mut seen), "wrong cell");
+    // A cycle in cell 0.
+    let mut n2 = next.clone();
+    let first = head[c0] as usize;
+    let second = next[first] as usize;
+    n2[second] = first as u32;
+    assert!(!grid_wellformed(&head, &n2, w, h, &xs, &ys, &on, &mut seen), "cycle");
+    // An agent switched off but still linked.
+    let off = vec![1u32, 1, 0, 1];
+    assert!(!grid_wellformed(&head, &next, w, h, &xs, &ys, &off, &mut seen), "off agent linked");
+}

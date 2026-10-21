@@ -524,7 +524,7 @@ pub fn grid_hit(width: u32, height: u32, head: &[u32], next: &[u32], xs: &[u32],
         let mut ty = y0;
         while ty <= y1 {
             if !hit {
-                let c = (tx as usize) * (height as usize) + (ty as usize);
+                let c = cell_index(tx, ty, height);
                 if c < head.len() {
                     let mut p = head[c];
                     let mut guard = 0u32;
@@ -565,6 +565,24 @@ pub fn near_hit(index: &NearIndex, xs: &[u32], ys: &[u32], x: u32, y: u32, skip:
     grid_hit(index.width, index.height, &index.head, &index.next, xs, ys, x, y, skip)
 }
 
+/// Index of tile `(tx, ty)` in a column-major grid of `height` rows. The CPU
+/// grid, the walk in [`grid_hit`] and [`grid_yield`], and the PTX inserts all
+/// use this one formula.
+pub fn cell_index(tx: u32, ty: u32, height: u32) -> usize {
+    (tx as usize) * (height as usize) + (ty as usize)
+}
+
+/// The cell holding milli-tile point `(x, y)`, or `usize::MAX` off the map.
+pub fn cell_of(x: u32, y: u32, width: u32, height: u32) -> usize {
+    let tx = x / MILLI;
+    let ty = y / MILLI;
+    if width == 0 || height == 0 || tx >= width || ty >= height {
+        usize::MAX
+    } else {
+        cell_index(tx, ty, height)
+    }
+}
+
 /// Rebuild one-tile chains. `on[i] != 0` inserts agent `i` at `(xs[i], ys[i])`.
 /// Links run from the newest insert toward older ones. Returns false when the
 /// buffers are short or the map is empty, and then leaves the slices untouched.
@@ -590,19 +608,60 @@ pub fn grid_build(head: &mut [u32], next: &mut [u32], width: u32, height: u32, x
     i = 0;
     while i < n {
         if on[i] != 0 {
-            let tx = xs[i] / MILLI;
-            let ty = ys[i] / MILLI;
-            if tx < width && ty < height {
-                let cell = (tx as usize) * (height as usize) + (ty as usize);
-                if cell < cells && i < next.len() {
-                    next[i] = head[cell];
-                    head[cell] = i as u32;
-                }
+            let cell = cell_of(xs[i], ys[i], width, height);
+            if cell < cells && i < next.len() {
+                next[i] = head[cell];
+                head[cell] = i as u32;
             }
         }
         i += 1;
     }
     true
+}
+
+/// True when `head`/`next` hold exactly the agents with `on[i] != 0` whose
+/// point is on the map, each once, in the chain of its own [`cell_of`], with
+/// no cycle. Chain order is free: [`grid_build`] and the PTX atomic inserts
+/// order a cell differently, and [`grid_hit`] / [`grid_yield`] only look at
+/// membership. `seen` is scratch of at least `xs.len()` words. O(cells + n).
+pub fn grid_wellformed(head: &[u32], next: &[u32], width: u32, height: u32, xs: &[u32], ys: &[u32], on: &[u32], seen: &mut [u32]) -> bool {
+    if width == 0 || height == 0 {
+        return false;
+    }
+    let cells = (width as usize) * (height as usize);
+    let n = xs.len();
+    if ys.len() < n || on.len() < n || next.len() < n || seen.len() < n || head.len() < cells {
+        return false;
+    }
+    let mut i = 0usize;
+    while i < n {
+        seen[i] = 0;
+        i += 1;
+    }
+    let mut ok = true;
+    let mut c = 0usize;
+    while c < cells {
+        let mut p = head[c];
+        while ok && p != u32::MAX {
+            let k = p as usize;
+            if k >= n || on[k] == 0 || seen[k] != 0 || cell_of(xs[k], ys[k], width, height) != c {
+                ok = false;
+            } else {
+                seen[k] = 1;
+                p = next[k];
+            }
+        }
+        c += 1;
+    }
+    i = 0;
+    while ok && i < n {
+        let placed = on[i] != 0 && cell_of(xs[i], ys[i], width, height) < cells;
+        if placed != (seen[i] != 0) {
+            ok = false;
+        }
+        i += 1;
+    }
+    ok
 }
 
 /// True when a chained proposal with a better priority is strictly inside the
@@ -639,7 +698,7 @@ pub fn grid_yield(
         let mut ty = y0;
         while ty <= y1 {
             if !hit {
-                let c = (tx as usize) * (height as usize) + (ty as usize);
+                let c = cell_index(tx, ty, height);
                 if c < head.len() {
                     let mut p = head[c];
                     let mut guard = 0u32;
