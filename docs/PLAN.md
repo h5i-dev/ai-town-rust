@@ -62,15 +62,19 @@ step, so a click does not wait for the step boundary. Movement along a path
 still integrates on the ticks.
 
 A server built with the `gpu` feature, and started with `AI_TOWN_MOVE=gpu`,
-replaces that `Step` with sixty rounds of `tick_moves`. That is the same
-per-agent decision as the CPU tick, with neighbors from the spatial grid.
-One device thread runs the rounds in order, so a later agent sees an earlier
-landing. Each round retries the path pose; a blocked CPU step sets `PF_WAIT`
-for about a second. The pass writes positions with `Command::Relocate`, which
-sets x, y, and speed 0 and clears every path. Face and the path flag stay as
-they were. Conversations, invites, agent operations, and `meta.now_ms` advance
-when the loop runs `Command::Step`. The default build keeps the spatial-grid
-step. Clients cannot send `Relocate`.
+replaces that `Step` with sixty rounds of the two-phase rule. Each round
+proposes from the positions of the previous round, then accepts a candidate
+only when no better-priority proposal is inside the collision radius. One
+device thread handles one agent. The device rebuilds the spatial grid between
+the phases and keeps the buffers for the whole minute. A refused walker on
+the CPU enters `PF_WAIT` for about a second. The GPU minute keeps the moving
+flags from the start of the minute and retries the later path pose. The pass
+writes positions with `Command::Relocate`, which sets x, y, and speed 0 and
+clears every path. Face and the path flag stay as they were. Conversations,
+invites, agent operations, and `meta.now_ms` advance when the loop runs
+`Command::Step`. The default build runs the same two-phase round on the CPU.
+`AI_TOWN_TICK=seq` selects `Command::StepSeq`, the old index-order rule, and
+only the engine can send it. Clients cannot send `Relocate`.
 
 `Step` is refused for every other user. The shell's authenticator is the only
 code that can mint the user-0 token, and it never sends that token to a browser.
@@ -92,12 +96,12 @@ rejection: the unmodified copy builds, and each mutant makes `lake build` of
 
 Refusals commit nothing, which is the engine's contract. `apply` is what a
 later read returns. `h5i app prove` extracts the kernel and checks the proofs.
-After the per-agent decision moved into `step::agent_step` and `step::tick_moves`,
-`h5i app check` accepted the regenerated extraction. The axiom gate checked 43
-theorems in `Theorems` and named only `propext`, `Classical.choice`, and
-`Quot.sound`. `rules::occupied` stays in the extraction start list so
-`collision_safe_preserved` still names that comparison. The generated Lean has
-no `sorry` and no `axiom`.
+After the two-phase round moved into `step::propose_one`, `step::resolve_one`,
+and `step::tick_round`, `h5i app check` accepted the regenerated extraction.
+The axiom gate checked 61 theorems in `Theorems` and named only `propext`,
+`Classical.choice`, and `Quot.sound`. `rules::occupied` stays in the extraction
+start list so `collision_safe_preserved` still names that comparison. The
+generated Lean has no `sorry` and no `axiom`.
 
 `step_never_blocked` refuses a candidate whose tile the mask reports blocked.
 The agent keeps its position and speed 0. `step_never_overlap` refuses a
@@ -111,6 +115,28 @@ coordinates with a fallible `+`, so the theorems apply when that call returns.
 `tick_moves` succeeds and keeps the slice lengths) keeps the three invariants
 above. The roster lemmas under them show the pass keeps conversation lists,
 member lists, player ids, and owners. The four mutants in the table are unchanged.
+
+`propose_never_blocked`, `propose_stays_on_hit`, and `propose_clear` are the
+same three facts for a proposal. `resolve_stays`, `resolve_yields`, and
+`resolve_accepts` say a rejected proposal stays, a proposal that `grid_yield`
+reports stays, and a proposal that `grid_yield` clears is accepted. Those take
+a successful `mask_blocked`, `grid_hit`, or `grid_yield` as a hypothesis.
+`grid_hit` and `grid_yield` are not claimed to be total: the generated loops
+use a fallible `+` and a slice index. `within_radius_neighbor_tile` says a
+distance under 562500 milli-tiles squared puts the other agent on the same
+tile or a neighbor tile, which is why a 3 by 3 neighborhood covers the radius
+when the cell is one tile and the radius is 0.75. `two_phase_apart` is the
+round on plain functions. Given positions already outside the radius, a
+proposal that is clear of every previous position and unblocked, and an
+acceptance that yields to every better-priority proposal inside the radius,
+the resulting positions stay outside the radius and an accepted agent was not
+blocked. A rejected agent keeps the previous position. The theorem does not
+unfold `grid_hit` or `grid_yield` into that scan. `tick_players_round_preserves_exclusive`,
+`tick_players_round_preserves_members`, and `tick_players_round_preserves_own_player`
+say a round that returns under `RoundOk` (the call succeeds and the coordinate
+slices keep the player count) keeps the three invariants. The cell-count
+hypothesis is the map width times the height, which fits for the maps this
+kernel builds.
 
 ## Agents and the model
 
@@ -180,7 +206,7 @@ An earlier 4-step run with every agent walking to the bottom row, on that same c
 
 `CreateAgent` now asks the same one-tile grid the tick uses. On an idle machine, placing 10,000 agents took 22.3 s and giving each a path took 49.6 s, 71.9 s together. The step after the warmup was 193 ms (310 ticks/s). The earlier combined setup, still scanning every player for every candidate tile, was about 87 s. Each create still builds a fresh grid, so the placement total stays quadratic, and pathfinding is the larger share.
 
-`h5i-app-gpu` is not a crate on crates.io, and this tree does not depend on it. The h5i GPU note describes an experimental search and push backend outside extraction. The movement decision on the device is `kernel`'s `tick_moves`, the same Rust function the CPU tick calls through `agent_step`. The device entry is `step_batch`. Thread 0 runs that tick in order and writes x and y. The face and speed arguments inside that device call are 0. Host `move_one` still passes the real pose into `agent_step` and writes the landing face and speed. The extraction names `agent_step`, `tick_moves`, and `tick_players`. `seek_one` remains the baseline entry `seek_batch`, and the hand-written `seek.cu` cubin stays beside it. `gpu/nvvm` compiles that source with `rustc_codegen_nvvm` from rust-cuda `3a82c35a7196731fb60eebdac2a40d2b1bf0ba95` on nightly-2026-04-02, target `nvptx64-nvidia-cuda`, arch `compute_86`. The toolchain, the LLVM download, and the build directory are `/dev/shm/ai-town-rust`. Launches set `CUDA_VISIBLE_DEVICES=0`. Arena packing follows the h5i GPU layout. `cargo test --manifest-path gpu/Cargo.toml` checks that packing and, when the PTX image is present, checks `step_batch` against host `tick_moves`. The launch, the copies, the path pose, the grid rebuild, and the `Relocate` write-back sit outside the proof.
+`h5i-app-gpu` is not a crate on crates.io, and this tree does not depend on it. The h5i GPU note describes an experimental search and push backend outside extraction. The movement decision on the device is `kernel`'s `propose_one` and `resolve_one`, the same Rust functions `tick_round` calls on the CPU. The device entry is `round_phase`. Each phase is one thread per agent. Phase 0 inserts the previous positions, phase 1 proposes, phase 2 inserts the proposals, and phase 3 resolves. The grid insert is an atomic exchange onto the cell head, so the chain membership matches `grid_build` and the chain order may differ. The differential test compares final coordinates. `step_batch` remains the one-thread `tick_moves` baseline. `seek_one` remains the baseline entry `seek_batch`, and the hand-written `seek.cu` cubin stays beside it. `gpu/nvvm` compiles that source with `rustc_codegen_nvvm` from rust-cuda `3a82c35a7196731fb60eebdac2a40d2b1bf0ba95` on nightly-2026-04-02, target `nvptx64-nvidia-cuda`, arch `compute_86`. The toolchain, the LLVM download, and the build directory are `/dev/shm/ai-town-rust`. Arena packing follows the h5i GPU layout. `cargo test --manifest-path gpu/Cargo.toml` checks that packing and, when the PTX image is present, checks `round_phase` against host `tick_round` and `step_batch` against host `tick_moves`. The launch, the copies, the path pose, and the `Relocate` write-back sit outside the proof.
 
 `seek.cu` follows `scalar_seek`: move on x, then on y, then reject the whole step if the tile is blocked or another agent, at its original position, is inside the collision radius. The release cubin bench on this machine (sm_86) measured one seek at 1,000 / 10,000 / 50,000 agents. The CPU column here is that scalar scan:
 
@@ -202,7 +228,7 @@ An earlier fair bench timed `seek_one`, the greedy scan of every agent, for 60 t
 
 One launch of that scan, after a warmup, took 0.13 ms, 1.25 ms, and 15.11 ms of device time (wall 13.87 ms, 14.93 ms, and 19.56 ms).
 
-The current fair bench times the product CPU step against `tick_moves` on the device. The CPU columns are `run_ticks` on the spatial grid and `transition(Command::Step)`, each covering 60 ticks. The GPU columns are the same 60 ticks: the host asks `path_pose` for each candidate, rebuilds the one-tile grid, and launches one thread. Device time is the sum of CUDA events. Wall time includes the host path pose, the grid rebuild, the copies, and the launch. Every agent walks east on an open mask at the same speed, so the gap between neighbors stays 1000 milli-tiles. Agent 0 moved, and every x and y matched the CPU `run_ticks` result.
+An earlier fair bench timed `tick_moves` on one device thread against the product CPU step. The CPU columns are `run_ticks` and `transition(Command::Step)`. The GPU columns rebuild the grid on the host and launch that one thread. Every agent walks east on an open mask. Positions matched. The one-thread kernel is slower than the CPU spatial tick at each size. GPU 0 was in use by another process, so these times are an upper bound for an idle card.
 
 | Agents | CPU `run_ticks` | CPU `Step` | GPU one kernel | GPU one wall | GPU 60 kernel | GPU 60 wall |
 |---:|---:|---:|---:|---:|---:|---:|
@@ -210,11 +236,31 @@ The current fair bench times the product CPU step against `tick_moves` on the de
 | 10,000 | 94.99 ms | 98.11 ms | 42.14 ms | 58.14 ms | 2,588.81 ms | 3,632.88 ms |
 | 50,000 | 481.09 ms | 493.78 ms | 243.17 ms | 251.44 ms | 14,442.59 ms | 14,988.62 ms |
 
-The one-thread kernel is slower than the CPU spatial tick at each size. At 1,000 and 10,000 agents the wall time is mostly host work. At 50,000 the kernel time (14.4 s) is most of the wall (15.0 s). GPU 0 was in use by another process during the run, so these times are an upper bound for an idle card.
+The current fair bench times the two-phase round. `cpu_tick_ms` is the product `run_ticks`. `cpu_round_ms` is 60 calls of `tick_round` on one thread, with candidates prepared before the timer. `cpu_parallel_ms` is those rounds on a pool of 8 threads, started once, with the grid build on the main thread. The machine reported 128 hardware threads. The GPU columns are `RustDevice::rounds`: one copy in, the minute resident on the device, one copy out. Kernel time is the CUDA events around the memsets and launches. Every agent walks east on an open mask, so the rules agree. Agent 0 moved, and the single-thread round, the pool, the GPU, and `run_ticks` landed on the same coordinates.
 
-The sim loop can run that PTX path. Build `ai-town-server` with `--features gpu` and set `AI_TOWN_MOVE=gpu`. A dedicated thread owns the CUDA context. Each second it runs 60 rounds of `tick_moves` for the players whose path flag is already moving, leaves everyone else in place as an obstacle, and commits `Command::Relocate`. A refused round retries the path pose on the next tick of the minute. A failed open or a failed tick logs `gpu step failed` and the loop falls back to `Command::Step` for that second. With the feature off, `AI_TOWN_MOVE=gpu` logs `gpu step unavailable` and keeps the CPU step.
+| Agents | CPU tick | CPU round | CPU 8 threads | GPU one kernel | GPU one wall | GPU 60 kernel | GPU 60 wall |
+|---:|---:|---:|---:|---:|---:|---:|---:|
+| 1,000 | 10.518 ms | 4.442 ms | 7.427 ms | 0.025 ms | 18.314 ms | 1.297 ms | 12.631 ms |
+| 10,000 | 110.665 ms | 47.452 ms | 49.898 ms | 0.030 ms | 15.958 ms | 1.553 ms | 9.339 ms |
+| 50,000 | 570.884 ms | 241.943 ms | 176.000 ms | 0.038 ms | 1.820 ms | 2.011 ms | 8.286 ms |
+| 100,000 | 1,202.314 ms | 481.704 ms | 312.842 ms | 0.059 ms | 1.713 ms | 5.752 ms | 15.447 ms |
 
-End-to-end latency below is the previous greedy `seek_one` path, measured by `bench`'s `pipe` binary: `POST /rpc` `move_to`, then the batched tick, then the websocket snapshot whose x or y changed. The `tick_moves` pipe was left unmeasured. The run uses database `ai_town_pipe` on `127.0.0.1:18081` and the stub provider. `AI_TOWN_DRAIN=off` leaves the agent worker idle so the crowd is not also pathfinding. The world is a 128 by 128 open mask, the largest `Init` accepts (`MAX_DIM` is 128, 16,384 tiles). The gentle map is 64 by 48. A 50,000-agent HTTP world needs a wider map than `Init` allows, so that size stays in the in-memory fair bench.
+The 8-thread pool takes 7.427 ms at 1,000 agents and 49.898 ms at 10,000, where one thread takes 4.442 ms and 47.452 ms. It takes 176.000 ms at 50,000 and 312.842 ms at 100,000, where one thread takes 241.943 ms and 481.704 ms. The 60-round GPU kernel takes 1.297 ms, 1.553 ms, 2.011 ms, and 5.752 ms. The one-round wall of 18.314 ms at 1,000 agents pays for device allocation. The run used GPU 2. A snapshot at 2026-10-21T06:43:58-04:00 showed all four RTX 3090s busy (93%, 95%, 100%, 100% utilization and 21,440, 21,228, 22,048, 23,636 MiB of 24,576 MiB). GPU 2 was at 100% and 22,048 MiB, so these times are an upper bound for an idle card. Other processes were left running.
+
+The sim loop can run that PTX path. Build `ai-town-server` with `--features gpu` and set `AI_TOWN_MOVE=gpu`. A dedicated thread owns the CUDA context. Each second it runs 60 two-phase rounds for the players whose path flag is already moving, leaves everyone else in place as an obstacle, and commits `Command::Relocate`. Candidates for the minute are copied once. A refused CPU walker enters `PF_WAIT`. The GPU minute retries the later path pose. Its last sample is the wall clock when `meta.now_ms` is more than 960 ms behind that clock, because paths are stamped with the command clock. `Relocate` clears every path, and the sim tick and RPC share one lock for the whole step, so a path committed during the device minute is still present when `Relocate` runs. A failed open or a failed tick logs `gpu step failed` and the loop falls back to `Command::Step` for that second. With the feature off, `AI_TOWN_MOVE=gpu` logs `gpu step unavailable` and keeps the CPU step. The CPU step is the two-phase round unless `AI_TOWN_TICK=seq`.
+
+End-to-end latency is `bench`'s `pipe` binary on this two-phase round: `POST /rpc` `move_to`, then the batched tick, then the websocket snapshot whose x or y changed. The run uses database `ai_town_pipe` on `127.0.0.1:18081` and the stub provider. `AI_TOWN_DRAIN=off` leaves the agent worker idle so the crowd is not also pathfinding. The world is a 128 by 128 open mask, the largest `Init` accepts (`MAX_DIM` is 128, 16,384 tiles). The gentle map is 64 by 48. A 50,000-agent HTTP world needs a wider map than `Init` allows, so that size stays in the in-memory fair bench. The joined player is a session id whose spawn tile has a free orthogonal step, and `move_to` targets that neighbor. A one-tile pocket can have a collision-legal step that leads away from a far destination, and `find_route` then returns no path while `begin_move` still returns success. After the position moves, the bench sends `stop`. CPU and GPU rows are the same server build.
+
+| Mode | Agents | HTTP `move_to` | Position on the websocket |
+|---|---:|---:|---:|
+| cpu | 1,000 | 45.848 ms | 1,164.234 ms |
+| cpu | 10,000 | 478.995 ms | 15,293.189 ms |
+| gpu | 1,000 | 41.644 ms | 263.860 ms |
+| gpu | 10,000 | 359.155 ms | 1,173.561 ms |
+
+The sim loop wakes once a second, so the push includes the wait for the next tick. At 10,000 agents the CPU push was 15,293.189 ms and the GPU push was 1,173.561 ms. The GPU rows used `round_phase` on GPU 2. A snapshot at 2026-10-21T07:37:30-04:00 showed that card idle at 0% utilization and 4 MiB of 24,576 MiB. The other three RTX 3090s were at 100%, 98%, and 100% utilization, with 20,508, 21,420, and 21,982 MiB in use. Other processes were left running.
+
+An earlier pipe measured the greedy `seek_one` path. The `tick_moves` pipe was left unmeasured. Those GPU rows used `CUDA_VISIBLE_DEVICES=0`:
 
 | Mode | Agents | HTTP `move_to` | Position on the websocket |
 |---|---:|---:|---:|
@@ -223,7 +269,7 @@ End-to-end latency below is the previous greedy `seek_one` path, measured by `be
 | gpu | 1,000 | 43.0 ms | 577 ms |
 | gpu | 10,000 | 229.9 ms | 1,863 ms |
 
-The sim loop wakes once a second, so the push includes the wait for the next tick. At 10,000 agents the CPU push was 14.9 s and the GPU push was 1.86 s. The GPU rows used the `seek_one` PTX image and `CUDA_VISIBLE_DEVICES=0`.
+At 10,000 agents on that path the CPU push was 14.9 s and the GPU push was 1.86 s.
 
 ## Trusted boundary
 
@@ -235,4 +281,4 @@ matching the h5i-app tutorials:
 - PostgreSQL commits the write set or nothing
 - the agent worker sends commands as the agent user the kernel assigned
 - the model, when enabled, only supplies text and a chosen tile. The kernel still accepts or refuses the command
-- the optional GPU thread loads the PTX image of `tick_moves` (`step_batch`) and submits `Relocate` as user 0
+- the optional GPU thread loads the PTX image of the two-phase round (`round_phase`) and submits `Relocate` as user 0
