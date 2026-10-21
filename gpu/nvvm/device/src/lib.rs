@@ -14,10 +14,7 @@
 #![allow(unused_imports)]
 // `build-device.sh` passes `-Zcrate-attr=no_std`. A second `#![no_std]` here warns.
 
-pub const MILLI: u32 = 1000;
-pub const COLLISION_SQ: u64 = 750 * 750;
-pub const FACE_BIAS: u32 = 1000;
-pub const SPEED: u32 = 750;
+include!("../../../../kernel/src/consts.rs");
 
 #[path = "../../../../kernel/src/geom.rs"]
 mod geom;

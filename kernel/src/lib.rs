@@ -15,11 +15,8 @@ pub use geom::{dist_sq, grid_build, grid_hit, grid_yield, isqrt, manhattan, mask
 pub use rules::{collision_safe, diff, exclusive, members_consistent, motion_isolated, paths_isolated, run_ticks, run_ticks_seq, same_motion};
 pub use step::{agent_step, propose_one, resolve_one, scan_hit, scan_yield, tick_moves, tick_players, tick_players_round, tick_round, Landing, Proposal};
 
-/// One tile, in milli-tiles.
-pub const MILLI: u32 = 1000;
-/// 0.75 tiles per second.
-pub const SPEED: u32 = 750;
-pub const COLLISION_SQ: u64 = 750 * 750;
+include!("consts.rs");
+
 pub const TALK_SQ: u64 = 1300 * 1300;
 pub const TICK_MS: u64 = 16;
 pub const MAX_TICKS: u32 = 60;
@@ -37,7 +34,6 @@ pub const MAX_MESSAGES: u64 = 8;
 pub const MESSAGE_COOLDOWN_MS: u64 = 2_000;
 pub const ACTION_TIMEOUT_MS: u64 = 120_000;
 pub const ACTIVITY_MS: u64 = 60_000;
-pub const FACE_BIAS: u32 = 1000;
 pub const ENGINE: u64 = 0;
 pub const AGENT_BASE: u64 = 1_000_000;
 pub const MAX_DIM: u32 = 128;

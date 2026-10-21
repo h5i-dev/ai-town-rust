@@ -251,6 +251,27 @@ inductive h5i_app_sql.Write where
 | Del : Std.U32 → alloc.vec.Vec h5i_app_sql.Val → h5i_app_sql.Write
 | DelWhere : Std.U32 → Std.U32 → h5i_app_sql.Val → h5i_app_sql.Write
 
+/-- [ai_town_kernel::MILLI]
+    Source: 'kernel/src/consts.rs', lines 6:0-6:28
+    Visibility: public -/
+@[global_simps, irreducible] def MILLI : Std.U32 := 1000#u32
+
+/-- [ai_town_kernel::SPEED]
+    Source: 'kernel/src/consts.rs', lines 8:0-8:27
+    Visibility: public -/
+@[global_simps, irreducible] def SPEED : Std.U32 := 750#u32
+
+/-- [ai_town_kernel::COLLISION_SQ]
+    Source: 'kernel/src/consts.rs', lines 9:0-9:40
+    Visibility: public -/
+@[global_simps, irreducible]
+def COLLISION_SQ : Result Std.U64 := 750#u64 * 750#u64
+
+/-- [ai_town_kernel::FACE_BIAS]
+    Source: 'kernel/src/consts.rs', lines 10:0-10:32
+    Visibility: public -/
+@[global_simps, irreducible] def FACE_BIAS : Std.U32 := 1000#u32
+
 /-- [ai_town_kernel::geom::abs_diff]:
     Source: 'kernel/src/geom.rs', lines 12:0-18:1
     Visibility: public -/
@@ -329,11 +350,6 @@ def geom.isqrt (n : Std.U64) : Result Std.U64 := do
        let y ← i + 1#u64
        geom.isqrt_loop n n y
 
-/-- [ai_town_kernel::FACE_BIAS]
-    Source: 'kernel/src/lib.rs', lines 40:0-40:32
-    Visibility: public -/
-@[global_simps, irreducible] def FACE_BIAS : Std.U32 := 1000#u32
-
 /-- [ai_town_kernel::geom::face_zero]:
     Source: 'kernel/src/geom.rs', lines 54:0-56:1
     Visibility: public -/
@@ -396,21 +412,11 @@ def geom.face_toward
     else let fdy ← FACE_BIAS - my
          ok (fdx, fdy)
 
-/-- [ai_town_kernel::MILLI]
-    Source: 'kernel/src/lib.rs', lines 19:0-19:28
-    Visibility: public -/
-@[global_simps, irreducible] def MILLI : Std.U32 := 1000#u32
-
 /-- [ai_town_kernel::geom::tile_of]:
     Source: 'kernel/src/geom.rs', lines 94:0-96:1
     Visibility: public -/
 def geom.tile_of (milli : Std.U32) : Result Std.U32 := do
   milli / MILLI
-
-/-- [ai_town_kernel::SPEED]
-    Source: 'kernel/src/lib.rs', lines 21:0-21:27
-    Visibility: public -/
-@[global_simps, irreducible] def SPEED : Std.U32 := 750#u32
 
 /-- [ai_town_kernel::geom::travel_ms]:
     Source: 'kernel/src/geom.rs', lines 100:0-102:1
@@ -619,7 +625,7 @@ def geom.colinear
             else ok false
 
 /-- [ai_town_kernel::{impl core::clone::Clone for ai_town_kernel::PathNode}::clone]:
-    Source: 'kernel/src/lib.rs', lines 125:13-125:18
+    Source: 'kernel/src/lib.rs', lines 121:13-121:18
     Visibility: public -/
 def PathNode.Insts.CoreCloneClone.clone
   (self : PathNode) : Result PathNode := do
@@ -642,7 +648,7 @@ def PathNode.Insts.CoreCloneClone.clone
     }
 
 /-- Trait implementation: [ai_town_kernel::{impl core::clone::Clone for ai_town_kernel::PathNode}]
-    Source: 'kernel/src/lib.rs', lines 125:13-125:18 -/
+    Source: 'kernel/src/lib.rs', lines 121:13-121:18 -/
 @[reducible]
 def PathNode.Insts.CoreCloneClone : core.clone.Clone PathNode := {
   clone := PathNode.Insts.CoreCloneClone.clone
@@ -1181,12 +1187,6 @@ def geom.near_index
       head := (alloc.vec.Vec.new Std.U32),
       next := (alloc.vec.Vec.new Std.U32)
     } width height xs ys
-
-/-- [ai_town_kernel::COLLISION_SQ]
-    Source: 'kernel/src/lib.rs', lines 22:0-22:40
-    Visibility: public -/
-@[global_simps, irreducible]
-def COLLISION_SQ : Result Std.U64 := 750#u64 * 750#u64
 
 /-- [ai_town_kernel::geom::grid_hit]: loop body 2:
     Source: 'kernel/src/geom.rs', lines 531:20-552:21
@@ -1794,177 +1794,177 @@ def geom.grid_yield
             x1 y1 false tx
 
 /-- [ai_town_kernel::TALK_SQ]
-    Source: 'kernel/src/lib.rs', lines 23:0-23:37
+    Source: 'kernel/src/lib.rs', lines 20:0-20:37
     Visibility: public -/
 @[global_simps, irreducible]
 def TALK_SQ : Result Std.U64 := 1300#u64 * 1300#u64
 
 /-- [ai_town_kernel::TICK_MS]
-    Source: 'kernel/src/lib.rs', lines 24:0-24:28
+    Source: 'kernel/src/lib.rs', lines 21:0-21:28
     Visibility: public -/
 @[global_simps, irreducible] def TICK_MS : Std.U64 := 16#u64
 
 /-- [ai_town_kernel::MAX_TICKS]
-    Source: 'kernel/src/lib.rs', lines 25:0-25:30
+    Source: 'kernel/src/lib.rs', lines 22:0-22:30
     Visibility: public -/
 @[global_simps, irreducible] def MAX_TICKS : Std.U32 := 60#u32
 
 /-- [ai_town_kernel::MAX_PATHFINDS]
-    Source: 'kernel/src/lib.rs', lines 26:0-26:34
+    Source: 'kernel/src/lib.rs', lines 23:0-23:34
     Visibility: public -/
 @[global_simps, irreducible] def MAX_PATHFINDS : Std.U32 := 16#u32
 
 /-- [ai_town_kernel::PATH_TIMEOUT_MS]
-    Source: 'kernel/src/lib.rs', lines 27:0-27:40
+    Source: 'kernel/src/lib.rs', lines 24:0-24:40
     Visibility: public -/
 @[global_simps, irreducible] def PATH_TIMEOUT_MS : Std.U64 := 60000#u64
 
 /-- [ai_town_kernel::MAX_HUMANS]
-    Source: 'kernel/src/lib.rs', lines 29:0-29:32
+    Source: 'kernel/src/lib.rs', lines 26:0-26:32
     Visibility: public -/
 @[global_simps, irreducible] def MAX_HUMANS : Std.Usize := 8#usize
 
 /-- [ai_town_kernel::IDLE_MS]
-    Source: 'kernel/src/lib.rs', lines 30:0-30:39
+    Source: 'kernel/src/lib.rs', lines 27:0-27:39
     Visibility: public -/
 @[global_simps, irreducible]
 def IDLE_MS : Result Std.U64 := do let i ← 5#u64 * 60#u64
                                    i * 1000#u64
 
 /-- [ai_town_kernel::TYPING_MS]
-    Source: 'kernel/src/lib.rs', lines 31:0-31:34
+    Source: 'kernel/src/lib.rs', lines 28:0-28:34
     Visibility: public -/
 @[global_simps, irreducible] def TYPING_MS : Std.U64 := 15000#u64
 
 /-- [ai_town_kernel::INVITE_MS]
-    Source: 'kernel/src/lib.rs', lines 32:0-32:34
+    Source: 'kernel/src/lib.rs', lines 29:0-29:34
     Visibility: public -/
 @[global_simps, irreducible] def INVITE_MS : Std.U64 := 60000#u64
 
 /-- [ai_town_kernel::CONV_COOLDOWN_MS]
-    Source: 'kernel/src/lib.rs', lines 33:0-33:41
+    Source: 'kernel/src/lib.rs', lines 30:0-30:41
     Visibility: public -/
 @[global_simps, irreducible] def CONV_COOLDOWN_MS : Std.U64 := 15000#u64
 
 /-- [ai_town_kernel::AWKWARD_MS]
-    Source: 'kernel/src/lib.rs', lines 34:0-34:35
+    Source: 'kernel/src/lib.rs', lines 31:0-31:35
     Visibility: public -/
 @[global_simps, irreducible] def AWKWARD_MS : Std.U64 := 60000#u64
 
 /-- [ai_town_kernel::MAX_CONV_MS]
-    Source: 'kernel/src/lib.rs', lines 35:0-35:44
+    Source: 'kernel/src/lib.rs', lines 32:0-32:44
     Visibility: public -/
 @[global_simps, irreducible]
 def MAX_CONV_MS : Result Std.U64 := do let i ← 10#u64 * 60#u64
                                        i * 1000#u64
 
 /-- [ai_town_kernel::MAX_MESSAGES]
-    Source: 'kernel/src/lib.rs', lines 36:0-36:32
+    Source: 'kernel/src/lib.rs', lines 33:0-33:32
     Visibility: public -/
 @[global_simps, irreducible] def MAX_MESSAGES : Std.U64 := 8#u64
 
 /-- [ai_town_kernel::MESSAGE_COOLDOWN_MS]
-    Source: 'kernel/src/lib.rs', lines 37:0-37:43
+    Source: 'kernel/src/lib.rs', lines 34:0-34:43
     Visibility: public -/
 @[global_simps, irreducible] def MESSAGE_COOLDOWN_MS : Std.U64 := 2000#u64
 
 /-- [ai_town_kernel::ACTION_TIMEOUT_MS]
-    Source: 'kernel/src/lib.rs', lines 38:0-38:43
+    Source: 'kernel/src/lib.rs', lines 35:0-35:43
     Visibility: public -/
 @[global_simps, irreducible] def ACTION_TIMEOUT_MS : Std.U64 := 120000#u64
 
 /-- [ai_town_kernel::ACTIVITY_MS]
-    Source: 'kernel/src/lib.rs', lines 39:0-39:36
+    Source: 'kernel/src/lib.rs', lines 36:0-36:36
     Visibility: public -/
 @[global_simps, irreducible] def ACTIVITY_MS : Std.U64 := 60000#u64
 
 /-- [ai_town_kernel::ENGINE]
-    Source: 'kernel/src/lib.rs', lines 41:0-41:26
+    Source: 'kernel/src/lib.rs', lines 37:0-37:26
     Visibility: public -/
 @[global_simps, irreducible] def ENGINE : Std.U64 := 0#u64
 
 /-- [ai_town_kernel::AGENT_BASE]
-    Source: 'kernel/src/lib.rs', lines 42:0-42:38
+    Source: 'kernel/src/lib.rs', lines 38:0-38:38
     Visibility: public -/
 @[global_simps, irreducible] def AGENT_BASE : Std.U64 := 1000000#u64
 
 /-- [ai_town_kernel::MAX_DIM]
-    Source: 'kernel/src/lib.rs', lines 43:0-43:29
+    Source: 'kernel/src/lib.rs', lines 39:0-39:29
     Visibility: public -/
 @[global_simps, irreducible] def MAX_DIM : Std.U32 := 128#u32
 
 /-- [ai_town_kernel::MAX_NAME]
-    Source: 'kernel/src/lib.rs', lines 44:0-44:31
+    Source: 'kernel/src/lib.rs', lines 40:0-40:31
     Visibility: public -/
 @[global_simps, irreducible] def MAX_NAME : Std.Usize := 32#usize
 
 /-- [ai_town_kernel::MAX_TEXT]
-    Source: 'kernel/src/lib.rs', lines 45:0-45:32
+    Source: 'kernel/src/lib.rs', lines 41:0-41:32
     Visibility: public -/
 @[global_simps, irreducible] def MAX_TEXT : Std.Usize := 280#usize
 
 /-- [ai_town_kernel::MAX_PLAN]
-    Source: 'kernel/src/lib.rs', lines 46:0-46:34
+    Source: 'kernel/src/lib.rs', lines 42:0-42:34
     Visibility: public -/
 @[global_simps, irreducible] def MAX_PLAN : Std.Usize := 2000#usize
 
 /-- [ai_town_kernel::PF_NONE]
-    Source: 'kernel/src/lib.rs', lines 48:0-48:27
+    Source: 'kernel/src/lib.rs', lines 44:0-44:27
     Visibility: public -/
 @[global_simps, irreducible] def PF_NONE : Std.U32 := 0#u32
 
 /-- [ai_town_kernel::PF_NEED]
-    Source: 'kernel/src/lib.rs', lines 49:0-49:27
+    Source: 'kernel/src/lib.rs', lines 45:0-45:27
     Visibility: public -/
 @[global_simps, irreducible] def PF_NEED : Std.U32 := 1#u32
 
 /-- [ai_town_kernel::PF_WAIT]
-    Source: 'kernel/src/lib.rs', lines 50:0-50:27
+    Source: 'kernel/src/lib.rs', lines 46:0-46:27
     Visibility: public -/
 @[global_simps, irreducible] def PF_WAIT : Std.U32 := 2#u32
 
 /-- [ai_town_kernel::PF_MOVE]
-    Source: 'kernel/src/lib.rs', lines 51:0-51:27
+    Source: 'kernel/src/lib.rs', lines 47:0-47:27
     Visibility: public -/
 @[global_simps, irreducible] def PF_MOVE : Std.U32 := 3#u32
 
 /-- [ai_town_kernel::ST_INVITED]
-    Source: 'kernel/src/lib.rs', lines 53:0-53:30
+    Source: 'kernel/src/lib.rs', lines 49:0-49:30
     Visibility: public -/
 @[global_simps, irreducible] def ST_INVITED : Std.U32 := 1#u32
 
 /-- [ai_town_kernel::ST_WALKING]
-    Source: 'kernel/src/lib.rs', lines 54:0-54:30
+    Source: 'kernel/src/lib.rs', lines 50:0-50:30
     Visibility: public -/
 @[global_simps, irreducible] def ST_WALKING : Std.U32 := 2#u32
 
 /-- [ai_town_kernel::ST_TALKING]
-    Source: 'kernel/src/lib.rs', lines 55:0-55:30
+    Source: 'kernel/src/lib.rs', lines 51:0-51:30
     Visibility: public -/
 @[global_simps, irreducible] def ST_TALKING : Std.U32 := 3#u32
 
 /-- [ai_town_kernel::OP_NONE]
-    Source: 'kernel/src/lib.rs', lines 57:0-57:27
+    Source: 'kernel/src/lib.rs', lines 53:0-53:27
     Visibility: public -/
 @[global_simps, irreducible] def OP_NONE : Std.U32 := 0#u32
 
 /-- [ai_town_kernel::OP_DO]
-    Source: 'kernel/src/lib.rs', lines 58:0-58:25
+    Source: 'kernel/src/lib.rs', lines 54:0-54:25
     Visibility: public -/
 @[global_simps, irreducible] def OP_DO : Std.U32 := 1#u32
 
 /-- [ai_town_kernel::OP_REMEMBER]
-    Source: 'kernel/src/lib.rs', lines 59:0-59:31
+    Source: 'kernel/src/lib.rs', lines 55:0-55:31
     Visibility: public -/
 @[global_simps, irreducible] def OP_REMEMBER : Std.U32 := 2#u32
 
 /-- [ai_town_kernel::OP_SPEAK]
-    Source: 'kernel/src/lib.rs', lines 60:0-60:28
+    Source: 'kernel/src/lib.rs', lines 56:0-56:28
     Visibility: public -/
 @[global_simps, irreducible] def OP_SPEAK : Std.U32 := 3#u32
 
 /-- [ai_town_kernel::Principal]
-    Source: 'kernel/src/lib.rs', lines 64:0-68:1
+    Source: 'kernel/src/lib.rs', lines 60:0-64:1
     Visibility: public -/
 structure Principal where
   org : Std.U64
@@ -2087,7 +2087,7 @@ structure Snapshot where
   messages : alloc.vec.Vec Message
 
 /-- [ai_town_kernel::{impl core::clone::Clone for ai_town_kernel::Message}::clone]:
-    Source: 'kernel/src/lib.rs', lines 181:13-181:18
+    Source: 'kernel/src/lib.rs', lines 177:13-177:18
     Visibility: public -/
 def Message.Insts.CoreCloneClone.clone (self : Message) : Result Message := do
   let i ← lift (core.clone.impls.CloneU64.clone self.id)
@@ -2098,14 +2098,14 @@ def Message.Insts.CoreCloneClone.clone (self : Message) : Result Message := do
   ok { id := i, conversation := i1, author := i2, ts := i3, text := v }
 
 /-- Trait implementation: [ai_town_kernel::{impl core::clone::Clone for ai_town_kernel::Message}]
-    Source: 'kernel/src/lib.rs', lines 181:13-181:18 -/
+    Source: 'kernel/src/lib.rs', lines 177:13-177:18 -/
 @[reducible]
 def Message.Insts.CoreCloneClone : core.clone.Clone Message := {
   clone := Message.Insts.CoreCloneClone.clone
 }
 
 /-- [ai_town_kernel::{impl core::clone::Clone for ai_town_kernel::Memory}::clone]:
-    Source: 'kernel/src/lib.rs', lines 172:13-172:18
+    Source: 'kernel/src/lib.rs', lines 168:13-168:18
     Visibility: public -/
 def Memory.Insts.CoreCloneClone.clone (self : Memory) : Result Memory := do
   let i ← lift (core.clone.impls.CloneU64.clone self.id)
@@ -2116,14 +2116,14 @@ def Memory.Insts.CoreCloneClone.clone (self : Memory) : Result Memory := do
   ok { id := i, agent := i1, other := i2, conversation := i3, summary := v }
 
 /-- Trait implementation: [ai_town_kernel::{impl core::clone::Clone for ai_town_kernel::Memory}]
-    Source: 'kernel/src/lib.rs', lines 172:13-172:18 -/
+    Source: 'kernel/src/lib.rs', lines 168:13-168:18 -/
 @[reducible]
 def Memory.Insts.CoreCloneClone : core.clone.Clone Memory := {
   clone := Memory.Insts.CoreCloneClone.clone
 }
 
 /-- [ai_town_kernel::{impl core::clone::Clone for ai_town_kernel::Agent}::clone]:
-    Source: 'kernel/src/lib.rs', lines 155:13-155:18
+    Source: 'kernel/src/lib.rs', lines 151:13-151:18
     Visibility: public -/
 def Agent.Insts.CoreCloneClone.clone (self : Agent) : Result Agent := do
   let i ← lift (core.clone.impls.CloneU64.clone self.id)
@@ -2157,14 +2157,14 @@ def Agent.Insts.CoreCloneClone.clone (self : Agent) : Result Agent := do
     }
 
 /-- Trait implementation: [ai_town_kernel::{impl core::clone::Clone for ai_town_kernel::Agent}]
-    Source: 'kernel/src/lib.rs', lines 155:13-155:18 -/
+    Source: 'kernel/src/lib.rs', lines 151:13-151:18 -/
 @[reducible]
 def Agent.Insts.CoreCloneClone : core.clone.Clone Agent := {
   clone := Agent.Insts.CoreCloneClone.clone
 }
 
 /-- [ai_town_kernel::{impl core::clone::Clone for ai_town_kernel::Member}::clone]:
-    Source: 'kernel/src/lib.rs', lines 147:13-147:18
+    Source: 'kernel/src/lib.rs', lines 143:13-143:18
     Visibility: public -/
 def Member.Insts.CoreCloneClone.clone (self : Member) : Result Member := do
   let i ← lift (core.clone.impls.CloneU64.clone self.conversation)
@@ -2182,14 +2182,14 @@ def Member.Insts.CoreCloneClone.clone (self : Member) : Result Member := do
     }
 
 /-- Trait implementation: [ai_town_kernel::{impl core::clone::Clone for ai_town_kernel::Member}]
-    Source: 'kernel/src/lib.rs', lines 147:13-147:18 -/
+    Source: 'kernel/src/lib.rs', lines 143:13-143:18 -/
 @[reducible]
 def Member.Insts.CoreCloneClone : core.clone.Clone Member := {
   clone := Member.Insts.CoreCloneClone.clone
 }
 
 /-- [ai_town_kernel::{impl core::clone::Clone for ai_town_kernel::Conversation}::clone]:
-    Source: 'kernel/src/lib.rs', lines 135:13-135:18
+    Source: 'kernel/src/lib.rs', lines 131:13-131:18
     Visibility: public -/
 def Conversation.Insts.CoreCloneClone.clone
   (self : Conversation) : Result Conversation := do
@@ -2214,14 +2214,14 @@ def Conversation.Insts.CoreCloneClone.clone
     }
 
 /-- Trait implementation: [ai_town_kernel::{impl core::clone::Clone for ai_town_kernel::Conversation}]
-    Source: 'kernel/src/lib.rs', lines 135:13-135:18 -/
+    Source: 'kernel/src/lib.rs', lines 131:13-131:18 -/
 @[reducible]
 def Conversation.Insts.CoreCloneClone : core.clone.Clone Conversation := {
   clone := Conversation.Insts.CoreCloneClone.clone
 }
 
 /-- [ai_town_kernel::{impl core::clone::Clone for ai_town_kernel::Player}::clone]:
-    Source: 'kernel/src/lib.rs', lines 103:13-103:18
+    Source: 'kernel/src/lib.rs', lines 99:13-99:18
     Visibility: public -/
 def Player.Insts.CoreCloneClone.clone (self : Player) : Result Player := do
   let i ← lift (core.clone.impls.CloneU64.clone self.id)
@@ -2265,21 +2265,21 @@ def Player.Insts.CoreCloneClone.clone (self : Player) : Result Player := do
     }
 
 /-- Trait implementation: [ai_town_kernel::{impl core::clone::Clone for ai_town_kernel::Player}]
-    Source: 'kernel/src/lib.rs', lines 103:13-103:18 -/
+    Source: 'kernel/src/lib.rs', lines 99:13-99:18 -/
 @[reducible]
 def Player.Insts.CoreCloneClone : core.clone.Clone Player := {
   clone := Player.Insts.CoreCloneClone.clone
 }
 
 /-- [ai_town_kernel::{impl core::clone::Clone for ai_town_kernel::Terrain}::clone]:
-    Source: 'kernel/src/lib.rs', lines 97:13-97:18
+    Source: 'kernel/src/lib.rs', lines 93:13-93:18
     Visibility: public -/
 def Terrain.Insts.CoreCloneClone.clone (self : Terrain) : Result Terrain := do
   let v ← alloc.vec.CloneVec.clone core.clone.CloneU8 self.mask
   ok { mask := v }
 
 /-- [ai_town_kernel::{impl core::clone::Clone for ai_town_kernel::Meta}::clone]:
-    Source: 'kernel/src/lib.rs', lines 86:13-86:18
+    Source: 'kernel/src/lib.rs', lines 82:13-82:18
     Visibility: public -/
 def Meta.Insts.CoreCloneClone.clone (self : Meta) : Result Meta := do
   let i ← lift (core.clone.impls.CloneU64.clone self.next_id)
@@ -2299,7 +2299,7 @@ def Meta.Insts.CoreCloneClone.clone (self : Meta) : Result Meta := do
     }
 
 /-- [ai_town_kernel::{impl core::clone::Clone for ai_town_kernel::Snapshot}::clone]:
-    Source: 'kernel/src/lib.rs', lines 73:13-73:18
+    Source: 'kernel/src/lib.rs', lines 69:13-69:18
     Visibility: public -/
 def Snapshot.Insts.CoreCloneClone.clone
   (self : Snapshot) : Result Snapshot := do
@@ -2329,7 +2329,7 @@ def Snapshot.Insts.CoreCloneClone.clone
     }
 
 /-- [ai_town_kernel::{impl core::cmp::PartialEq<ai_town_kernel::Meta> for ai_town_kernel::Meta}::eq]:
-    Source: 'kernel/src/lib.rs', lines 86:36-86:45
+    Source: 'kernel/src/lib.rs', lines 82:36-82:45
     Visibility: public -/
 def Meta.Insts.CoreCmpPartialEqMeta.eq
   (self : Meta) (other : Meta) : Result Bool := do
@@ -2350,7 +2350,7 @@ def Meta.Insts.CoreCmpPartialEqMeta.eq
   else ok false
 
 /-- Trait implementation: [ai_town_kernel::{impl core::cmp::PartialEq<ai_town_kernel::Meta> for ai_town_kernel::Meta}]
-    Source: 'kernel/src/lib.rs', lines 86:36-86:45 -/
+    Source: 'kernel/src/lib.rs', lines 82:36-82:45 -/
 @[reducible]
 impl_def Meta.Insts.CoreCmpPartialEqMeta : core.cmp.PartialEq Meta Meta := {
   eq := Meta.Insts.CoreCmpPartialEqMeta.eq
@@ -2358,7 +2358,7 @@ impl_def Meta.Insts.CoreCmpPartialEqMeta : core.cmp.PartialEq Meta Meta := {
 }
 
 /-- [ai_town_kernel::{impl core::cmp::PartialEq<ai_town_kernel::Terrain> for ai_town_kernel::Terrain}::eq]:
-    Source: 'kernel/src/lib.rs', lines 97:36-97:45
+    Source: 'kernel/src/lib.rs', lines 93:36-93:45
     Visibility: public -/
 def Terrain.Insts.CoreCmpPartialEqTerrain.eq
   (self : Terrain) (other : Terrain) : Result Bool := do
@@ -2366,7 +2366,7 @@ def Terrain.Insts.CoreCmpPartialEqTerrain.eq
     other.mask
 
 /-- Trait implementation: [ai_town_kernel::{impl core::cmp::PartialEq<ai_town_kernel::Terrain> for ai_town_kernel::Terrain}]
-    Source: 'kernel/src/lib.rs', lines 97:36-97:45 -/
+    Source: 'kernel/src/lib.rs', lines 93:36-93:45 -/
 @[reducible]
 impl_def Terrain.Insts.CoreCmpPartialEqTerrain : core.cmp.PartialEq Terrain
   Terrain := {
@@ -2376,7 +2376,7 @@ impl_def Terrain.Insts.CoreCmpPartialEqTerrain : core.cmp.PartialEq Terrain
 }
 
 /-- [ai_town_kernel::{impl core::cmp::PartialEq<ai_town_kernel::Player> for ai_town_kernel::Player}::eq]:
-    Source: 'kernel/src/lib.rs', lines 103:27-103:36
+    Source: 'kernel/src/lib.rs', lines 99:27-99:36
     Visibility: public -/
 def Player.Insts.CoreCmpPartialEqPlayer.eq
   (self : Player) (other : Player) : Result Bool := do
@@ -2436,7 +2436,7 @@ def Player.Insts.CoreCmpPartialEqPlayer.eq
   else ok false
 
 /-- Trait implementation: [ai_town_kernel::{impl core::cmp::PartialEq<ai_town_kernel::Player> for ai_town_kernel::Player}]
-    Source: 'kernel/src/lib.rs', lines 103:27-103:36 -/
+    Source: 'kernel/src/lib.rs', lines 99:27-99:36 -/
 @[reducible]
 impl_def Player.Insts.CoreCmpPartialEqPlayer : core.cmp.PartialEq Player Player
   := {
@@ -2445,7 +2445,7 @@ impl_def Player.Insts.CoreCmpPartialEqPlayer : core.cmp.PartialEq Player Player
 }
 
 /-- [ai_town_kernel::{impl core::cmp::PartialEq<ai_town_kernel::PathNode> for ai_town_kernel::PathNode}::eq]:
-    Source: 'kernel/src/lib.rs', lines 125:27-125:36
+    Source: 'kernel/src/lib.rs', lines 121:27-121:36
     Visibility: public -/
 def PathNode.Insts.CoreCmpPartialEqPathNode.eq
   (self : PathNode) (other : PathNode) : Result Bool := do
@@ -2469,7 +2469,7 @@ def PathNode.Insts.CoreCmpPartialEqPathNode.eq
   else ok false
 
 /-- Trait implementation: [ai_town_kernel::{impl core::cmp::PartialEq<ai_town_kernel::PathNode> for ai_town_kernel::PathNode}]
-    Source: 'kernel/src/lib.rs', lines 125:27-125:36 -/
+    Source: 'kernel/src/lib.rs', lines 121:27-121:36 -/
 @[reducible]
 impl_def PathNode.Insts.CoreCmpPartialEqPathNode : core.cmp.PartialEq PathNode
   PathNode := {
@@ -2479,7 +2479,7 @@ impl_def PathNode.Insts.CoreCmpPartialEqPathNode : core.cmp.PartialEq PathNode
 }
 
 /-- [ai_town_kernel::{impl core::cmp::PartialEq<ai_town_kernel::Conversation> for ai_town_kernel::Conversation}::eq]:
-    Source: 'kernel/src/lib.rs', lines 135:27-135:36
+    Source: 'kernel/src/lib.rs', lines 131:27-131:36
     Visibility: public -/
 def Conversation.Insts.CoreCmpPartialEqConversation.eq
   (self : Conversation) (other : Conversation) : Result Bool := do
@@ -2506,7 +2506,7 @@ def Conversation.Insts.CoreCmpPartialEqConversation.eq
   else ok false
 
 /-- Trait implementation: [ai_town_kernel::{impl core::cmp::PartialEq<ai_town_kernel::Conversation> for ai_town_kernel::Conversation}]
-    Source: 'kernel/src/lib.rs', lines 135:27-135:36 -/
+    Source: 'kernel/src/lib.rs', lines 131:27-131:36 -/
 @[reducible]
 impl_def Conversation.Insts.CoreCmpPartialEqConversation : core.cmp.PartialEq
   Conversation Conversation := {
@@ -2516,7 +2516,7 @@ impl_def Conversation.Insts.CoreCmpPartialEqConversation : core.cmp.PartialEq
 }
 
 /-- [ai_town_kernel::{impl core::cmp::PartialEq<ai_town_kernel::Member> for ai_town_kernel::Member}::eq]:
-    Source: 'kernel/src/lib.rs', lines 147:27-147:36
+    Source: 'kernel/src/lib.rs', lines 143:27-143:36
     Visibility: public -/
 def Member.Insts.CoreCmpPartialEqMember.eq
   (self : Member) (other : Member) : Result Bool := do
@@ -2534,7 +2534,7 @@ def Member.Insts.CoreCmpPartialEqMember.eq
   else ok false
 
 /-- Trait implementation: [ai_town_kernel::{impl core::cmp::PartialEq<ai_town_kernel::Member> for ai_town_kernel::Member}]
-    Source: 'kernel/src/lib.rs', lines 147:27-147:36 -/
+    Source: 'kernel/src/lib.rs', lines 143:27-143:36 -/
 @[reducible]
 impl_def Member.Insts.CoreCmpPartialEqMember : core.cmp.PartialEq Member Member
   := {
@@ -2543,7 +2543,7 @@ impl_def Member.Insts.CoreCmpPartialEqMember : core.cmp.PartialEq Member Member
 }
 
 /-- [ai_town_kernel::{impl core::cmp::PartialEq<ai_town_kernel::Agent> for ai_town_kernel::Agent}::eq]:
-    Source: 'kernel/src/lib.rs', lines 155:27-155:36
+    Source: 'kernel/src/lib.rs', lines 151:27-151:36
     Visibility: public -/
 def Agent.Insts.CoreCmpPartialEqAgent.eq
   (self : Agent) (other : Agent) : Result Bool := do
@@ -2593,7 +2593,7 @@ def Agent.Insts.CoreCmpPartialEqAgent.eq
   else ok false
 
 /-- Trait implementation: [ai_town_kernel::{impl core::cmp::PartialEq<ai_town_kernel::Agent> for ai_town_kernel::Agent}]
-    Source: 'kernel/src/lib.rs', lines 155:27-155:36 -/
+    Source: 'kernel/src/lib.rs', lines 151:27-151:36 -/
 @[reducible]
 impl_def Agent.Insts.CoreCmpPartialEqAgent : core.cmp.PartialEq Agent Agent
   := {
@@ -2602,7 +2602,7 @@ impl_def Agent.Insts.CoreCmpPartialEqAgent : core.cmp.PartialEq Agent Agent
 }
 
 /-- [ai_town_kernel::Command]
-    Source: 'kernel/src/lib.rs', lines 192:0-216:1
+    Source: 'kernel/src/lib.rs', lines 188:0-212:1
     Visibility: public -/
 @[discriminant isize]
 inductive Command where
@@ -2633,7 +2633,7 @@ inductive Command where
 | Resume : Command
 
 /-- [ai_town_kernel::Write]
-    Source: 'kernel/src/lib.rs', lines 219:0-234:1
+    Source: 'kernel/src/lib.rs', lines 215:0-230:1
     Visibility: public -/
 @[discriminant isize]
 inductive Write where
@@ -2653,7 +2653,7 @@ inductive Write where
 | PutMessage : Message → Write
 
 /-- [ai_town_kernel::{impl core::clone::Clone for ai_town_kernel::Write}::clone]:
-    Source: 'kernel/src/lib.rs', lines 218:9-218:14
+    Source: 'kernel/src/lib.rs', lines 214:9-214:14
     Visibility: public -/
 def Write.Insts.CoreCloneClone.clone (self : Write) : Result Write := do
   match self with
@@ -2702,7 +2702,7 @@ def Write.Insts.CoreCloneClone.clone (self : Write) : Result Write := do
     ok (Write.PutMessage m)
 
 /-- [ai_town_kernel::Reply]
-    Source: 'kernel/src/lib.rs', lines 237:0-242:1
+    Source: 'kernel/src/lib.rs', lines 233:0-238:1
     Visibility: public -/
 @[discriminant isize]
 inductive Reply where
@@ -2712,7 +2712,7 @@ inductive Reply where
 | Stepped : Std.U64 → Std.U32 → Reply
 
 /-- [ai_town_kernel::Error]
-    Source: 'kernel/src/lib.rs', lines 245:0-256:1
+    Source: 'kernel/src/lib.rs', lines 241:0-252:1
     Visibility: public -/
 @[discriminant isize]
 inductive Error where
@@ -13681,7 +13681,7 @@ def rules.command
       ok (core.result.Result.Ok (v, Reply.Ok))
 
 /-- [ai_town_kernel::transition]:
-    Source: 'kernel/src/lib.rs', lines 258:0-260:1
+    Source: 'kernel/src/lib.rs', lines 254:0-256:1
     Visibility: public -/
 def transition
   (actor : Principal) (snap : Snapshot) (cmd : Command) :
@@ -13735,7 +13735,7 @@ def Player.put
   Player.put_loop v x 0#usize
 
 /-- [ai_town_kernel::put_player]: loop body 0:
-    Source: 'kernel/src/lib.rs', lines 265:4-272:5 -/
+    Source: 'kernel/src/lib.rs', lines 261:4-268:5 -/
 @[rust_loop_body]
 def put_player_loop.body
   (v : alloc.vec.Vec Player) (x : Player) (lo : Std.Usize) (hi : Std.Usize) :
@@ -13755,7 +13755,7 @@ def put_player_loop.body
   else ok (done (x, lo))
 
 /-- [ai_town_kernel::put_player]: loop 0:
-    Source: 'kernel/src/lib.rs', lines 265:4-272:5 -/
+    Source: 'kernel/src/lib.rs', lines 261:4-268:5 -/
 @[rust_loop]
 def put_player_loop
   (v : alloc.vec.Vec Player) (x : Player) (lo : Std.Usize) (hi : Std.Usize) :
@@ -13766,7 +13766,7 @@ def put_player_loop
     (lo, hi)
 
 /-- [ai_town_kernel::put_player]:
-    Source: 'kernel/src/lib.rs', lines 262:0-278:1 -/
+    Source: 'kernel/src/lib.rs', lines 258:0-274:1 -/
 def put_player
   (v : alloc.vec.Vec Player) (x : Player) : Result (alloc.vec.Vec Player) := do
   let hi := alloc.vec.Vec.len v
@@ -13831,7 +13831,7 @@ def Agent.put
   Agent.put_loop v x 0#usize
 
 /-- [ai_town_kernel::put_agent]: loop body 0:
-    Source: 'kernel/src/lib.rs', lines 283:4-290:5 -/
+    Source: 'kernel/src/lib.rs', lines 279:4-286:5 -/
 @[rust_loop_body]
 def put_agent_loop.body
   (v : alloc.vec.Vec Agent) (x : Agent) (lo : Std.Usize) (hi : Std.Usize) :
@@ -13851,7 +13851,7 @@ def put_agent_loop.body
   else ok (done (x, lo))
 
 /-- [ai_town_kernel::put_agent]: loop 0:
-    Source: 'kernel/src/lib.rs', lines 283:4-290:5 -/
+    Source: 'kernel/src/lib.rs', lines 279:4-286:5 -/
 @[rust_loop]
 def put_agent_loop
   (v : alloc.vec.Vec Agent) (x : Agent) (lo : Std.Usize) (hi : Std.Usize) :
@@ -13862,7 +13862,7 @@ def put_agent_loop
     (lo, hi)
 
 /-- [ai_town_kernel::put_agent]:
-    Source: 'kernel/src/lib.rs', lines 280:0-296:1 -/
+    Source: 'kernel/src/lib.rs', lines 276:0-292:1 -/
 def put_agent
   (v : alloc.vec.Vec Agent) (x : Agent) : Result (alloc.vec.Vec Agent) := do
   let hi := alloc.vec.Vec.len v
@@ -14399,7 +14399,7 @@ def PathNode.put
 @[global_simps, irreducible] def town_tables.PathNode.player : Std.U32 := 0#u32
 
 /-- [ai_town_kernel::apply_write]:
-    Source: 'kernel/src/lib.rs', lines 298:0-317:1 -/
+    Source: 'kernel/src/lib.rs', lines 294:0-313:1 -/
 def apply_write (s : Snapshot) (w : Write) : Result Snapshot := do
   match w with
   | Write.PutMeta m => ok { s with «meta» := m }
@@ -14806,7 +14806,7 @@ def Meta.sql_put (self : Meta) : Result h5i_app_sql.Write := do
   ok (h5i_app_sql.Write.Put Meta.TABLE Meta.KEY_LEN v)
 
 /-- [ai_town_kernel::sql_write]:
-    Source: 'kernel/src/lib.rs', lines 319:0-338:1 -/
+    Source: 'kernel/src/lib.rs', lines 315:0-334:1 -/
 def sql_write
   (w : Write) (out : alloc.vec.Vec h5i_app_sql.Write) :
   Result (alloc.vec.Vec h5i_app_sql.Write)
