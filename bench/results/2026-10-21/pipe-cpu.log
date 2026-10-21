@@ -1,0 +1,7 @@
+pipe mode=cpu agents=1000 sample=0 input_ms=46.8 push_ms=809.4
+pipe mode=cpu agents=1000 sample=1 input_ms=43.9 push_ms=809.9
+pipe mode=cpu agents=1000 sample=2 input_ms=42.9 push_ms=771.7
+pipe mode=cpu agents=10000 sample=0 input_ms=446.8 push_ms=15189.1
+pipe mode=cpu agents=10000 sample=1 input_ms=669.7 push_ms=16411.5
+pipe mode=cpu agents=10000 sample=2 input_ms=516.8 push_ms=17311.5
+wrote /home/ht2673/Dev/ai-town-rust/bench/results/2026-10-21/pipe-cpu.csv

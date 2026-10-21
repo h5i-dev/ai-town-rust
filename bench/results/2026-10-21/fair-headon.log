@@ -1,0 +1,22 @@
+scenario=headon verify_grid=false cpu_threads=[32] samples=5
+fair headon players=1000 sample=0 cpu_tick_ms=11.996 cpu_seq_ms=10.333 gpu_checked_ms=7.187
+fair headon players=1000 sample=1 cpu_tick_ms=11.873 cpu_seq_ms=10.260 gpu_checked_ms=7.391
+fair headon players=1000 sample=2 cpu_tick_ms=11.885 cpu_seq_ms=10.354 gpu_checked_ms=7.179
+fair headon players=1000 sample=3 cpu_tick_ms=11.916 cpu_seq_ms=10.281 gpu_checked_ms=7.181
+fair headon players=1000 sample=4 cpu_tick_ms=11.899 cpu_seq_ms=10.315 gpu_checked_ms=7.294
+fair headon players=10000 sample=0 cpu_tick_ms=118.082 cpu_seq_ms=100.292 gpu_checked_ms=61.152
+fair headon players=10000 sample=1 cpu_tick_ms=117.851 cpu_seq_ms=100.248 gpu_checked_ms=60.784
+fair headon players=10000 sample=2 cpu_tick_ms=117.903 cpu_seq_ms=100.530 gpu_checked_ms=60.539
+fair headon players=10000 sample=3 cpu_tick_ms=117.640 cpu_seq_ms=100.313 gpu_checked_ms=60.492
+fair headon players=10000 sample=4 cpu_tick_ms=117.644 cpu_seq_ms=100.468 gpu_checked_ms=60.933
+fair headon players=50000 sample=0 cpu_tick_ms=638.773 cpu_seq_ms=546.716 gpu_checked_ms=295.402
+fair headon players=50000 sample=1 cpu_tick_ms=641.414 cpu_seq_ms=550.201 gpu_checked_ms=294.634
+fair headon players=50000 sample=2 cpu_tick_ms=641.339 cpu_seq_ms=549.185 gpu_checked_ms=294.124
+fair headon players=50000 sample=3 cpu_tick_ms=639.256 cpu_seq_ms=547.698 gpu_checked_ms=299.725
+fair headon players=50000 sample=4 cpu_tick_ms=641.381 cpu_seq_ms=546.932 gpu_checked_ms=296.759
+fair headon players=100000 sample=0 cpu_tick_ms=1528.987 cpu_seq_ms=1318.314 gpu_checked_ms=589.168
+fair headon players=100000 sample=1 cpu_tick_ms=1525.910 cpu_seq_ms=1317.349 gpu_checked_ms=589.833
+fair headon players=100000 sample=2 cpu_tick_ms=1522.762 cpu_seq_ms=1319.300 gpu_checked_ms=588.117
+fair headon players=100000 sample=3 cpu_tick_ms=1523.244 cpu_seq_ms=1320.547 gpu_checked_ms=588.069
+fair headon players=100000 sample=4 cpu_tick_ms=1526.154 cpu_seq_ms=1319.306 gpu_checked_ms=588.903
+wrote /home/ht2673/Dev/ai-town-rust/bench/results/2026-10-21/fair-headon.csv

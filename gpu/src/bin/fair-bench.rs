@@ -6,19 +6,21 @@
 //! from `AI_TOWN_CPU_THREADS`, default `8,16,32,64`). The workers also clear and
 //! fill the grid, with atomic pushes like the PTX inserts, so no phase is
 //! serial. The GPU number is those 60 rounds resident on the device:
-//! one copy in, one copy out. The O(n^2) `seek_one` scan is not timed.
+//! one copy in, one copy out. `gpu_checked_ms` includes preparation and the
+//! proven Relocate check. AI_TOWN_GPU_VERIFY=1 also checks every device grid.
+//! Samples start from identical states, after one unrecorded warmup.
 //!
 //! `AI_TOWN_SCENARIO` picks the crowd. `east` (default): every agent walks
 //! east in step one tile from its neighbors, so no landing is ever contested.
 //! `headon`: each row alternates eastbound and westbound agents 1.5 tiles
-//! apart, so every pair meets within the minute and keeps proposing into a
+//! apart, so every pair meets within the batch and keeps proposing into a
 //! refused landing. `refused` counts (round, agent) proposals that did not
 //! land, from the single-thread run.
 
 use ai_town_gpu::RustDevice;
 use ai_town_kernel::{
-    cell_of, path_pose, propose_one, resolve_one, run_ticks, tick_round, PathNode, Player, Snapshot, FACE_BIAS, MILLI, PF_MOVE,
-    TICK_MS,
+    cell_of, path_pose, propose_one, resolve_one, run_ticks, run_ticks_seq, placement_ok, relocate, tick_round,
+    PathNode, Player, Snapshot, FACE_BIAS, MILLI, PF_MOVE, TICK_MS,
 };
 use std::path::PathBuf;
 use std::time::Instant;
@@ -27,95 +29,103 @@ fn main() {
     let ptx = std::env::var("AI_TOWN_PTX")
         .map(PathBuf::from)
         .unwrap_or_else(|_| PathBuf::from("/dev/shm/ai-town-rust/nvvm-target/nvptx64-nvidia-cuda/release/ai_town_seek_device.ptx"));
-    let dev = RustDevice::open_path(&ptx).unwrap_or_else(|err| panic!("cuda {}: {}", err.op, err.code));
+    let mut dev = RustDevice::open_path(&ptx).unwrap_or_else(|err| panic!("cuda {}: {}", err.op, err.code));
+    let verify_grid = std::env::var("AI_TOWN_GPU_VERIFY").ok().as_deref() == Some("1");
+    dev.set_verify_grid(verify_grid);
     let dir = std::env::var("AI_TOWN_BENCH_DIR").unwrap_or_else(|_| "/dev/shm/ai-town-rust/bench".into());
-    std::fs::create_dir_all(&dir).unwrap_or_else(|err| panic!("create {dir}: {err}"));
+    std::fs::create_dir_all(&dir).expect("benchmark directory");
     let available = std::thread::available_parallelism().map(|n| n.get()).unwrap_or(1);
     let thread_counts: Vec<usize> = std::env::var("AI_TOWN_CPU_THREADS")
         .unwrap_or_else(|_| "8,16,32,64".into())
         .split(',')
-        .map(|t| t.trim().parse::<usize>().unwrap_or_else(|_| panic!("AI_TOWN_CPU_THREADS: {t}")).min(available))
+        .map(|t| t.trim().parse::<usize>().expect("AI_TOWN_CPU_THREADS").max(1).min(available))
         .collect();
+    let sizes: Vec<usize> = std::env::var("AI_TOWN_BENCH_AGENTS")
+        .unwrap_or_else(|_| "1000,10000,50000,100000".into())
+        .split(',').map(|n| n.trim().parse().expect("AI_TOWN_BENCH_AGENTS")).collect();
+    let samples: usize = std::env::var("AI_TOWN_BENCH_SAMPLES")
+        .unwrap_or_else(|_| "5".into()).parse().expect("AI_TOWN_BENCH_SAMPLES");
+    assert!(samples > 0 && sizes.iter().all(|&n| n > 0));
     let scenario = std::env::var("AI_TOWN_SCENARIO").unwrap_or_else(|_| "east".into());
     let headon = match scenario.as_str() {
         "east" => false,
         "headon" => true,
         other => panic!("AI_TOWN_SCENARIO: {other}"),
     };
-    println!("scenario={scenario} cpu_threads={thread_counts:?} cpu_available={available}");
+    println!("scenario={scenario} verify_grid={verify_grid} cpu_threads={thread_counts:?} samples={samples}");
     let par_cols: Vec<String> = thread_counts.iter().map(|t| format!("cpu_par{t}_ms")).collect();
-    let mut rows = vec![format!(
-        "agents,refused,cpu_tick_ms,cpu_round_ms,{},gpu_one_kernel_ms,gpu_one_wall_ms,gpu_60_kernel_ms,gpu_60_wall_ms",
-        par_cols.join(",")
-    )];
-    for n in [1_000usize, 10_000, 50_000, 100_000] {
-        let world = world(n, headon);
-        let end = world.meta.now_ms + 60 * TICK_MS;
-        let mut warmed = world.clone();
-        let ticks = run_ticks(&mut warmed, end);
-        assert_eq!(ticks, 60, "warmup ticks at {n}");
-        let mut timed = world.clone();
-        let cpu_started = Instant::now();
-        let ticks = run_ticks(&mut timed, end);
-        let cpu_tick_ms = cpu_started.elapsed().as_secs_f64() * 1_000.0;
-        assert_eq!(ticks, 60, "timed ticks at {n}");
-        assert_ne!(timed.players[0].x, world.players[0].x, "cpu tick did not move agent 0 at {n}");
-
-        let pack = pack(&world);
-        let _ = drive(&pack);
-        let serial = drive(&pack);
-        if headon {
-            assert!(serial.3 > n, "head-on crowd of {n} refused only {} proposals", serial.3);
-        }
-        let mut par_ms = Vec::new();
-        for &threads in &thread_counts {
-            let _ = drive_parallel(&pack, threads);
-            let parallel = drive_parallel(&pack, threads);
-            assert_eq!(serial.0, parallel.0, "parallel x at {n} with {threads}");
-            assert_eq!(serial.1, parallel.1, "parallel y at {n} with {threads}");
-            par_ms.push(parallel.2);
-        }
-
-        let _ = gpu_rounds(&dev, &pack, 1);
-        let one = gpu_rounds(&dev, &pack, 1);
-        let sixty = gpu_rounds(&dev, &pack, 60);
-        assert_ne!(sixty.2[0], world.players[0].x, "gpu tick did not move agent 0 at {n}");
-        let mut i = 0;
-        while i < n {
-            assert_eq!(sixty.2[i], serial.0[i], "gpu x {i} at {n}");
-            assert_eq!(sixty.3[i], serial.1[i], "gpu y {i} at {n}");
-            // The product tick waits after a refused step, so it only matches
-            // the bare rounds when nothing is refused.
-            if !headon {
-                assert_eq!(timed.players[i].x, serial.0[i], "tick x {i} at {n}");
-                assert_eq!(timed.players[i].y, serial.1[i], "tick y {i} at {n}");
-            }
-            i += 1;
-        }
-        let par_csv: Vec<String> = par_ms.iter().map(|ms| format!("{ms:.3}")).collect();
-        let row = format!(
-            "{n},{},{cpu_tick_ms:.3},{:.3},{},{:.3},{:.3},{:.3},{:.3}",
-            serial.3,
-            serial.2,
-            par_csv.join(","),
-            one.0,
-            one.1,
-            sixty.0,
-            sixty.1
-        );
-        let par_txt: Vec<String> = thread_counts.iter().zip(&par_ms).map(|(t, ms)| format!("cpu_par{t}_ms={ms:.2}")).collect();
-        println!(
-            "fair agents={n} refused={} cpu_tick_ms={cpu_tick_ms:.2} cpu_round_ms={:.2} {} gpu60_kernel_ms={:.2} gpu60_wall_ms={:.2}",
-            serial.3,
-            serial.2,
-            par_txt.join(" "),
-            sixty.0,
-            sixty.1
-        );
-        rows.push(row);
-    }
     let path = format!("{dir}/fair-{scenario}.csv");
-    std::fs::write(&path, rows.join("\n") + "\n").unwrap_or_else(|err| panic!("write {path}: {err}"));
+    let mut csv = std::fs::File::create(&path).expect("CSV");
+    use std::io::Write;
+    writeln!(csv, "players,sample,verify_grid,refused,cpu_tick_ms,cpu_seq_ms,cpu_round_ms,{},gpu_60_kernel_ms,gpu_60_wall_ms,prepare_ms,relocate_ms,gpu_checked_ms", par_cols.join(",")).expect("CSV header");
+    for n in sizes {
+        let world = world(n, headon);
+        assert!(placement_ok(&world), "initial placement at {n}");
+        let end = world.meta.now_ms + 60 * TICK_MS;
+        // Every sample starts from the same state; sample 0 is an unrecorded warmup.
+        for sample in 0..=samples {
+            let mut timed = world.clone();
+            let cpu_started = Instant::now();
+            let ticks = run_ticks(&mut timed, end);
+            let cpu_tick_ms = cpu_started.elapsed().as_secs_f64() * 1_000.0;
+            assert_eq!(ticks, 60);
+            assert!(placement_ok(&timed));
+            assert_ne!(timed.players[0].x, world.players[0].x);
+
+            let mut sequential = world.clone();
+            let cpu_started = Instant::now();
+            assert_eq!(run_ticks_seq(&mut sequential, end), 60);
+            let cpu_seq_ms = cpu_started.elapsed().as_secs_f64() * 1_000.0;
+            assert!(placement_ok(&sequential));
+
+            let pack = pack_world(&world);
+            let serial = drive(&pack);
+            if headon { assert!(serial.3 > n); }
+            let mut par_ms = Vec::new();
+            for &threads in &thread_counts {
+                let parallel = drive_parallel(&pack, threads);
+                assert_eq!(serial.0, parallel.0, "parallel x at {n} with {threads}");
+                assert_eq!(serial.1, parallel.1, "parallel y at {n} with {threads}");
+                par_ms.push(parallel.2);
+            }
+
+            // Include candidate generation, flags, copies, launches, snapshot
+            // cloning, and the actual proven Relocate acceptance check. Database
+            // persistence and server/RPC overhead belong to the pipe benchmark.
+            let pipeline = Instant::now();
+            let gpu_pack = pack_world(&world);
+            let cand_on = vec![1u32; n * 60];
+            let prepare_ms = pipeline.elapsed().as_secs_f64() * 1_000.0;
+            let report = dev.rounds(
+                &gpu_pack.xs, &gpu_pack.ys, &gpu_pack.moving,
+                &gpu_pack.cand_x, &gpu_pack.cand_y, &cand_on, &gpu_pack.ids,
+                &gpu_pack.mask, gpu_pack.width, gpu_pack.height, 60,
+            ).unwrap_or_else(|err| panic!("rounds {}: {}", err.op, err.code));
+            assert_eq!(report.out.error, 0);
+            let checked = Instant::now();
+            let landed = relocate(world.clone(), &report.out.xs, &report.out.ys).expect("GPU Relocate accepted");
+            let relocate_ms = checked.elapsed().as_secs_f64() * 1_000.0;
+            let gpu_checked_ms = pipeline.elapsed().as_secs_f64() * 1_000.0;
+            assert!(placement_ok(&landed));
+            assert_eq!(report.out.xs, serial.0, "gpu x at {n}");
+            assert_eq!(report.out.ys, serial.1, "gpu y at {n}");
+            if !headon {
+                for i in 0..n {
+                    assert_eq!(timed.players[i].x, serial.0[i]);
+                    assert_eq!(timed.players[i].y, serial.1[i]);
+                    assert_eq!(sequential.players[i].x, serial.0[i]);
+                    assert_eq!(sequential.players[i].y, serial.1[i]);
+                    assert_eq!(serial.0[i], world.players[i].x + 720);
+                }
+            }
+            if sample == 0 { continue; }
+            let par_csv: Vec<String> = par_ms.iter().map(|ms| format!("{ms:.3}")).collect();
+            writeln!(csv, "{n},{},{},{},{cpu_tick_ms:.3},{cpu_seq_ms:.3},{:.3},{},{:.3},{:.3},{prepare_ms:.3},{relocate_ms:.3},{gpu_checked_ms:.3}",
+                sample - 1, u8::from(verify_grid), serial.3, serial.2, par_csv.join(","), report.kernel_ms, report.wall_ms).expect("CSV row");
+            csv.flush().expect("CSV flush");
+            println!("fair {scenario} players={n} sample={} cpu_tick_ms={cpu_tick_ms:.3} cpu_seq_ms={cpu_seq_ms:.3} gpu_checked_ms={gpu_checked_ms:.3}", sample - 1);
+        }
+    }
     println!("wrote {path}");
 }
 
@@ -131,7 +141,7 @@ struct Pack {
     height: u32,
 }
 
-fn pack(world: &Snapshot) -> Pack {
+fn pack_world(world: &Snapshot) -> Pack {
     let n = world.players.len();
     let mut xs = Vec::with_capacity(n);
     let mut ys = Vec::with_capacity(n);
@@ -394,29 +404,6 @@ impl Spin {
     }
 }
 
-/// Kernel milliseconds, wall milliseconds, and the landed positions.
-fn gpu_rounds(dev: &RustDevice, pack: &Pack, rounds: u32) -> (f32, f64, Vec<u32>, Vec<u32>) {
-    let n = pack.xs.len();
-    let rows = (rounds as usize) * n;
-    let cand_on = vec![1u32; rows];
-    let report = dev
-        .rounds(
-            &pack.xs,
-            &pack.ys,
-            &pack.moving,
-            &pack.cand_x[..rows],
-            &pack.cand_y[..rows],
-            &cand_on,
-            &pack.ids,
-            &pack.mask,
-            pack.width,
-            pack.height,
-            rounds,
-        )
-        .unwrap_or_else(|err| panic!("rounds {}: {}", err.op, err.code));
-    assert_eq!(report.out.error, 0, "device error");
-    (report.kernel_ms, report.wall_ms, report.out.xs, report.out.ys)
-}
 
 fn side_for(n: usize) -> u32 {
     let mut side = 48u32;

@@ -1,0 +1,22 @@
+scenario=east verify_grid=true cpu_threads=[32] samples=5
+fair east players=1000 sample=0 cpu_tick_ms=14.211 cpu_seq_ms=12.512 gpu_checked_ms=12.584
+fair east players=1000 sample=1 cpu_tick_ms=14.181 cpu_seq_ms=12.505 gpu_checked_ms=12.628
+fair east players=1000 sample=2 cpu_tick_ms=14.169 cpu_seq_ms=12.492 gpu_checked_ms=12.572
+fair east players=1000 sample=3 cpu_tick_ms=14.141 cpu_seq_ms=12.499 gpu_checked_ms=12.561
+fair east players=1000 sample=4 cpu_tick_ms=14.215 cpu_seq_ms=12.502 gpu_checked_ms=12.595
+fair east players=10000 sample=0 cpu_tick_ms=148.609 cpu_seq_ms=130.167 gpu_checked_ms=83.391
+fair east players=10000 sample=1 cpu_tick_ms=147.753 cpu_seq_ms=129.797 gpu_checked_ms=83.197
+fair east players=10000 sample=2 cpu_tick_ms=148.134 cpu_seq_ms=129.911 gpu_checked_ms=83.235
+fair east players=10000 sample=3 cpu_tick_ms=147.812 cpu_seq_ms=129.540 gpu_checked_ms=83.168
+fair east players=10000 sample=4 cpu_tick_ms=147.961 cpu_seq_ms=129.240 gpu_checked_ms=83.285
+fair east players=50000 sample=0 cpu_tick_ms=797.340 cpu_seq_ms=695.370 gpu_checked_ms=387.593
+fair east players=50000 sample=1 cpu_tick_ms=793.855 cpu_seq_ms=690.527 gpu_checked_ms=387.052
+fair east players=50000 sample=2 cpu_tick_ms=793.797 cpu_seq_ms=689.313 gpu_checked_ms=391.484
+fair east players=50000 sample=3 cpu_tick_ms=793.290 cpu_seq_ms=689.996 gpu_checked_ms=387.610
+fair east players=50000 sample=4 cpu_tick_ms=794.277 cpu_seq_ms=690.077 gpu_checked_ms=387.885
+fair east players=100000 sample=0 cpu_tick_ms=1669.816 cpu_seq_ms=1478.267 gpu_checked_ms=748.530
+fair east players=100000 sample=1 cpu_tick_ms=1664.733 cpu_seq_ms=1479.070 gpu_checked_ms=747.128
+fair east players=100000 sample=2 cpu_tick_ms=1665.983 cpu_seq_ms=1479.304 gpu_checked_ms=746.397
+fair east players=100000 sample=3 cpu_tick_ms=1666.022 cpu_seq_ms=1480.653 gpu_checked_ms=747.692
+fair east players=100000 sample=4 cpu_tick_ms=1666.564 cpu_seq_ms=1480.613 gpu_checked_ms=748.001
+wrote /home/ht2673/Dev/ai-town-rust/bench/results/2026-10-21/grid-checked/fair-east.csv
