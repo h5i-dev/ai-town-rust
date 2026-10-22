@@ -6,6 +6,7 @@ import { characters } from '../characters';
 import { orientation, poseAt } from '../pose';
 import type { Player, TownMap, World } from '../types';
 import { Character } from './Character';
+import { DemoCrowd } from './DemoCrowd';
 import { PixiStaticMap } from './PixiStaticMap';
 import PixiViewport from './PixiViewport';
 
@@ -84,6 +85,7 @@ function Scene({
     <PixiViewport
       app={app}
       viewportRef={viewportRef}
+      overview={map.demo}
       screenWidth={width}
       screenHeight={height}
       worldWidth={map.width * tile}
@@ -111,7 +113,7 @@ function Scene({
           onMove(Math.floor(point.x / tile), Math.floor(point.y / tile));
         }}
       />
-      {world.players.map((player) => (
+      {map.demo ? <DemoCrowd app={app} world={world} now={now} tile={tile} viewportRef={viewportRef} onSelect={onSelect} /> : world.players.map((player) => (
         <Figure key={player.id} player={player} now={now} tile={tile} viewer={player.id === meId} onSelect={onSelect} world={world} />
       ))}
     </PixiViewport>

@@ -17,6 +17,7 @@ version = "0.1.0"
 dependencies = [
  "ai-town-kernel",
  "ai-town-server",
+ "axum",
  "futures-util",
  "h5i-app",
  "reqwest",

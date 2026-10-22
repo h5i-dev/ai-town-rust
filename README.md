@@ -41,6 +41,25 @@ provider credentials and routing in that server; AI Town does not read NVIDIA,
 Gemini, or other provider keys. See [inference server setup](docs/LLM.md) for the
 API contract, proxy guidance, and migration from the old NVIDIA settings.
 
+## Crowd demo
+
+```bash
+./bench/demo.sh                    # 10,000 players; starts backend + UI + browser
+./bench/demo.sh --players 1000     # choose 1–14,400 players
+./bench/demo.sh --no-open          # headless / SSH; prints the URL
+```
+
+Requires Rust/Cargo, Node.js/npm, Python 3, and curl. The first run builds the
+backend and installs frontend dependencies. Open <http://127.0.0.1:5174/ai-town/>
+if a browser is unavailable; drag to pan and scroll to zoom. Ctrl-C stops both
+servers. Use `--port` and `--api-port` if the default ports are occupied.
+
+This disposable, in-memory demo runs the real CPU movement kernel with placement
+checks and streams snapshots to the existing UI. Players walk back and forth
+on an open field. It needs no PostgreSQL, GPU, API key, or LLM calls; it does
+not exercise autonomous agents, conversations, or database throughput. Logs and
+the reusable Rust build cache live under the system temporary directory.
+
 ## Verification
 
 ```bash

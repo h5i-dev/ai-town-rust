@@ -12,6 +12,7 @@ export default function App() {
   const [error, setError] = useState('');
   const [music, setMusic] = useState(false);
 
+  const demo = map?.demo ?? false;
   const me = world?.players.find((p) => p.owner === user) ?? null;
   const other = world?.players.find((p) => p.id === selected) ?? null;
   const mine = useMemo(() => conversationOf(world?.conversations ?? [], me?.id), [world, me?.id]);
@@ -50,9 +51,9 @@ export default function App() {
       <header className="flex items-end justify-between gap-4 px-6 pt-4">
         <div>
           <h1 className="game-title text-5xl sm:text-7xl">AI Town</h1>
-          <p className="shadow-solid mt-1 text-lg">A virtual town where AI characters live, chat and socialize.</p>
+          <p className="shadow-solid mt-1 text-lg">{demo ? 'Movement demo · no LLM · no database' : 'A virtual town where AI characters live, chat and socialize.'}</p>
         </div>
-        <p className="text-sm text-clay-100">{connected ? 'live' : 'reconnecting'}</p>
+        <p className="text-sm text-clay-100">{world?.players.length.toLocaleString() ?? '—'} players · {connected ? 'live' : 'reconnecting'}</p>
       </header>
       <div className="grid min-h-0 flex-1 grid-cols-1 gap-4 p-4 lg:grid-cols-[1fr_22rem]">
         <div className="game-frame relative h-[70vh] min-h-[28rem] overflow-hidden bg-brown-900">
@@ -71,7 +72,8 @@ export default function App() {
         </div>
         <aside className="box flex flex-col gap-3 bg-brown-800 p-4 text-brown-200">
           {error && <p className="text-red-300">{error}</p>}
-          {!me && (
+          {demo && <p>Drag to pan, scroll to zoom. Select a character to inspect it. Players walk back and forth using the CPU movement kernel.</p>}
+          {!demo && !me && (
             <form
               className="flex flex-col gap-2"
               onSubmit={(e) => {

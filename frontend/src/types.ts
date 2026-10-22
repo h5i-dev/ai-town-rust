@@ -72,6 +72,7 @@ export type World = {
 };
 
 export type TownMap = {
+  demo?: boolean;
   tileSetUrl: string;
   tileSetDimX: number;
   tileSetDimY: number;
