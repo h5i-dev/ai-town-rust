@@ -32,7 +32,7 @@ through `Kernel::stamp`, never through a client field.
 | `aiTown/inputs.ts`, `inputHandler.ts`, `insertInput.ts` | `kernel` `Command` | A player's command is one transition. The actor comes from the token |
 | `aiTown/agent.ts` (the `tick` rules) | `kernel` `tick_agent` | Timeouts, invite acceptance, walking toward someone, and "needs an operation" are rules |
 | `aiTown/agent.ts` operations, `agentInputs.ts`, `agentOperations.ts` | `server` agent worker | They wait on the network, then submit ordinary commands |
-| `agent/conversation.ts`, `memory.ts`, `embeddingsCache.ts`, `util/llm.ts` | `server` provider (`Nim` or `Stub`) and `kernel` `Memory` rows | The prompt and the HTTP call are not decisions about who may move. The stored summary is a row the kernel accepts |
+| `agent/conversation.ts`, `memory.ts`, `embeddingsCache.ts`, `util/llm.ts` | `server` provider (`OpenAiCompatible` or `Stub`) and `kernel` `Memory` rows | The prompt and the HTTP call are not decisions about who may move. The stored summary is a row the kernel accepts |
 | `engine/abstractGame.ts` | `server` sim loop | One `Step` command per second runs 60 ticks of 16 ms. The engine user is the only caller. Postgres commits the write set once |
 | `engine/historicalObject.ts` | client interpolation along `PathNode` timestamps | The path already carries arrival times, so the client can replay the last second without a packed history buffer |
 | `engine/schema.ts` inputs and generation numbers | shell idempotency keys and a single sim task | h5i-app already serializes one tenant. A second step cannot overlap |
@@ -147,17 +147,28 @@ kernel builds.
 toward a partner, leaves on timeout, and sets `Agent.op` when it needs a
 destination, a line of dialogue, or a memory.
 
-The worker in `server` owns those operations. It reads `NVIDIA_API_KEY` only
-when constructing the provider. An empty or missing key selects the
-deterministic stub, which is what the tests run. The key is not logged, not
-written into a reply, and not stored in the database. Prompt text lives in
-code next to the worker, not in a committed instruction file.
+The worker in `server` owns those operations. The transport in `server/src/llm.rs`
+reads only `LLM_BASE_URL`, `LLM_MODEL`, `LLM_API_KEY`, and `LLM_MAX_TOKENS` when
+constructing the provider. With no settings it selects the deterministic stub;
+partial or invalid settings produce a startup error. The inference server owns
+upstream provider credentials, routing, and API translation. The optional
+`LLM_API_KEY` authenticates AI Town to that server. It is not logged, written into
+a reply, or stored in the database. Prompt text lives next to the worker.
+See [inference server setup](LLM.md) for the API contract and configuration.
 
 Memories are the last summaries for a pair of players. The original embedding
-index is not part of this port. The stub records a fixed summary. NIM, when
-configured, writes the model's summary through the same `Remember` command.
+index is not part of this port. The stub records a fixed summary. When configured,
+the inference server supplies the model's summary through the same `Remember`
+command used by the stub. Dialogue and memory share the same transport. Failed
+HTTP statuses (including 429), transport failures, the 20-second timeout, invalid
+JSON, and missing or empty text select the deterministic fallback for that turn.
 
-The default model is `google/diffusiongemma-26b-a4b-it`. `NVIDIA_MODEL` overrides it. `meta/llama-3.1-8b-instruct` reached end of life on 2026-08-26, and the API returns HTTP 410. A non-success status, including 429, and a transport timeout store the stub line for that turn. A live call against the retired model logged that failure at 35 ms and 11 ms, and the stored lines were the stub. With the current model, Lucky and Bob exchanged five lines. Those replies took 994 ms, 1,991 ms, 1,000 ms, 819 ms, and 551 ms.
+The following records describe earlier NVIDIA-specific testing, before the
+inference transport was generalized. The old default was
+`google/diffusiongemma-26b-a4b-it`. The retired `meta/llama-3.1-8b-instruct`
+returned HTTP 410 and those turns stored the stub line. With the then-current
+model, Lucky and Bob exchanged five lines at 994 ms, 1,991 ms, 1,000 ms, 819 ms,
+and 551 ms.
 
 A later headless Chromium session joined the Vite page as Ada and selected Lucky. The sidebar bubble was `Lucky: You won't believe the incredible sights I saw on that distant planet!` Successful replies in that session took 1,830 ms, 2,401 ms, 5,040 ms, 1,753 ms, 1,219 ms, 1,730 ms, 2,565 ms, 1,129 ms, 1,299 ms, 1,933 ms, 6,541 ms, 1,368 ms, 995 ms, 3,754 ms, 2,402 ms, 740 ms, 1,318 ms, 1,625 ms, and 2,726 ms. Memory summaries took 6,702 ms, 1,035 ms, 954 ms, and 2,860 ms. Six calls returned HTTP 400, and one call hit the 20 s timeout; those turns stored the stub line. The bubble on screen was a successful NIM reply. Screenshots from that session are under `/dev/shm/ai-town-rust` (`town.png`, `town-joined.png`, `town-zoomed.png`, `town-conversation.png`).
 

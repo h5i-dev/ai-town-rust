@@ -1,5 +1,6 @@
 //! Turns `Agent.op` into ordinary commands. The model only supplies text.
 
+use crate::llm::Provider;
 use crate::Town;
 use ai_town_kernel::{
     mask_blocked, Command, Error, Member, Player, Principal, Snapshot, ENGINE, MAX_PLAN, MAX_TEXT, MILLI, OP_DO,
@@ -7,44 +8,8 @@ use ai_town_kernel::{
 };
 use h5i_app::pg::Engine;
 use h5i_app::TenantId;
-use std::fmt;
 
 pub const TENANT: u64 = 1;
-
-pub enum Provider {
-    Stub,
-    Nim { model: String, base: String, key: String, client: reqwest::Client },
-}
-
-impl fmt::Debug for Provider {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        match self {
-            Provider::Stub => write!(f, "Stub"),
-            Provider::Nim { model, .. } => write!(f, "Nim({model})"),
-        }
-    }
-}
-
-impl Provider {
-    /// Reads `NVIDIA_API_KEY` once. Missing or empty selects the stub.
-    /// The key is kept in this value and is not written to logs.
-    pub fn from_env() -> Self {
-        let Ok(key) = std::env::var("NVIDIA_API_KEY") else {
-            return Provider::Stub;
-        };
-        if key.is_empty() {
-            return Provider::Stub;
-        }
-        // meta/llama-3.1-8b-instruct returned HTTP 410 after its 2026-08-26 end of life.
-        let model = std::env::var("NVIDIA_MODEL").unwrap_or_else(|_| "google/diffusiongemma-26b-a4b-it".into());
-        let base = std::env::var("NVIDIA_BASE_URL").unwrap_or_else(|_| "https://integrate.api.nvidia.com/v1".into());
-        let client = reqwest::Client::builder()
-            .timeout(std::time::Duration::from_secs(20))
-            .build()
-            .unwrap_or_else(|_| reqwest::Client::new());
-        Provider::Nim { model, base, key, client }
-    }
-}
 
 pub fn engine_actor() -> Principal {
     Principal { org: TENANT, user: ENGINE, now_ms: 0 }
@@ -147,87 +112,23 @@ fn clip(s: &str, max: usize) -> String {
 
 pub async fn speak(provider: &Provider, name: &str, identity: &str, plan: &str, history: &str, n: u64) -> String {
     let fallback = stub_line(name, n);
-    let Provider::Nim { model, base, key, client } = provider else {
-        return fallback;
-    };
     let system = format!("You are {name}. {identity} {plan} Reply with one short spoken line and nothing else.");
     let user = if history.is_empty() {
         "Start the conversation with one short line.".to_string()
     } else {
         format!("The conversation so far:\n{history}\nReply with your next line.")
     };
-    let body = serde_json::json!({
-        "model": model,
-        "messages": [
-            {"role": "system", "content": system},
-            {"role": "user", "content": user},
-        ],
-        "max_tokens": 80,
-        "temperature": 0.7,
-    });
-    let url = format!("{base}/chat/completions");
-    let started = std::time::Instant::now();
-    let sent = client.post(&url).bearer_auth(key).json(&body).send().await;
-    let Ok(resp) = sent else {
-        tracing::warn!(ms = started.elapsed().as_millis() as u64, "nim request failed");
-        return fallback;
-    };
-    let status = resp.status();
-    if !status.is_success() {
-        tracing::warn!(status = status.as_u16(), ms = started.elapsed().as_millis() as u64, "nim request failed");
-        return fallback;
-    }
-    let Ok(payload) = resp.json::<serde_json::Value>().await else {
-        tracing::warn!("nim response was not json");
-        return fallback;
-    };
-    let text = payload
-        .pointer("/choices/0/message/content")
-        .and_then(|v| v.as_str())
-        .unwrap_or("");
-    let text = text.trim();
-    if text.is_empty() {
-        fallback
-    } else {
-        tracing::info!(ms = started.elapsed().as_millis() as u64, "nim reply");
-        clip(text, MAX_TEXT)
+    match provider.complete(&system, &user, 0.7).await {
+        Some(text) => clip(&text, MAX_TEXT),
+        None => fallback,
     }
 }
 
 pub async fn remember_text(provider: &Provider, name: &str, other: &str, history: &str, messages: u64) -> String {
-    let fallback = stub_memory(other, messages);
-    let Provider::Nim { model, base, key, client } = provider else {
-        return fallback;
-    };
-    let body = serde_json::json!({
-        "model": model,
-        "messages": [
-            {"role": "system", "content": format!("You are {name}. Summarize the conversation in one sentence.")},
-            {"role": "user", "content": history},
-        ],
-        "max_tokens": 80,
-        "temperature": 0.2,
-    });
-    let url = format!("{base}/chat/completions");
-    let started = std::time::Instant::now();
-    let sent = client.post(&url).bearer_auth(key).json(&body).send().await;
-    let Ok(resp) = sent else {
-        tracing::warn!(ms = started.elapsed().as_millis() as u64, "nim request failed");
-        return fallback;
-    };
-    if !resp.status().is_success() {
-        tracing::warn!(status = resp.status().as_u16(), ms = started.elapsed().as_millis() as u64, "nim request failed");
-        return fallback;
-    }
-    let Ok(payload) = resp.json::<serde_json::Value>().await else {
-        return fallback;
-    };
-    let text = payload.pointer("/choices/0/message/content").and_then(|v| v.as_str()).unwrap_or("").trim();
-    if text.is_empty() {
-        fallback
-    } else {
-        tracing::info!(ms = started.elapsed().as_millis() as u64, "nim memory");
-        clip(text, MAX_PLAN)
+    let system = format!("You are {name}. Summarize the conversation in one sentence.");
+    match provider.complete(&system, history, 0.2).await {
+        Some(text) => clip(&text, MAX_PLAN),
+        None => stub_memory(other, messages),
     }
 }
 
@@ -347,15 +248,11 @@ mod tests {
     }
 
     #[test]
-    fn stub_provider_does_not_print_a_key() {
-        let provider = Provider::Nim {
-            model: "google/diffusiongemma-26b-a4b-it".into(),
-            base: "https://integrate.api.nvidia.com/v1".into(),
-            key: "sekret-value".into(),
-            client: reqwest::Client::new(),
-        };
+    fn provider_debug_does_not_print_a_key() {
+        let provider = Provider::openai_compatible("http://localhost:4000/v1", "town-model", Some("sekret-value".into()), 1024)
+            .expect("provider");
         let shown = format!("{provider:?}");
-        assert_eq!(shown, "Nim(google/diffusiongemma-26b-a4b-it)");
+        assert_eq!(shown, "OpenAiCompatible(town-model)");
         assert!(!shown.contains("sekret"));
         assert_eq!(format!("{:?}", Provider::Stub), "Stub");
         let line = stub_line("Lucky", 1);
@@ -409,12 +306,14 @@ mod tests {
         }
     }
 
-    fn nim_at(base: String, timeout_ms: u64) -> Provider {
+    fn inference_at(base: String, timeout_ms: u64) -> Provider {
         let client = reqwest::Client::builder()
             .timeout(std::time::Duration::from_millis(timeout_ms))
             .build()
             .expect("client");
-        Provider::Nim { model: "meta/llama-3.1-8b-instruct".into(), base, key: "test-key".into(), client }
+        Provider::OpenAiCompatible {
+            model: "town-model".into(), base, api_key: Some("test-key".into()), client, max_tokens: 1024,
+        }
     }
 
     async fn serve_completions(status: axum::http::StatusCode, body: &'static str) -> String {
@@ -434,28 +333,64 @@ mod tests {
     async fn rate_limit_and_timeout_fall_back_to_the_stub() {
         let fallback = stub_line("Lucky", 1);
         let base = serve_completions(axum::http::StatusCode::TOO_MANY_REQUESTS, "slow down").await;
-        let line = speak(&nim_at(base, 1_000), "Lucky", "curious", "gossip", "", 1).await;
+        let provider = inference_at(base, 1_000);
+        let line = speak(&provider, "Lucky", "curious", "gossip", "", 1).await;
         assert_eq!(line, fallback);
+        assert_eq!(remember_text(&provider, "Lucky", "Bob", "hello", 1).await, stub_memory("Bob", 1));
 
+        let app = axum::Router::new().route("/v1/chat/completions", axum::routing::post(|| async {
+            tokio::time::sleep(std::time::Duration::from_secs(2)).await;
+            "{}"
+        }));
         let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.expect("bind");
         let addr = listener.local_addr().expect("addr");
-        tokio::spawn(async move {
-            loop {
-                if listener.accept().await.is_err() {
-                    break;
-                }
-            }
-        });
-        let hung = speak(&nim_at(format!("http://{addr}/v1"), 200), "Lucky", "curious", "gossip", "", 1).await;
+        let task = tokio::spawn(async move { axum::serve(listener, app).await.unwrap() });
+        let provider = inference_at(format!("http://{addr}/v1"), 50);
+        let hung = speak(&provider, "Lucky", "curious", "gossip", "", 1).await;
         assert_eq!(hung, fallback);
+        assert_eq!(remember_text(&provider, "Lucky", "Bob", "hello", 1).await, stub_memory("Bob", 1));
+        task.abort();
     }
 
     #[tokio::test]
     async fn a_model_line_is_kept_when_the_request_succeeds() {
         let body = "{\"choices\":[{\"message\":{\"content\":\"The oaks were arguing.\"}}]}";
         let base = serve_completions(axum::http::StatusCode::OK, body).await;
-        let line = speak(&nim_at(base, 1_000), "Lucky", "curious", "gossip", "", 1).await;
+        let line = speak(&inference_at(base, 1_000), "Lucky", "curious", "gossip", "", 1).await;
         assert_eq!(line, "The oaks were arguing.");
         assert_ne!(line, stub_line("Lucky", 1));
+    }
+
+    #[tokio::test]
+    async fn memory_uses_the_same_inference_server() {
+        let body = "{\"choices\":[{\"message\":{\"content\":\"We talked about the oaks.\"}}]}";
+        let base = serve_completions(axum::http::StatusCode::OK, body).await;
+        let summary = remember_text(&inference_at(base, 1_000), "Lucky", "Bob", "Bob: Hello.", 1).await;
+        assert_eq!(summary, "We talked about the oaks.");
+    }
+
+    #[tokio::test]
+    async fn unusable_responses_fall_back_for_dialogue_and_memory() {
+        for body in ["not json", "{}", "{\"choices\":[]}", "{\"choices\":[{\"message\":{\"content\":\"  \"}}]}"] {
+            let base = serve_completions(axum::http::StatusCode::OK, body).await;
+            let provider = inference_at(base, 1_000);
+            assert_eq!(speak(&provider, "Lucky", "curious", "gossip", "", 1).await, stub_line("Lucky", 1));
+            assert_eq!(remember_text(&provider, "Lucky", "Bob", "hello", 1).await, stub_memory("Bob", 1));
+        }
+    }
+
+    /// Run explicitly against a separately configured inference server.
+    #[tokio::test]
+    #[ignore = "requires LLM_BASE_URL and LLM_MODEL; makes live inference requests"]
+    async fn live_inference_server() {
+        let provider = Provider::from_env().expect("inference configuration");
+        assert!(!matches!(provider, Provider::Stub), "configure LLM_BASE_URL and LLM_MODEL");
+        let line = speak(&provider, "Lucky", "You are a curious town resident.", "Greet Bob.", "Bob: Hello!", 1).await;
+        assert_ne!(line, stub_line("Lucky", 1), "dialogue fell back to the stub");
+        assert!(!line.is_empty() && line.len() <= MAX_TEXT);
+        let summary = remember_text(&provider, "Lucky", "Bob", &format!("Bob: Hello!\nLucky: {line}"), 2).await;
+        assert_ne!(summary, stub_memory("Bob", 2), "memory fell back to the stub");
+        assert!(!summary.is_empty() && summary.len() <= MAX_PLAN);
+        println!("Dialogue: {line}\nMemory: {summary}");
     }
 }

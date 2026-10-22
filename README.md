@@ -3,7 +3,8 @@
 [AI Town](https://github.com/a16z-infra/ai-town) with a Rust backend,
 PostgreSQL, and game rules extracted to Lean 4 through
 [h5i-app](https://crates.io/crates/h5i-app). The React/PixiJS client talks to
-HTTP and WebSocket endpoints. Agents use NVIDIA NIM or a deterministic stub.
+HTTP and WebSocket endpoints. Agents use a user-managed OpenAI-compatible
+inference server or a deterministic stub.
 
 ## Run
 
@@ -24,8 +25,21 @@ npm run dev
 ```
 
 Open <http://127.0.0.1:5173/ai-town/>. The backend listens on port 8080.
-Set `NVIDIA_API_KEY` to use NIM; `NVIDIA_MODEL` overrides the default model,
-`google/diffusiongemma-26b-a4b-it`.
+Without LLM configuration, agents use the deterministic stub. To enable model
+inference, run an OpenAI-compatible server or proxy and configure the backend:
+
+```bash
+export LLM_BASE_URL=http://127.0.0.1:4000/v1
+export LLM_MODEL=town-model
+# Only if your inference server requires authentication:
+export LLM_API_KEY=your-server-access-token
+cargo run -p ai-town-server
+```
+
+`town-model` is the model name or alias exposed by your server. Configure upstream
+provider credentials and routing in that server; AI Town does not read NVIDIA,
+Gemini, or other provider keys. See [inference server setup](docs/LLM.md) for the
+API contract, proxy guidance, and migration from the old NVIDIA settings.
 
 ## Verification
 

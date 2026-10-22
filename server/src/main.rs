@@ -22,6 +22,6 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
 
     let url = std::env::var("DATABASE_URL").map_err(|_| "DATABASE_URL is not set")?;
     let addr = std::env::var("LISTEN").unwrap_or_else(|_| "127.0.0.1:8080".into());
-    serve(&url, &secret, &addr, Provider::from_env()).await?;
+    serve(&url, &secret, &addr, Provider::from_env()?).await?;
     Ok(())
 }
