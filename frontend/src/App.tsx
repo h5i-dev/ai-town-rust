@@ -51,7 +51,7 @@ export default function App() {
       <header className="flex items-end justify-between gap-4 px-6 pt-4">
         <div>
           <h1 className="game-title text-5xl sm:text-7xl">AI Town</h1>
-          <p className="shadow-solid mt-1 text-lg">{demo ? 'Movement demo · no LLM · no database' : 'A virtual town where AI characters live, chat and socialize.'}</p>
+          <p className="shadow-solid mt-1 text-lg">{demo ? `${map?.demoEngine === 'original' ? 'Original AI Town' : 'Rust'} movement demo · no LLM · no database` : 'A virtual town where AI characters live, chat and socialize.'}</p>
         </div>
         <p className="text-sm text-clay-100">{world?.players.length.toLocaleString() ?? '—'} players · {connected ? 'live' : 'reconnecting'}</p>
       </header>
@@ -72,7 +72,8 @@ export default function App() {
         </div>
         <aside className="box flex flex-col gap-3 bg-brown-800 p-4 text-brown-200">
           {error && <p className="text-red-300">{error}</p>}
-          {demo && <p>Drag to pan, scroll to zoom. Select a character to inspect it. Players walk back and forth using the CPU movement kernel.</p>}
+          {world?.demo && <p>Original engine: {world.demo.stepMs} ms simulated in {Math.round(world.demo.tickMs).toLocaleString()} ms. Positions update as computation finishes.</p>}
+          {demo && <p>Drag to pan, scroll to zoom. Select a character to inspect it. Players walk back and forth using the selected movement engine.</p>}
           {!demo && !me && (
             <form
               className="flex flex-col gap-2"

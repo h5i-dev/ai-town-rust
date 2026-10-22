@@ -61,6 +61,7 @@ export type Agent = {
 };
 
 export type World = {
+  demo?: { engine: 'original'; tickMs: number; stepMs: number };
   nowMs: number;
   width: number;
   height: number;
@@ -73,6 +74,7 @@ export type World = {
 
 export type TownMap = {
   demo?: boolean;
+  demoEngine?: 'rust' | 'original';
   tileSetUrl: string;
   tileSetDimX: number;
   tileSetDimY: number;

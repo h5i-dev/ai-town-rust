@@ -47,6 +47,7 @@ API contract, proxy guidance, and migration from the old NVIDIA settings.
 ./bench/demo.sh                    # 10,000 players; starts backend + UI + browser
 ./bench/demo.sh --players 1000     # choose 1–14,400 players
 ./bench/demo.sh --no-open          # headless / SSH; prints the URL
+./bench/demo.sh --engine original  # upstream AI Town movement, same demo UI
 ```
 
 Requires Rust/Cargo, Node.js/npm, Python 3, and curl. The first run builds the
@@ -59,6 +60,23 @@ checks and streams snapshots to the existing UI. Players walk back and forth
 on an open field. It needs no PostgreSQL, GPU, API key, or LLM calls; it does
 not exercise autonomous agents, conversations, or database throughput. Logs and
 the reusable Rust build cache live under the system temporary directory.
+
+`--engine original` loads the unmodified `Game` class from an original AI Town
+checkout at `~/Ref/ai-town`. For another location:
+
+```bash
+AI_TOWN_UPSTREAM=/path/to/ai-town ./bench/demo.sh --engine original --players 1000
+```
+
+This mode uses the same open-field fixture and this repository's UI; it does
+not start the original Convex deployment or autonomous agents. Original mode
+needs Node.js 20+ but no Rust toolchain. The engine runs in a worker so HTTP,
+zoom, and pan remain responsive during slow ticks. The UI shows measured compute
+time and simulated time, and displays only positions already computed by the
+original engine. At 10,000 players the simulation can run far below real time;
+this is expected. It includes upstream location history packing, while the Rust
+demo does not produce those buffers. For controlled timing comparisons, use the
+[benchmarks](docs/BENCHMARKS.md) rather than UI update rates.
 
 ## Verification
 

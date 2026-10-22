@@ -65,7 +65,8 @@ class Crowd extends Container {
       if (!sprite.visible) continue;
       const direction = ['right', 'down', 'left', 'up'][Math.floor(orientation(pose.faceDx, pose.faceDy) / 90)];
       const frames = this.sheets[player.character].animations[direction];
-      sprite.texture = frames[pose.speed > 0.05 ? Math.floor(now / 150) % frames.length : 0];
+      const moving = pose.speed > 0.05 || (world.demo?.engine === 'original' && player.speed > 50);
+      sprite.texture = frames[moving ? Math.floor(now / 150) % frames.length : 0];
     }
   }
   destroy() {
