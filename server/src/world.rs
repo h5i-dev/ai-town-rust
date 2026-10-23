@@ -1,12 +1,23 @@
 //! JSON the browser renders. Positions stay in milli-tiles.
 
-use ai_town_kernel::{Conversation, Message, PathNode, Snapshot};
+use ai_town_kernel::{Conversation, Member, Message, PathNode, Snapshot};
 
 pub fn to_json(snap: &Snapshot) -> String {
+    to_value(snap).to_string()
+}
+
+pub fn to_value(snap: &Snapshot) -> serde_json::Value {
+    to_value_with_options(snap, true, usize::MAX)
+}
+
+/// Select displayed history before allocating JSON rows for large demo frames.
+pub fn to_value_with_options(snap: &Snapshot, include_paths: bool, message_limit: usize) -> serde_json::Value {
     // Index once: scanning every path for every player is quadratic for crowds.
     let mut paths = std::collections::HashMap::<u64, Vec<&PathNode>>::new();
     for node in &snap.paths {
-        paths.entry(node.player).or_default().push(node);
+        if include_paths {
+            paths.entry(node.player).or_default().push(node);
+        }
     }
     let players: Vec<serde_json::Value> = snap
         .players
@@ -32,12 +43,17 @@ pub fn to_json(snap: &Snapshot) -> String {
             })
         })
         .collect();
+    let mut memberships = std::collections::HashMap::<u64, Vec<&Member>>::new();
+    for member in &snap.members {
+        memberships.entry(member.conversation).or_default().push(member);
+    }
     let conversations: Vec<serde_json::Value> = snap
         .conversations
         .iter()
-        .map(|c| conv_json(c, snap))
+        .map(|c| conv_json(c, memberships.get(&c.id).map(Vec::as_slice).unwrap_or(&[])))
         .collect();
-    let messages: Vec<serde_json::Value> = snap.messages.iter().map(message_json).collect();
+    let messages: Vec<serde_json::Value> = snap.messages.iter()
+        .skip(snap.messages.len().saturating_sub(message_limit)).map(message_json).collect();
     let agents: Vec<serde_json::Value> = snap
         .agents
         .iter()
@@ -65,20 +81,17 @@ pub fn to_json(snap: &Snapshot) -> String {
         "messages": messages,
         "agents": agents,
     })
-    .to_string()
 }
 
-fn conv_json(c: &Conversation, snap: &Snapshot) -> serde_json::Value {
+fn conv_json(c: &Conversation, rows: &[&Member]) -> serde_json::Value {
     let mut members = Vec::new();
-    for m in &snap.members {
-        if m.conversation == c.id {
-            members.push(serde_json::json!({
-                "player": m.player,
-                "status": m.status,
-                "invited": m.invited,
-                "started": m.started,
-            }));
-        }
+    for m in rows {
+        members.push(serde_json::json!({
+            "player": m.player,
+            "status": m.status,
+            "invited": m.invited,
+            "started": m.started,
+        }));
     }
     serde_json::json!({
         "id": c.id,
@@ -174,5 +187,13 @@ mod tests {
             vec![0, 1, 2]
         );
         assert_eq!(json["players"][1]["path"], serde_json::json!([]));
+        for id in 1..=3 {
+            s.messages.push(Message { id, conversation: 1, author: 1, ts: id, text: b"hello".to_vec() });
+        }
+        let limited = to_value_with_options(&s, false, 2);
+        assert_eq!(limited["players"][0]["path"], serde_json::json!([]));
+        let ids: Vec<_> = limited["messages"].as_array().unwrap().iter().map(|m| m["id"].as_u64().unwrap()).collect();
+        assert_eq!(ids, vec![2, 3]);
+        assert_eq!(to_value(&s)["messages"].as_array().unwrap().len(), 3);
     }
 }

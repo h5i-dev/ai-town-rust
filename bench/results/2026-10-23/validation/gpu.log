@@ -1,0 +1,43 @@
+   Compiling ai-town-gpu v0.1.0 (/home/ht2673/Dev/ai-town-rust/gpu)
+    Finished `release` profile [optimized] target(s) in 0.61s
+     Running unittests src/lib.rs (/tmp/ai-town-rust-gpu-target/release/deps/ai_town_gpu-befae11f0cf45ce0)
+
+running 2 tests
+test arena::tests::capacity_roundtrip_and_input_order ... ok
+test arena::tests::separated_agents_match_a_joint_scan ... ok
+
+test result: ok. 2 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+     Running unittests src/bin/fair-bench.rs (/tmp/ai-town-rust-gpu-target/release/deps/fair_bench-6cd5df22f97f2c12)
+
+running 0 tests
+
+test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+     Running unittests src/bin/seek-bench.rs (/tmp/ai-town-rust-gpu-target/release/deps/seek_bench-ece6675720548ecd)
+
+running 0 tests
+
+test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+     Running tests/equiv.rs (/tmp/ai-town-rust-gpu-target/release/deps/equiv-936ad5154ce7965a)
+
+running 2 tests
+test empty_seek_is_empty ... ok
+test matches_scalar_on_open_ground_blocked_tiles_and_crowding ... ok
+
+test result: ok. 2 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 1.55s
+
+     Running tests/rust_equiv.rs (/tmp/ai-town-rust-gpu-target/release/deps/rust_equiv-0c3cd7b849f57246)
+
+running 2 tests
+test ptx_matches_tick_round ... ok
+test ptx_matches_tick_round_in_a_crowd_with_checked_grids ... ok
+
+test result: ok. 2 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.59s
+
+   Doc-tests ai_town_gpu
+
+running 0 tests
+
+test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s

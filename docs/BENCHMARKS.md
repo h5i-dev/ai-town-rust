@@ -1,4 +1,8 @@
-# Benchmarks
+# Movement microbenchmarks (historical)
+
+For the current default demo workload, see [Town benchmarks](TOWN_BENCHMARKS.md).
+The measurements below use synchronized movement without autonomous residents.
+They do not measure the town-life scenario.
 
 Measured on 2026-10-21 after the CPU `settle` check and GPU `Relocate`
 placement check landed. These replace the earlier README tables.

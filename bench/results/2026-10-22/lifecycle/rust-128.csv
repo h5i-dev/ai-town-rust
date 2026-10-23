@@ -1,0 +1,4 @@
+engine,players,sample,ticks,simulated_ms,loop_ms,history_pack_ms,snapshot_ms,moved,decisions,destinations,activities,invitations,messages,memories,pathfinds
+rust,128,0,4800,76800,543.941,0,6.791,117,307,151,84,72,373,150,339
+rust,128,1,4800,76800,491.997,0,5.576,117,307,151,84,72,373,150,339
+rust,128,2,4800,76800,523.129,0,7.691,117,307,151,84,72,373,150,339

@@ -217,6 +217,11 @@ fn ptx_matches_tick_round() {
     let seek = dev.seek(&[0], &[0], &[3], &[0], 100, &open, 8, 8).unwrap_or_else(|err| panic!("seek {} {}", err.op, err.code));
     assert_eq!((seek.xs, seek.ys), (sx, sy));
     assert_eq!(seek.errors, vec![0]);
+    // The same device workspace has now served round, step and seek layouts.
+    // Grow it again, then shrink with a different mask to expose stale slots.
+    assert_round(&dev, &[0, 3000, 6000], &[0, 0, 0], &[1, 1, 0],
+        &[200, 3200, 6000], &[0, 0, 0], &[1, 2, 3], &open, 8, 8);
+    assert_round(&dev, &[0], &[0], &[1], &[1000], &[0], &[4], &wall, 8, 8);
 }
 
 /// A crowd that all walks toward the middle of a walled map, so most rounds

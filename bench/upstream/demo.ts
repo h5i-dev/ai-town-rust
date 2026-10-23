@@ -1,6 +1,8 @@
 // Only the fixture, JSON adapter, and local transport live here. All movement
-// and location history come from the checkout's actual, unmodified Game class.
+// agent/conversation rules and history come from upstream Game. Town bundles
+// guard zero-duration path interpolation (see path-guard.mjs).
 import { Game } from 'upstream-game';
+import { Town } from './town';
 import { isMainThread, parentPort, workerData, Worker } from 'node:worker_threads';
 import { createServer } from 'node:http';
 import { readFileSync } from 'node:fs';
@@ -57,38 +59,58 @@ function snapshot(game: Game, now: number, tickMs: number, stepMs: number) {
 }
 
 if (!isMainThread) {
-  const game = createGame(workerData.players);
-  let now = START;
-  let east = true;
-  let turnAt = now + LEG_MS;
-  route(game, now, east);
-  // Keep initial rendering instant even when the first tick takes seconds.
-  parentPort!.postMessage(snapshot(game, now, 0, 0));
-  let batch = 1;
-  const step = () => {
-    const ticks = Math.min(batch, (turnAt - now) / TICK_MS);
-    const started = performance.now();
-    game.beginStep(now + TICK_MS);
-    for (let i = 0; i < ticks; i++) { now += TICK_MS; game.tick(now); }
-    game.takeDiff(); // Pack and release upstream's real location history.
-    if (now >= turnAt) { east = !east; route(game, now, east); turnAt = now + LEG_MS; }
-    const elapsed = performance.now() - started;
-    parentPort!.postMessage(snapshot(game, now, elapsed, ticks * TICK_MS));
-    console.error(`demo: engine=original players=${workerData.players} ticks=${ticks} tick_ms=${elapsed.toFixed(1)} now_ms=${now}`);
-    // Bound update latency: do one tick for large worlds; batch small worlds.
-    batch = Math.max(1, Math.min(60, Math.floor(500 / Math.max(elapsed / ticks, 0.1))));
-    setTimeout(step, Math.max(0, ticks * TICK_MS - (performance.now() - started)));
-  };
-  setTimeout(step, 0);
+  if (workerData.fixture) {
+    console.log = console.debug = console.warn = () => {};
+    const town = new Town(workerData.fixture);
+    let now = START, batch = 1;
+    parentPort!.postMessage(JSON.stringify(town.snapshot(now)));
+    const step = () => {
+      const started = performance.now();
+      const result = town.step(now, batch);
+      now += batch * TICK_MS;
+      const elapsed = result.tickMs + result.packMs;
+      parentPort!.postMessage(JSON.stringify(town.snapshot(now, elapsed, batch*TICK_MS)));
+      const delay = Math.max(0,batch*TICK_MS-(performance.now()-started));
+      batch = Math.max(1,Math.min(60,Math.floor(500/Math.max(elapsed/batch,0.1))));
+      setTimeout(step,delay);
+    };
+    setTimeout(step,0);
+  } else {
+    const game = createGame(workerData.players);
+    let now = START;
+    let east = true;
+    let turnAt = now + LEG_MS;
+    route(game, now, east);
+    // Keep initial rendering instant even when the first tick takes seconds.
+    parentPort!.postMessage(snapshot(game, now, 0, 0));
+    let batch = 1;
+    const step = () => {
+      const ticks = Math.min(batch, (turnAt - now) / TICK_MS);
+      const started = performance.now();
+      game.beginStep(now + TICK_MS);
+      for (let i = 0; i < ticks; i++) { now += TICK_MS; game.tick(now); }
+      game.takeDiff(); // Pack and release upstream's real location history.
+      if (now >= turnAt) { east = !east; route(game, now, east); turnAt = now + LEG_MS; }
+      const elapsed = performance.now() - started;
+      parentPort!.postMessage(snapshot(game, now, elapsed, ticks * TICK_MS));
+      console.error(`demo: engine=original players=${workerData.players} ticks=${ticks} tick_ms=${elapsed.toFixed(1)} now_ms=${now}`);
+      // Bound update latency: do one tick for large worlds; batch small worlds.
+      batch = Math.max(1, Math.min(60, Math.floor(500 / Math.max(elapsed / ticks, 0.1))));
+      setTimeout(step, Math.max(0, ticks * TICK_MS - (performance.now() - started)));
+    };
+    setTimeout(step, 0);
+  }
 } else {
   const players = Number(process.argv[2] ?? 10_000);
   const port = Number(process.argv[3] ?? 18080);
   if (!Number.isInteger(players) || players < 1 || players > 14_400
       || !Number.isInteger(port) || port < 1 || port > 65535) throw new Error('Invalid demo count or port');
   const side = Math.max(16, Math.ceil(Math.sqrt(players)) + 8);
-  const map = JSON.parse(readFileSync(process.argv[4], 'utf8'));
-  Object.assign(map, { width: side, height: side, demo: true, demoEngine: 'original',
+  const fixture = process.argv[5] || undefined;
+  const map = fixture ? JSON.parse(readFileSync(fixture,'utf8')).map : JSON.parse(readFileSync(process.argv[4], 'utf8'));
+  if (!fixture) Object.assign(map, { width: side, height: side, demo: true, demoEngine: 'original',
     bgTiles: [Array.from({ length: side }, () => Array(side).fill(271))], objectTiles: [], animatedSprites: [] });
+  map.demoEngine = 'original';
   const mapJson = JSON.stringify(map);
   let latest: string | undefined;
   const server = createServer((req, res) => {
@@ -99,7 +121,7 @@ if (!isMainThread) {
   });
   const sockets = new WebSocketServer({ server, path: '/ws' });
   sockets.on('connection', socket => { if (latest) socket.send(latest); });
-  const worker = new Worker(__filename, { workerData: { players } });
+  const worker = new Worker(__filename, { workerData: { players, fixture } });
   worker.on('message', (frame: string) => {
     latest = frame;
     for (const socket of sockets.clients) {
@@ -113,5 +135,5 @@ if (!isMainThread) {
   worker.on('error', err => { console.error(err); process.exit(1); });
   worker.on('exit', code => { if (code !== 0) process.exit(code); });
   server.on('error', err => { console.error(err); process.exit(1); });
-  server.listen(port, '127.0.0.1', () => console.error(`Original AI Town movement demo on port ${port}`));
+  server.listen(port, '127.0.0.1', () => console.error(`Original AI Town ${fixture ? 'town' : 'movement'} demo on port ${port}`));
 }

@@ -1,4 +1,4 @@
-//! Disposable movement demo: real CPU ticks, no persistence or LLM worker.
+//! Disposable town / crowd demo: native CPU rules, offline external operations.
 use ai_town_kernel::{FACE_BIAS, MILLI, PF_MOVE, PathNode, Player, Snapshot, run_ticks};
 use axum::{
     Router,
@@ -143,10 +143,45 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     }
     let addr = args.get(1).map(String::as_str).unwrap_or("127.0.0.1:18080");
     let listener = tokio::net::TcpListener::bind(addr).await?;
-    let mut s = world(n);
-    let map = Arc::new(demo_map(s.meta.width));
-    let (tx, frames) = watch::channel(Arc::new(ai_town_server::to_json(&s)));
+    let fixture = args.get(2).filter(|p| !p.is_empty());
+    let mut town = fixture.map(|p| ai_town_bench::Town::load(p));
+    let mut s = if let Some(t) = &town {
+        t.state.clone()
+    } else {
+        world(n)
+    };
+    let map_data = if let Some(t) = &town {
+        let mut map = t.fixture["map"].clone();
+        map["demoEngine"] = "rust".into();
+        map.to_string()
+    } else {
+        demo_map(s.meta.width)
+    };
+    let map = Arc::new(map_data);
+    let initial = town
+        .as_ref()
+        .map(|t| t.snapshot(0.0, 0))
+        .unwrap_or_else(|| ai_town_server::to_json(&s));
+    let (tx, frames) = watch::channel(Arc::new(initial));
     std::thread::spawn(move || {
+        if let Some(ref mut town) = town {
+            let mut ticks = 1;
+            loop {
+                let clock = Instant::now();
+                let tick_ms = town.step(ticks);
+                if tx
+                    .send(Arc::new(town.snapshot(tick_ms, ticks * 16)))
+                    .is_err()
+                {
+                    break;
+                }
+                std::thread::sleep(
+                    Duration::from_millis(ticks * 16).saturating_sub(clock.elapsed()),
+                );
+                ticks = ((500.0 / (tick_ms / ticks as f64).max(0.1)) as u64).clamp(1, 60);
+            }
+            return;
+        }
         let mut east = true;
         let mut turn_at = s.meta.now_ms + LEG_MS;
         loop {
@@ -169,7 +204,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
             std::thread::sleep(Duration::from_millis(STEP_MS).saturating_sub(clock.elapsed()));
         }
     });
-    eprintln!("Movement demo: {n} players at http://{addr} (no database or LLM)");
+    eprintln!("Demo: {n} residents at http://{addr} (no database or LLM)");
     let app = Router::new()
         .route("/healthz", get(|| async { "ok" }))
         .route("/snapshot", get(snapshot))

@@ -1,0 +1,35 @@
+{
+  "utc": "2026-10-22T21:22:44Z",
+  "platform": "Linux-6.8.0-137-generic-x86_64-with-glibc2.39",
+  "cpu": "AMD EPYC 7502 32-Core Processor",
+  "commit": "8e60c408361b89e1a536c317af98dad3a321a856",
+  "dirty": true,
+  "upstream_commit": "8e05997f2409275669c8344b84a51692e83f3f33",
+  "node": "v24.21.0",
+  "players": "32,128,1000,10000",
+  "samples": 3,
+  "ticks_per_step": 60,
+  "steps": 1,
+  "seed": 1,
+  "engine": "both",
+  "rust": "rustc 1.98.1 (48a229cea 2026-09-01)",
+  "cpu_threads": 128,
+  "loadavg": [
+    74.82958984375,
+    76.0986328125,
+    74.4814453125
+  ],
+  "original_path_guard": true,
+  "sha256": {
+    "bench/scenarios/town.mjs": "63d997ca270835714310f73504791f3d87b694552d65b76d8a3ab2733087082c",
+    "bench/scenarios/policy.mjs": "8f85af5e5c804d1e7fa6a8d25f2c11f6c6ee123beeff5764ef9a215b0cde3e16",
+    "bench/scenarios/town.test.mjs": "c97f89fbef42ddd2f390e5226472837bc3223d68ed725f0b65fce1be36d679eb",
+    "bench/upstream/town.ts": "44069bf47b069b633d84539503e0b1214b0ab43ba1233101fe5092162d49c3a4",
+    "bench/upstream/town-bench.ts": "ade19587539b2f22468488116f450e8c0eb7e77805fc3d3c9e42daceb3a33fb3",
+    "bench/upstream/run-town-bench.mjs": "10eeaac390d69796ad05ad67f217e55a6b37344c40aa31e3a1ecda343edaac7a",
+    "bench/upstream/path-guard.mjs": "6fc6c8165556259400097e79ca93a8b9eca5715a5a3ed84f723d05e8375cda45",
+    "bench/src/lib.rs": "6462b2d472823c0454328799cbf93cb329defe42152eb87173622dedf1f68ed5",
+    "bench/src/bin/town-bench.rs": "df5e5d0f588a022a164667e20cbf04137082748a7d94b198457531da241e5a56",
+    "assets/gentle.json": "cb4b080984f16a7db1a69965fa4e6f677aa0552a984c62c089a0388efa58180f"
+  }
+}

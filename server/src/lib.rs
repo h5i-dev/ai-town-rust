@@ -23,7 +23,7 @@ pub use agent::{drain, engine_actor, user_actor, TENANT};
 pub use llm::Provider;
 pub use http::serve;
 pub use map::gentle;
-pub use world::to_json;
+pub use world::{to_json, to_value, to_value_with_options};
 
 pub struct Town;
 

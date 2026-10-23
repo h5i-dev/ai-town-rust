@@ -8,6 +8,7 @@
 
 use crate::{GpuError, MAX_AGENTS};
 use std::ffi::c_void;
+use std::cell::RefCell;
 use std::marker::PhantomData;
 use std::path::Path;
 use std::time::Instant;
@@ -102,34 +103,52 @@ pub struct RustDevice {
     step_func: CUfunction,
     round_func: CUfunction,
     verify_grid: bool,
+    workspace: RefCell<GpuBufs>,
     _thread: PhantomData<*const ()>,
 }
 
+// A thread-bound device owns one reusable allocation per argument slot.
+// Each entry point rewinds the slots; growing a slot is transactional so a
+// failed allocation leaves the previous workspace usable on the next call.
 struct GpuBufs {
-    ptrs: Vec<CUdeviceptr>,
+    slots: Vec<(CUdeviceptr, usize)>,
+    cursor: usize,
 }
 
 impl GpuBufs {
-    fn new() -> Self {
-        Self { ptrs: Vec::new() }
-    }
+    fn new() -> Self { Self { slots: Vec::new(), cursor: 0 } }
+
+    fn rewind(&mut self) { self.cursor = 0; }
 
     fn alloc(&mut self, bytes: usize) -> Result<CUdeviceptr, GpuError> {
+        let bytes = bytes.max(1);
+        let index = self.cursor;
+        if let Some(&(ptr, capacity)) = self.slots.get(index) {
+            if capacity >= bytes { self.cursor += 1; return Ok(ptr); }
+        }
         let mut ptr = 0;
-        check("cuMemAlloc", unsafe { cuMemAlloc_v2(&mut ptr, bytes.max(1)) })?;
-        self.ptrs.push(ptr);
+        check("cuMemAlloc", unsafe { cuMemAlloc_v2(&mut ptr, bytes) })?;
+        if index < self.slots.len() {
+            let old = self.slots[index].0;
+            self.slots[index] = (ptr, bytes);
+            unsafe { let _ = cuMemFree_v2(old); }
+        } else {
+            self.slots.push((ptr, bytes));
+        }
+        self.cursor += 1;
         Ok(ptr)
+    }
+
+    fn clear(&mut self) {
+        for (ptr, _) in self.slots.drain(..) {
+            unsafe { let _ = cuMemFree_v2(ptr); }
+        }
+        self.cursor = 0;
     }
 }
 
 impl Drop for GpuBufs {
-    fn drop(&mut self) {
-        for ptr in self.ptrs.drain(..) {
-            unsafe {
-                let _ = cuMemFree_v2(ptr);
-            }
-        }
-    }
+    fn drop(&mut self) { self.clear(); }
 }
 
 fn h2d<T>(dst: CUdeviceptr, src: &[T]) -> Result<(), GpuError> {
@@ -184,7 +203,7 @@ impl RustDevice {
                 let _ = cuCtxDestroy_v2(ctx);
                 return Err(GpuError { op: "cuModuleGetFunction", code: got_round });
             }
-            Ok(RustDevice { ctx, module, func, step_func, round_func, verify_grid: false, _thread: PhantomData })
+            Ok(RustDevice { ctx, module, func, step_func, round_func, verify_grid: false, workspace: RefCell::new(GpuBufs::new()), _thread: PhantomData })
         }
     }
 
@@ -258,7 +277,8 @@ impl RustDevice {
         }
         let wall = Instant::now();
         check("cuCtxSetCurrent", unsafe { cuCtxSetCurrent(self.ctx) })?;
-        let mut bufs = GpuBufs::new();
+        let mut bufs = self.workspace.borrow_mut();
+        bufs.rewind();
         // Repeat copies `n` outputs back over the positions, so the buffers
         // have to cover a short slice whose `n` is longer than the input.
         let d_xs = bufs.alloc(xs.len().max(n) * 4)?;
@@ -397,7 +417,8 @@ impl RustDevice {
         }
         let wall = Instant::now();
         check("cuCtxSetCurrent", unsafe { cuCtxSetCurrent(self.ctx) })?;
-        let mut bufs = GpuBufs::new();
+        let mut bufs = self.workspace.borrow_mut();
+        bufs.rewind();
         let d_xs = bufs.alloc(n * 4)?;
         let d_ys = bufs.alloc(n * 4)?;
         let d_moving = bufs.alloc(n * 4)?;
@@ -566,7 +587,8 @@ impl RustDevice {
         }
         let wall = Instant::now();
         check("cuCtxSetCurrent", unsafe { cuCtxSetCurrent(self.ctx) })?;
-        let mut bufs = GpuBufs::new();
+        let mut bufs = self.workspace.borrow_mut();
+        bufs.rewind();
         let d_xs = bufs.alloc(n * 4)?;
         let d_ys = bufs.alloc(n * 4)?;
         let d_moving = bufs.alloc(n * 4)?;
@@ -761,6 +783,7 @@ impl Drop for RustDevice {
     fn drop(&mut self) {
         unsafe {
             let _ = cuCtxSetCurrent(self.ctx);
+            self.workspace.get_mut().clear();
             let _ = cuModuleUnload(self.module);
             let _ = cuCtxDestroy_v2(self.ctx);
         }

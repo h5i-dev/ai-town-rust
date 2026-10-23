@@ -52,33 +52,30 @@ pub fn from_snapshot(snap: &Snapshot, reply: oneshot::Sender<Option<(Vec<u32>, V
         slot.insert(p.id, i);
         i += 1;
     }
-    let mut grouped = Vec::new();
-    i = 0;
-    while i < n {
-        grouped.push(Vec::new());
-        i += 1;
+    // Count and prefix-pack once; avoid one heap allocation per resident and
+    // the second clone of every path row. Preserve original order per player.
+    let mut counts = vec![0usize; n];
+    for node in &snap.paths {
+        if let Some(&i) = slot.get(&node.player) { counts[i] += 1; }
     }
-    let mut j = 0;
-    while j < snap.paths.len() {
-        if let Some(&i) = slot.get(&snap.paths[j].player) {
-            grouped[i].push(snap.paths[j].clone());
-        }
-        j += 1;
-    }
-    let mut paths = Vec::new();
     let mut path_lo = Vec::with_capacity(n);
     let mut path_hi = Vec::with_capacity(n);
-    i = 0;
-    while i < n {
-        path_lo.push(paths.len() as u32);
-        let mut k = 0;
-        while k < grouped[i].len() {
-            paths.push(grouped[i][k].clone());
-            k += 1;
-        }
-        path_hi.push(paths.len() as u32);
-        i += 1;
+    let mut offsets = Vec::with_capacity(n);
+    let mut total = 0;
+    for count in counts {
+        offsets.push(total);
+        path_lo.push(total as u32);
+        total += count;
+        path_hi.push(total as u32);
     }
+    let mut ordered = vec![None; total];
+    for node in &snap.paths {
+        if let Some(&i) = slot.get(&node.player) {
+            ordered[offsets[i]] = Some(node);
+            offsets[i] += 1;
+        }
+    }
+    let paths = ordered.into_iter().map(|node| node.unwrap().clone()).collect();
     MoveReq {
         xs,
         ys,
@@ -192,4 +189,32 @@ fn minute_origin(now_ms: u64) -> u64 {
         .unwrap_or(now_ms);
     let window = wall.saturating_sub(TICK_MS.saturating_mul(60));
     if now_ms > window { now_ms } else { window }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn path_packing_preserves_resident_and_node_order() {
+        let mut snap = Snapshot::default();
+        let principal = ai_town_kernel::Principal { org: 1, user: 0, now_ms: 1000 };
+        let (writes, _) = ai_town_kernel::transition(&principal, &snap, &ai_town_kernel::Command::Init {
+            width: 8, height: 8, mask: vec![0; 8],
+        }).unwrap();
+        snap = ai_town_kernel::apply(&snap, &writes);
+        for user in [10, 20, 30] {
+            let actor = ai_town_kernel::Principal { user, ..principal };
+            let (writes, _) = ai_town_kernel::transition(&actor, &snap, &ai_town_kernel::Command::Join { name: vec![b'x'], character: 0 }).unwrap();
+            snap = ai_town_kernel::apply(&snap, &writes);
+        }
+        let ids: Vec<_> = snap.players.iter().map(|p| p.id).collect();
+        let node = |player, seq| PathNode { player, seq, x: 0, y: 0, face_dx: 1000, face_dy: 1000, t: seq };
+        snap.paths = vec![node(ids[1], 3), node(ids[0], 8), node(9999, 0), node(ids[1], 1)];
+        let (reply, _) = oneshot::channel();
+        let packed = from_snapshot(&snap, reply);
+        assert_eq!(packed.path_lo, vec![0, 1, 3]);
+        assert_eq!(packed.path_hi, vec![1, 3, 3]);
+        assert_eq!(packed.paths, vec![node(ids[0], 8), node(ids[1], 3), node(ids[1], 1)]);
+    }
 }

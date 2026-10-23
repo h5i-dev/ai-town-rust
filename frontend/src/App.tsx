@@ -51,7 +51,7 @@ export default function App() {
       <header className="flex items-end justify-between gap-4 px-6 pt-4">
         <div>
           <h1 className="game-title text-5xl sm:text-7xl">AI Town</h1>
-          <p className="shadow-solid mt-1 text-lg">{demo ? `${map?.demoEngine === 'original' ? 'Original AI Town' : 'Rust'} movement demo · no LLM · no database` : 'A virtual town where AI characters live, chat and socialize.'}</p>
+          <p className="shadow-solid mt-1 text-lg">{demo ? `${map?.demoEngine === 'original' ? 'Original AI Town' : 'Rust'} ${map?.demoScenario === 'town' ? 'town life' : 'movement'} demo · no LLM · no database` : 'A virtual town where AI characters live, chat and socialize.'}</p>
         </div>
         <p className="text-sm text-clay-100">{world?.players.length.toLocaleString() ?? '—'} players · {connected ? 'live' : 'reconnecting'}</p>
       </header>
@@ -72,8 +72,13 @@ export default function App() {
         </div>
         <aside className="box flex flex-col gap-3 bg-brown-800 p-4 text-brown-200">
           {error && <p className="text-red-300">{error}</p>}
-          {world?.demo && <p>Original engine: {world.demo.stepMs} ms simulated in {Math.round(world.demo.tickMs).toLocaleString()} ms. Positions update as computation finishes.</p>}
-          {demo && <p>Drag to pan, scroll to zoom. Select a character to inspect it. Players walk back and forth using the selected movement engine.</p>}
+          {world?.demo && <p>{world.demo.engine === 'original' ? 'Original' : 'Rust'} engine: {world.demo.stepMs} ms simulated in {Math.round(world.demo.tickMs).toLocaleString()} ms. Positions update as computation finishes.</p>}
+          {demo && <p>Drag to pan, scroll to zoom. Select a character to inspect it. {map?.demoScenario === 'town' ? 'Residents walk independently, enjoy activities, and talk with neighbors. Dialogue and memory responses are offline fixtures.' : 'Players walk back and forth using the selected movement engine.'}</p>}
+          {world?.demo?.scenario === 'town' && <div className="text-sm" data-testid="town-stats">
+            <p>{world.players.filter(p => p.pf !== 0).length.toLocaleString()} routing · {world.players.filter(p => p.activityUntil > world.nowMs).length.toLocaleString()} doing activities · {world.conversations.length.toLocaleString()} conversations</p>
+            <p>{world.demo.metrics?.messages.toLocaleString()} messages · {world.demo.metrics?.memories.toLocaleString()} memories completed</p>
+            <p>{world.demo.districts} districts · {Math.round((world.demo.density ?? 0) * 100)}% of walkable tiles occupied at start</p>
+          </div>}
           {!demo && !me && (
             <form
               className="flex flex-col gap-2"
@@ -208,11 +213,16 @@ function PlayerCard({
 }) {
   if (!player || !world) return <p className="text-clay-300">Click a character to look closer.</p>;
   const agent = world.agents.find((a) => a.player === player.id);
+  const conversation = conversationOf(world.conversations, player.id);
   return (
     <div>
       <h2 className="text-2xl text-white">{player.name}</h2>
       {agent && <p className="mt-2 text-sm leading-snug">{agent.identity}</p>}
       {agent && <p className="mt-2 text-sm text-clay-300">{agent.plan}</p>}
+      {world.demo?.scenario === 'town' && <>
+        <p className="mt-2 text-sm">{player.activityUntil > world.nowMs ? ['Resting', 'Reading', 'Gardening', 'Daydreaming'][player.activity] : player.pf ? 'Walking around town' : 'Meeting neighbors'}</p>
+        {world.messages.filter(m => m.conversation === conversation?.id).slice(-3).map(m => <p key={m.id} className="bubble mt-2 text-sm">{m.text}</p>)}
+      </>}
       {me && player.id !== me.id && !talking && (
         <button className="button mt-3" type="button" onClick={onStart}>
           <span>Start conversation</span>

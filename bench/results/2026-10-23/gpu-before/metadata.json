@@ -1,0 +1,13 @@
+{
+  "source_sha256": {
+    "gpu/src/rust_seek.rs": "5becb407b1202bcb65a0ebf6e7f07292a18b686880ad044ba3f5d6923c9134a8",
+    "kernel/src/geom.rs": "873dacbc49454dc833d3068c3767d494dd9d656e19e0e2e6844763c83cc49cb1",
+    "gpu/src/bin/fair-bench.rs": "e4929999cc4444383dbeb36602e777ab109f925174ea9abafd55e8fbba446de0",
+    "server/src/gpu_move.rs": "1a6ffb19cf94d5e24bf03901af95f8d7dd2edb17fc70863913137e121b913b9d",
+    "frontend/src/components/DemoCrowd.tsx": "030525914040cafd75c471aa967b1e714259f476f6b6c665df2ff87ad4a9aaa5"
+  },
+  "gpu": "NVIDIA GeForce RTX 3090, 48 %\nNVIDIA GeForce RTX 3090, 39 %\nNVIDIA GeForce RTX 3090, 46 %\nNVIDIA GeForce RTX 3090, 42 %\n",
+  "samples": 5,
+  "warmup": 1,
+  "note": "Shared host and GPUs, simultaneous Lean extraction. Movement microbenchmark, not full town lifecycle."
+}

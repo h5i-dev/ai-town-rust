@@ -1,0 +1,449 @@
+{
+  "samples": [
+    {
+      "wall_ms": 0.0013099925126880407,
+      "now_ms": 1024256,
+      "tick_ms": 243.60958699999998,
+      "step_ms": 960,
+      "metrics": {
+        "activities": 1331,
+        "decisions": 5433,
+        "destinations": 2727,
+        "invitations": 1375,
+        "memories": 3194,
+        "messages": 5478,
+        "pathfinds": 3143
+      }
+    },
+    {
+      "wall_ms": 2112.373932992341,
+      "now_ms": 1026176,
+      "tick_ms": 222.02134800000002,
+      "step_ms": 960,
+      "metrics": {
+        "activities": 1363,
+        "decisions": 5550,
+        "destinations": 2785,
+        "invitations": 1402,
+        "memories": 3232,
+        "messages": 5483,
+        "pathfinds": 3233
+      }
+    },
+    {
+      "wall_ms": 4202.060653013177,
+      "now_ms": 1028096,
+      "tick_ms": 242.229098,
+      "step_ms": 960,
+      "metrics": {
+        "activities": 1394,
+        "decisions": 5665,
+        "destinations": 2837,
+        "invitations": 1434,
+        "memories": 3334,
+        "messages": 5541,
+        "pathfinds": 3317
+      }
+    },
+    {
+      "wall_ms": 6293.19828300504,
+      "now_ms": 1030016,
+      "tick_ms": 656.503095,
+      "step_ms": 960,
+      "metrics": {
+        "activities": 1709,
+        "decisions": 6968,
+        "destinations": 3492,
+        "invitations": 1767,
+        "memories": 3388,
+        "messages": 5550,
+        "pathfinds": 4004
+      }
+    },
+    {
+      "wall_ms": 8379.38915999257,
+      "now_ms": 1032656,
+      "tick_ms": 252.62071000000003,
+      "step_ms": 960,
+      "metrics": {
+        "activities": 1777,
+        "decisions": 7232,
+        "destinations": 3606,
+        "invitations": 1849,
+        "memories": 3876,
+        "messages": 5573,
+        "pathfinds": 4166
+      }
+    },
+    {
+      "wall_ms": 10457.265517994529,
+      "now_ms": 1034576,
+      "tick_ms": 275.917537,
+      "step_ms": 960,
+      "metrics": {
+        "activities": 1817,
+        "decisions": 7410,
+        "destinations": 3699,
+        "invitations": 1894,
+        "memories": 4006,
+        "messages": 5595,
+        "pathfinds": 4291
+      }
+    },
+    {
+      "wall_ms": 12544.580346002476,
+      "now_ms": 1036496,
+      "tick_ms": 261.411445,
+      "step_ms": 960,
+      "metrics": {
+        "activities": 1861,
+        "decisions": 7592,
+        "destinations": 3787,
+        "invitations": 1944,
+        "memories": 4088,
+        "messages": 5622,
+        "pathfinds": 4411
+      }
+    },
+    {
+      "wall_ms": 14649.056366994046,
+      "now_ms": 1038416,
+      "tick_ms": 300.90509,
+      "step_ms": 960,
+      "metrics": {
+        "activities": 1898,
+        "decisions": 7757,
+        "destinations": 3872,
+        "invitations": 1987,
+        "memories": 4176,
+        "messages": 5635,
+        "pathfinds": 4528
+      }
+    },
+    {
+      "wall_ms": 16737.458565999987,
+      "now_ms": 1041296,
+      "tick_ms": 252.835029,
+      "step_ms": 960,
+      "metrics": {
+        "activities": 1957,
+        "decisions": 7992,
+        "destinations": 3985,
+        "invitations": 2050,
+        "memories": 4300,
+        "messages": 5665,
+        "pathfinds": 4689
+      }
+    },
+    {
+      "wall_ms": 18815.003405994503,
+      "now_ms": 1043216,
+      "tick_ms": 252.182644,
+      "step_ms": 960,
+      "metrics": {
+        "activities": 1993,
+        "decisions": 8148,
+        "destinations": 4069,
+        "invitations": 2086,
+        "memories": 4392,
+        "messages": 5688,
+        "pathfinds": 4805
+      }
+    },
+    {
+      "wall_ms": 20905.134092987282,
+      "now_ms": 1045136,
+      "tick_ms": 433.485214,
+      "step_ms": 960,
+      "metrics": {
+        "activities": 2196,
+        "decisions": 8944,
+        "destinations": 4454,
+        "invitations": 2294,
+        "memories": 4486,
+        "messages": 5695,
+        "pathfinds": 5222
+      }
+    },
+    {
+      "wall_ms": 23001.2162149942,
+      "now_ms": 1047056,
+      "tick_ms": 272.051636,
+      "step_ms": 960,
+      "metrics": {
+        "activities": 2254,
+        "decisions": 9181,
+        "destinations": 4568,
+        "invitations": 2359,
+        "memories": 4834,
+        "messages": 5706,
+        "pathfinds": 5368
+      }
+    },
+    {
+      "wall_ms": 25081.66263299063,
+      "now_ms": 1048976,
+      "tick_ms": 289.032949,
+      "step_ms": 960,
+      "metrics": {
+        "activities": 2315,
+        "decisions": 9409,
+        "destinations": 4684,
+        "invitations": 2410,
+        "memories": 4936,
+        "messages": 5721,
+        "pathfinds": 5516
+      }
+    },
+    {
+      "wall_ms": 27164.49699300574,
+      "now_ms": 1050896,
+      "tick_ms": 284.70539099999996,
+      "step_ms": 960,
+      "metrics": {
+        "activities": 2364,
+        "decisions": 9615,
+        "destinations": 4786,
+        "invitations": 2465,
+        "memories": 5036,
+        "messages": 5730,
+        "pathfinds": 5650
+      }
+    },
+    {
+      "wall_ms": 29243.293234001612,
+      "now_ms": 1053776,
+      "tick_ms": 277.11987799999997,
+      "step_ms": 960,
+      "metrics": {
+        "activities": 2431,
+        "decisions": 9945,
+        "destinations": 4962,
+        "invitations": 2552,
+        "memories": 5168,
+        "messages": 5750,
+        "pathfinds": 5874
+      }
+    },
+    {
+      "wall_ms": 31320.08209900232,
+      "now_ms": 1055696,
+      "tick_ms": 269.97482099999996,
+      "step_ms": 960,
+      "metrics": {
+        "activities": 2478,
+        "decisions": 10135,
+        "destinations": 5056,
+        "invitations": 2601,
+        "memories": 5274,
+        "messages": 5767,
+        "pathfinds": 6000
+      }
+    },
+    {
+      "wall_ms": 33400.00873000827,
+      "now_ms": 1057616,
+      "tick_ms": 305.08878,
+      "step_ms": 960,
+      "metrics": {
+        "activities": 2530,
+        "decisions": 10330,
+        "destinations": 5165,
+        "invitations": 2635,
+        "memories": 5352,
+        "messages": 5781,
+        "pathfinds": 6141
+      }
+    },
+    {
+      "wall_ms": 35503.46965598874,
+      "now_ms": 1059536,
+      "tick_ms": 268.82651899999996,
+      "step_ms": 960,
+      "metrics": {
+        "activities": 2583,
+        "decisions": 10557,
+        "destinations": 5278,
+        "invitations": 2696,
+        "memories": 5456,
+        "messages": 5791,
+        "pathfinds": 6286
+      }
+    },
+    {
+      "wall_ms": 37586.68432300328,
+      "now_ms": 1060880,
+      "tick_ms": 201.387921,
+      "step_ms": 384,
+      "metrics": {
+        "activities": 3206,
+        "decisions": 12944,
+        "destinations": 6444,
+        "invitations": 3294,
+        "memories": 6162,
+        "messages": 5803,
+        "pathfinds": 7484
+      }
+    },
+    {
+      "wall_ms": 39662.665643991204,
+      "now_ms": 1063744,
+      "tick_ms": 261.48170500000003,
+      "step_ms": 960,
+      "metrics": {
+        "activities": 3253,
+        "decisions": 13148,
+        "destinations": 6543,
+        "invitations": 3352,
+        "memories": 6264,
+        "messages": 5821,
+        "pathfinds": 7631
+      }
+    },
+    {
+      "wall_ms": 41743.30996899516,
+      "now_ms": 1065664,
+      "tick_ms": 295.344632,
+      "step_ms": 960,
+      "metrics": {
+        "activities": 3278,
+        "decisions": 13264,
+        "destinations": 6600,
+        "invitations": 3386,
+        "memories": 6318,
+        "messages": 5824,
+        "pathfinds": 7720
+      }
+    },
+    {
+      "wall_ms": 43829.98763999785,
+      "now_ms": 1067584,
+      "tick_ms": 256.70758,
+      "step_ms": 960,
+      "metrics": {
+        "activities": 3309,
+        "decisions": 13397,
+        "destinations": 6666,
+        "invitations": 3422,
+        "memories": 6406,
+        "messages": 5839,
+        "pathfinds": 7818
+      }
+    },
+    {
+      "wall_ms": 45912.13978399173,
+      "now_ms": 1069504,
+      "tick_ms": 253.50261400000002,
+      "step_ms": 960,
+      "metrics": {
+        "activities": 3335,
+        "decisions": 13524,
+        "destinations": 6733,
+        "invitations": 3456,
+        "memories": 6474,
+        "messages": 5853,
+        "pathfinds": 7917
+      }
+    },
+    {
+      "wall_ms": 48045.95397299272,
+      "now_ms": 1071424,
+      "tick_ms": 242.048989,
+      "step_ms": 960,
+      "metrics": {
+        "activities": 3367,
+        "decisions": 13620,
+        "destinations": 6775,
+        "invitations": 3478,
+        "memories": 6518,
+        "messages": 5859,
+        "pathfinds": 7991
+      }
+    },
+    {
+      "wall_ms": 50128.45612500678,
+      "now_ms": 1073344,
+      "tick_ms": 297.117908,
+      "step_ms": 960,
+      "metrics": {
+        "activities": 3390,
+        "decisions": 13719,
+        "destinations": 6832,
+        "invitations": 3497,
+        "memories": 6570,
+        "messages": 5876,
+        "pathfinds": 8080
+      }
+    },
+    {
+      "wall_ms": 52209.90688400343,
+      "now_ms": 1075264,
+      "tick_ms": 592.53758,
+      "step_ms": 960,
+      "metrics": {
+        "activities": 3665,
+        "decisions": 14760,
+        "destinations": 7343,
+        "invitations": 3752,
+        "memories": 6638,
+        "messages": 5883,
+        "pathfinds": 8623
+      }
+    },
+    {
+      "wall_ms": 54283.644220005954,
+      "now_ms": 1076576,
+      "tick_ms": 109.586454,
+      "step_ms": 224,
+      "metrics": {
+        "activities": 4547,
+        "decisions": 18450,
+        "destinations": 9219,
+        "invitations": 4684,
+        "memories": 9492,
+        "messages": 5902,
+        "pathfinds": 10547
+      }
+    },
+    {
+      "wall_ms": 56356.657411000924,
+      "now_ms": 1078496,
+      "tick_ms": 280.52550199999996,
+      "step_ms": 960,
+      "metrics": {
+        "activities": 4575,
+        "decisions": 18615,
+        "destinations": 9304,
+        "invitations": 4736,
+        "memories": 9554,
+        "messages": 5926,
+        "pathfinds": 10664
+      }
+    },
+    {
+      "wall_ms": 58445.54007498664,
+      "now_ms": 1081376,
+      "tick_ms": 260.407551,
+      "step_ms": 960,
+      "metrics": {
+        "activities": 4628,
+        "decisions": 18811,
+        "destinations": 9395,
+        "invitations": 4788,
+        "memories": 9650,
+        "messages": 5961,
+        "pathfinds": 10803
+      }
+    }
+  ],
+  "simulated_ms": 57120,
+  "wall_ms": 58445.538764994126,
+  "scope": "Live Rust demo HTTP snapshots; includes serialization and pacing, excludes browser rendering. Shared CPU host, unpinned; concurrent proof extraction.",
+  "source_sha256": {
+    "kernel/src/rules.rs": "6c9c0e4b89f73e87a866a1f48b18d9eba89e1cd2516ef751d635017d90cccf08",
+    "kernel/src/lib.rs": "2be2edbf8a81145c41147b729c57f99dcf7833ae2c8028f3bb07e041882a1a8c",
+    "server/src/world.rs": "024e9b46263a64ace58e439c1b3a45ef9cb69f4264527baa5d5ebd2cb9a1b4fc",
+    "bench/src/lib.rs": "e827d1dc53de1e58c40745eff295437544df6b795c2205ab2f353430a07d38d1",
+    "bench/src/demo.rs": "19f25328f7b10eeb69c278941b3744c3877d7f17dd59d2ca93966fab7cbe3857"
+  }
+}

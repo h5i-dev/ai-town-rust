@@ -1,0 +1,12 @@
+{
+  "ticks": 4800,
+  "phase_ms": {
+    "idle": 61.085579,
+    "agents": 4301.981083,
+    "conversations": 1125.456769,
+    "pathfind": 934.319304,
+    "movement_including_backup": 4638.344227,
+    "settle": 4715.372606
+  },
+  "note": "One instrumented run in a disposable copy, 76.8 simulated seconds, 10k residents. Includes Instant and stderr logging overhead; do not compare directly with uninstrumented medians."
+}

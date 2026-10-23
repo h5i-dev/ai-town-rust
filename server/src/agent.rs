@@ -3,7 +3,7 @@
 use crate::llm::Provider;
 use crate::Town;
 use ai_town_kernel::{
-    mask_blocked, Command, Error, Member, Player, Principal, Snapshot, ENGINE, MAX_PLAN, MAX_TEXT, MILLI, OP_DO,
+    mask_blocked, Command, Error, Player, Principal, Snapshot, ENGINE, MAX_PLAN, MAX_TEXT, MILLI, OP_DO,
     OP_REMEMBER, OP_SPEAK,
 };
 use h5i_app::pg::Engine;
@@ -39,8 +39,9 @@ pub fn choose_do(snap: &Snapshot, index: usize) -> Option<Command> {
 fn invite_target(snap: &Snapshot, me: u64) -> Option<u64> {
     let mut best_human: Option<u64> = None;
     let mut best_any: Option<u64> = None;
+    let busy: std::collections::HashSet<_> = snap.members.iter().map(|m| m.player).collect();
     for p in &snap.players {
-        if p.id == me || in_conversation(&snap.members, p.id) {
+        if p.id == me || busy.contains(&p.id) {
             continue;
         }
         if p.is_human {
@@ -56,10 +57,6 @@ fn min_id(cur: Option<u64>, id: u64) -> u64 {
         Some(c) if c < id => c,
         _ => id,
     }
-}
-
-fn in_conversation(members: &[Member], player: u64) -> bool {
-    members.iter().any(|m| m.player == player)
 }
 
 fn wander(snap: &Snapshot, salt: u64) -> Option<(u32, u32)> {

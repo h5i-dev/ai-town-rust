@@ -41,42 +41,64 @@ provider credentials and routing in that server; AI Town does not read NVIDIA,
 Gemini, or other provider keys. See [inference server setup](docs/LLM.md) for the
 API contract, proxy guidance, and migration from the old NVIDIA settings.
 
-## Crowd demo
+## Town demo
 
 ```bash
-./bench/demo.sh                    # 10,000 players; starts backend + UI + browser
-./bench/demo.sh --players 1000     # choose 1–14,400 players
-./bench/demo.sh --no-open          # headless / SSH; prints the URL
-./bench/demo.sh --engine original  # upstream AI Town movement, same demo UI
+./bench/demo.sh                    # 10,000 residents; starts backend + UI + browser
+./bench/demo.sh --players 128      # choose 1–14,400 residents
+./bench/demo.sh --engine original  # original AI Town game loop, same demo UI
+./bench/demo.sh --seed 7 --no-open # reproducible setup / SSH
 ```
 
-Requires Rust/Cargo, Node.js/npm, Python 3, and curl. The first run builds the
-backend and installs frontend dependencies. Open <http://127.0.0.1:5174/ai-town/>
-if a browser is unavailable; drag to pan and scroll to zoom. Ctrl-C stops both
-servers. Use `--port` and `--api-port` if the default ports are occupied.
+Residents walk independently around the original town terrain, read, garden,
+daydream, invite neighbors, converse, and complete conversation memories. Both
+engines use their real player, agent, conversation, pathfinding and collision
+rules. External dialogue and memory operations use fixed offline responses;
+this is a disposable simulation with no LLM, API key, PostgreSQL or Convex.
+Click **Neighborhood** to see activities and conversations up close, or **Overview**
+to see the population. Select a resident to inspect its activity and conversation. The UI shows active
+routes, activities, conversations, and completed messages/memories.
 
-This disposable, in-memory demo runs the real CPU movement kernel with placement
-checks and streams snapshots to the existing UI. Players walk back and forth
-on an open field. It needs no PostgreSQL, GPU, API key, or LLM calls; it does
-not exercise autonomous agents, conversations, or database throughput. Logs and
-the reusable Rust build cache live under the system temporary directory.
+Requires Node.js 20+, npm, Python 3, and curl; Rust mode also needs Rust/Cargo.
+The first run builds the backend and installs frontend dependencies. Open
+<http://127.0.0.1:5174/ai-town/> if a browser is unavailable; drag to pan and
+scroll to zoom. Ctrl-C stops both servers. Use `--port` and `--api-port` to
+change ports. Logs and the reusable build cache live under the temporary directory.
 
-`--engine original` loads the unmodified `Game` class from an original AI Town
-checkout at `~/Ref/ai-town`. For another location:
+`--engine original` loads `Game` from `~/Ref/ai-town`. Town mode adds a small
+zero-duration path interpolation guard to the bundle; the checkout stays intact.
+See the [benchmark conditions](docs/TOWN_BENCHMARKS.md) for the fix and scope.
+For another checkout:
 
 ```bash
-AI_TOWN_UPSTREAM=/path/to/ai-town ./bench/demo.sh --engine original --players 1000
+AI_TOWN_UPSTREAM=/path/to/ai-town ./bench/demo.sh --engine original --players 128
 ```
 
-This mode uses the same open-field fixture and this repository's UI; it does
-not start the original Convex deployment or autonomous agents. Original mode
-needs Node.js 20+ but no Rust toolchain. The engine runs in a worker so HTTP,
-zoom, and pan remain responsive during slow ticks. The UI shows measured compute
-time and simulated time, and displays only positions already computed by the
-original engine. At 10,000 players the simulation can run far below real time;
-this is expected. It includes upstream location history packing, while the Rust
-demo does not produce those buffers. For controlled timing comparisons, use the
-[benchmarks](docs/BENCHMARKS.md) rather than UI update rates.
+Large populations occupy repeated copies of the original map, all in one game
+instance. The copies have blocked edges and do not allow travel between districts.
+At 10,000 residents this uses a 256 × 192 map, beyond the production server's
+128 × 128 map limit. It demonstrates the in-memory engine, not deployed capacity.
+The seeded starting state mixes walking, activities, invitations and ongoing
+conversations; subsequent decisions use the same offline policy in both engines.
+Native scheduling and acceptance rules differ, so their trajectories differ too.
+
+The original engine runs in a worker so HTTP and camera controls remain responsive
+during slow ticks. Both engines display computed positions and simulated time;
+at 10,000 residents the original can advance far below real time. Original mode
+also packs its position history; Rust does not produce those buffers. The demo
+adapts batch sizes for responsiveness; use the fixed-step
+[town benchmark](docs/TOWN_BENCHMARKS.md) for timing comparisons.
+
+The recorded Rust town benchmark processes 0.96 simulated seconds for 10,000
+residents in 0.389 seconds (previously 43.626 seconds). A longer 76.8-second
+simulation takes 23.60 seconds, with new activities, invitations and memories.
+A separate movement-only GPU benchmark takes 16.78 ms for 60 rounds including
+preparation and checked relocation (previously 70.95 ms).
+These are in-memory CPU measurements; snapshot serialization, database and LLM
+costs have separate scope. See [results and profiling](docs/TOWN_BENCHMARKS.md).
+
+`./bench/demo.sh --scenario crowd` retains the old synchronized, open-field
+movement demo for either engine. It has no autonomous agents or conversations.
 
 ## Verification
 
@@ -99,17 +121,18 @@ server are outside these proofs. See the
 
 ## Performance
 
-60 ticks of uncontested movement, medians in milliseconds (2026-10-21):
+The [town benchmark](docs/TOWN_BENCHMARKS.md) exercises the same offline
+resident simulation as the default demo, with raw samples and completed-work
+counts for both engines:
 
-| Players | Original AI Town | Rust CPU | GPU with placement check |
-|---:|---:|---:|---:|
-| 1,000 | 1,476.3 | 14.2 | 7.4 |
-| 10,000 | 128,668.4 | 147.9 | 63.5 |
+```bash
+./bench/town.sh --players 32,128,1000,10000 --samples 3
+./bench/town.sh --players 32,128 --steps 80 --samples 3 # 76.8 simulated seconds
+```
 
-GPU timing includes preparation, copies, and checked write-back. The original
-also records position history. This is an in-memory movement comparison;
-[methods, grid-check costs, server latency, and raw samples](docs/BENCHMARKS.md)
-give the scope and reproduction commands.
+The [earlier movement microbenchmarks](docs/BENCHMARKS.md) measure synchronized
+walking, GPU movement and HTTP latency. Their numbers do not describe autonomous
+town life or equivalent full-game work.
 
 ## Code
 

@@ -902,3 +902,136 @@ fn a_normal_step_reverts_nothing() {
     }
     assert!(placement_ok(&s2));
 }
+
+#[test]
+fn projected_commands_match_full_snapshot_writes_and_errors() {
+    let mut s = world(1_000);
+    for name in [b"Ada", b"Bea", b"Cam"] {
+        s = run(&s, ENGINE, 1_000, Command::CreateAgent {
+            name: name.to_vec(), character: 0, identity: b"neighbor".to_vec(), plan: b"walk".to_vec(),
+        }).0;
+    }
+    let owner = s.agents[0].owner;
+    s = run(&s, owner, 1_100, Command::StartConversation { invitee: s.players[1].id }).0;
+    let commands = [Command::MoveTo { x: 7, y: 7 }, Command::MoveTo { x: 80, y: 0 },
+        Command::MoveTo { x: s.players[0].x / MILLI, y: s.players[0].y / MILLI },
+        Command::StartConversation { invitee: s.players[2].id },
+        Command::StartConversation { invitee: s.players[0].id },
+        Command::StartConversation { invitee: u64::MAX },
+        Command::FinishOp, Command::Say { text: b"Hello".to_vec() },
+        Command::Say { text: vec![] }, Command::Say { text: vec![b'x'; MAX_TEXT + 1] },
+        Command::Remember { summary: b"Met a neighbor".to_vec() }, Command::Remember { summary: vec![] },
+        Command::Activity { kind: 0 }, Command::Activity { kind: 2 }, Command::Activity { kind: 4 }];
+    for case in 0..12 {
+        let mut snapshot = s.clone();
+        for m in &mut snapshot.members { m.status = 1 + case % 3; }
+        for a in &mut snapshot.agents {
+            a.op = OP_SPEAK;
+            a.op_arg = snapshot.conversations[0].id;
+            a.to_remember = if case % 2 == 0 { snapshot.conversations[0].id } else { 0 };
+        }
+        if case % 4 == 0 { snapshot.meta.next_id = u64::MAX; }
+        if case % 3 == 0 {
+            snapshot.players.reverse(); snapshot.agents.reverse(); snapshot.members.reverse();
+        }
+        for caller in [ENGINE, owner, s.agents[1].owner, u64::MAX] {
+            for cmd in &commands {
+                let fast = rules::command(caller, 2_000, &snapshot, cmd);
+                let full = rules::command_full(caller, 2_000, &snapshot, cmd);
+                assert_eq!(fast, full, "case={case} caller={caller} command={cmd:?}");
+                if let Ok((writes, _)) = fast {
+                    let expected = apply(&snapshot, &writes);
+                    let mut owned = snapshot.clone();
+                    apply_mut(&mut owned, writes);
+                    assert_eq!(owned, expected);
+                }
+            }
+        }
+    }
+}
+
+#[test]
+fn conversation_approaches_respect_the_shared_pathfinding_budget() {
+    let mut s = world(1_000);
+    for i in 0..40 {
+        s = run(&s, ENGINE, 1_000, Command::CreateAgent {
+            name: format!("Neighbor {i}").into_bytes(), character: 0,
+            identity: vec![b'n'], plan: vec![b'w'],
+        }).0;
+    }
+    for (i, p) in s.players.iter_mut().enumerate() {
+        p.x = (i as u32 % 8) * MILLI;
+        p.y = (i as u32 / 8) * MILLI;
+    }
+    for i in 0..20 {
+        s = run(&s, s.agents[i].owner, 1_000,
+            Command::StartConversation { invitee: s.players[i + 20].id }).0;
+    }
+    for m in &mut s.members { m.status = ST_WALKING; }
+    let end = s.meta.now_ms + 960;
+    assert_eq!(run_ticks(&mut s, end), 60);
+    assert_eq!(s.meta.pathfinds, MAX_PATHFINDS);
+    assert!(s.players.iter().any(|p| p.pf == PF_NEED), "excess requests stay queued");
+    assert!(placement_ok(&s) && members_consistent(&s));
+    let end = s.meta.now_ms + 960;
+    run_ticks(&mut s, end);
+    assert!(s.meta.pathfinds <= MAX_PATHFINDS);
+    assert!(placement_ok(&s) && members_consistent(&s));
+}
+
+#[test]
+fn owned_path_commits_match_the_write_interpreter_with_duplicate_keys() {
+    let s = world(1_000);
+    let node = PathNode { player: 1, seq: 0, x: 0, y: 0, face_dx: 0, face_dy: 0, t: 1_000 };
+    let writes = vec![Write::PutPath(node.clone()), Write::ClearPath(1),
+        Write::PutPath(node.clone()), Write::PutPath(PathNode { x: 1_000, ..node.clone() }),
+        Write::PutPath(PathNode { seq: 1, ..node.clone() }), Write::ClearPath(2),
+        Write::PutPath(PathNode { seq: 2, ..node.clone() }), Write::ClearPath(1),
+        Write::PutPath(PathNode { seq: 1, ..node })];
+    let expected = apply(&s, &writes);
+    let mut owned = s;
+    apply_mut(&mut owned, writes);
+    assert_eq!(owned, expected);
+}
+
+#[test]
+fn path_speed_matches_integer_distance_for_axes_and_diagonals() {
+    let mut seed = 7u32;
+    for case in 0..2000 {
+        seed = seed.wrapping_mul(1664525).wrapping_add(1013904223);
+        let (x, y) = (seed % 100_000, seed.rotate_left(13) % 100_000);
+        let (dx, dy) = match case % 4 {
+            0 => (x, seed % 100_000),
+            1 => (seed % 100_000, y),
+            2 => (x, y),
+            _ => (seed.rotate_left(7) % 100_000, seed.rotate_left(19) % 100_000),
+        };
+        let dt = if case % 9 == 0 { 0 } else { (seed % 10_000) as u64 + 1 };
+        let path = vec![
+            PathNode { player: 1, seq: 0, x, y, face_dx: 2000, face_dy: 1000, t: 100 },
+            PathNode { player: 1, seq: 1, x: dx, y: dy, face_dx: 2000, face_dy: 1000, t: 100 + dt },
+        ];
+        let pose = path_pose(&path, 100 + dt / 2).unwrap();
+        let expected = if dt == 0 { 0 } else { (isqrt(dist_sq(x, y, dx, dy)) * 1000 / dt) as u32 };
+        assert_eq!(pose.speed, expected, "case {case}");
+    }
+}
+
+#[test]
+fn integer_sqrt_is_exact_at_squares_and_full_width_inputs() {
+    let mut values = vec![0, 1, 2, 3, 4, u64::MAX, u64::MAX - 1];
+    for r in [2u64, 3, 10, 1000, 65535, 1_000_000, u32::MAX as u64] {
+        let square = r * r;
+        values.extend([square - 1, square, square + 1]);
+    }
+    let mut seed = 7u64;
+    for _ in 0..4000 {
+        seed = seed.wrapping_mul(6364136223846793005).wrapping_add(1);
+        values.push(seed);
+    }
+    for n in values {
+        let root = isqrt(n) as u128;
+        assert!(root * root <= n as u128, "sqrt({n}) too large");
+        assert!((root + 1) * (root + 1) > n as u128, "sqrt({n}) too small");
+    }
+}

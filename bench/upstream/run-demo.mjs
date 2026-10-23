@@ -1,5 +1,6 @@
-// Bundle the unmodified upstream Game with a small demo transport adapter.
+// Bundle upstream Game with a small demo transport adapter.
 import { build } from 'esbuild';
+import { pathGuard } from './path-guard.mjs';
 import { mkdtempSync, rmSync, existsSync } from 'node:fs';
 import { homedir, tmpdir } from 'node:os';
 import { resolve, dirname } from 'node:path';
@@ -22,6 +23,7 @@ try {
     alias: { 'upstream-game': game },
     nodePaths: [resolve(here, 'node_modules')],
     external: ['bufferutil', 'utf-8-validate'],
+    plugins: process.argv[5] ? [pathGuard(upstream)] : [],
   });
   const child = spawn(process.execPath, [outfile, ...process.argv.slice(2)], { stdio: 'inherit' });
   for (const signal of ['SIGINT', 'SIGTERM']) process.on(signal, () => child.kill(signal));

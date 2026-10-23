@@ -1,0 +1,1 @@
+{"apply_probe_ms":2.243074,"clone_probe_ms":2.111515,"drain_ms":43588.031553999994,"finish_transition_probe_ms":7.354577,"metrics":{"activities":0,"decisions":0,"destinations":0,"invitations":0,"memories":440,"messages":1909,"pathfinds":0},"players":10000,"simulated_ms":960,"ticks_ms":2792.990171,"unchanged_diff_probe_ms":5.939417}

@@ -1,0 +1,44 @@
+{
+  "rust": {
+    "command": "cargo test --workspace --locked --release",
+    "passed": 53,
+    "failed": 0,
+    "ignored": 1,
+    "ignored_scope": "Explicit live inference test; offline changes do not use LLM APIs."
+  },
+  "node": {
+    "command": "node --test bench/scenarios/town.test.mjs bench/upstream/path-guard.test.mjs",
+    "passed": 6,
+    "failed": 0
+  },
+  "frontend": {
+    "command": "npm --prefix frontend run build",
+    "result": "passed (tsc and Vite)"
+  },
+  "shell": {
+    "command": "bash -n bench/demo.sh bench/town.sh",
+    "result": "passed"
+  },
+  "whitespace": {
+    "command": "git diff --check",
+    "result": "passed"
+  },
+  "lean": {
+    "command": "h5i app prove",
+    "result": "passed",
+    "theorems_checked": 91,
+    "allowed_axioms": [
+      "propext",
+      "Classical.choice",
+      "Quot.sound"
+    ],
+    "note": "Regenerated from final kernel sources on 2026-10-23; no additional axioms. Placement safety scope only; not whole-server correctness or GPU equivalence.",
+    "source_sha256": {
+      "kernel/src/rules.rs": "52ba784b935aa164e97d2394d39b41219887290756baba83f66a1ef20d68002c",
+      "kernel/src/geom.rs": "64f9ef61e4f6ed23a6f8aea38e9e3e8eeb4ee938972d2941afe8b294c91703bc",
+      "kernel/src/lib.rs": "2be2edbf8a81145c41147b729c57f99dcf7833ae2c8028f3bb07e041882a1a8c",
+      "proofs/generated/AiTownKernel.lean": "cbb9289078b0b0e5614408a40169c36a5135f01139c5a238e645ab0e39ab0344",
+      "proofs/Theorems.lean": "1d70ce083efe78e96a010a2c8f404c00e2e66466ab9b0fc92ab34566c6c9ffba"
+    }
+  }
+}

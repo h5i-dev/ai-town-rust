@@ -256,6 +256,27 @@ pub fn transition(actor: &Principal, snap: &Snapshot, cmd: &Command) -> Result<(
     rules::command(actor.user, actor.now_ms, snap, cmd)
 }
 
+/// Commit an already accepted write set when the caller owns the snapshot.
+/// Uses the same write interpreter as `apply`, without copying unrelated rows.
+pub fn apply_mut(snap: &mut Snapshot, ws: Vec<Write>) {
+    let mut cleared = None;
+    let mut sequences = Vec::new();
+    for write in ws {
+        match write {
+            Write::ClearPath(player) => {
+                snap.paths.retain(|n| n.player != player);
+                cleared = Some(player);
+                sequences.clear();
+            }
+            Write::PutPath(node) if cleared == Some(node.player) && !sequences.contains(&node.seq) => {
+                sequences.push(node.seq);
+                snap.paths.push(node);
+            }
+            other => apply_write(snap, other),
+        }
+    }
+}
+
 fn put_player(v: &mut Vec<Player>, x: Player) {
     let mut lo = 0usize;
     let mut hi = v.len();

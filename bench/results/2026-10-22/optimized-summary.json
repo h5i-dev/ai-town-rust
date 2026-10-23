@@ -1,0 +1,202 @@
+{
+  "scaling": [
+    {
+      "engine": "rust",
+      "players": 32,
+      "simulated_ms": 960,
+      "loop_ms": {
+        "median": 0.57,
+        "min": 0.556,
+        "max": 0.59
+      },
+      "history_pack_ms": {
+        "median": 0.0,
+        "min": 0.0,
+        "max": 0.0
+      },
+      "snapshot_ms": {
+        "median": 0.375,
+        "min": 0.361,
+        "max": 0.389
+      },
+      "moved": 12,
+      "decisions": 0,
+      "destinations": 0,
+      "activities": 0,
+      "invitations": 0,
+      "messages": 7,
+      "memories": 0,
+      "pathfinds": 0
+    },
+    {
+      "engine": "rust",
+      "players": 128,
+      "simulated_ms": 960,
+      "loop_ms": {
+        "median": 2.028,
+        "min": 1.932,
+        "max": 2.571
+      },
+      "history_pack_ms": {
+        "median": 0.0,
+        "min": 0.0,
+        "max": 0.0
+      },
+      "snapshot_ms": {
+        "median": 1.464,
+        "min": 1.278,
+        "max": 1.878
+      },
+      "moved": 48,
+      "decisions": 0,
+      "destinations": 0,
+      "activities": 0,
+      "invitations": 0,
+      "messages": 26,
+      "memories": 4,
+      "pathfinds": 0
+    },
+    {
+      "engine": "rust",
+      "players": 1000,
+      "simulated_ms": 960,
+      "loop_ms": {
+        "median": 24.666,
+        "min": 23.281,
+        "max": 24.82
+      },
+      "history_pack_ms": {
+        "median": 0.0,
+        "min": 0.0,
+        "max": 0.0
+      },
+      "snapshot_ms": {
+        "median": 13.396,
+        "min": 11.45,
+        "max": 15.677
+      },
+      "moved": 368,
+      "decisions": 0,
+      "destinations": 0,
+      "activities": 0,
+      "invitations": 0,
+      "messages": 192,
+      "memories": 44,
+      "pathfinds": 12
+    },
+    {
+      "engine": "rust",
+      "players": 10000,
+      "simulated_ms": 960,
+      "loop_ms": {
+        "median": 505.019,
+        "min": 491.017,
+        "max": 509.777
+      },
+      "history_pack_ms": {
+        "median": 0.0,
+        "min": 0.0,
+        "max": 0.0
+      },
+      "snapshot_ms": {
+        "median": 208.49,
+        "min": 171.133,
+        "max": 211.674
+      },
+      "moved": 3656,
+      "decisions": 0,
+      "destinations": 0,
+      "activities": 0,
+      "invitations": 0,
+      "messages": 1909,
+      "memories": 440,
+      "pathfinds": 16
+    }
+  ],
+  "lifecycle": [
+    {
+      "engine": "rust",
+      "players": 32,
+      "simulated_ms": 76800,
+      "loop_ms": {
+        "median": 45.739,
+        "min": 43.303,
+        "max": 46.103
+      },
+      "history_pack_ms": {
+        "median": 0.0,
+        "min": 0.0,
+        "max": 0.0
+      },
+      "snapshot_ms": {
+        "median": 0.493,
+        "min": 0.451,
+        "max": 0.726
+      },
+      "moved": 30,
+      "decisions": 75,
+      "destinations": 40,
+      "activities": 28,
+      "invitations": 7,
+      "messages": 65,
+      "memories": 18,
+      "pathfinds": 46
+    },
+    {
+      "engine": "rust",
+      "players": 128,
+      "simulated_ms": 76800,
+      "loop_ms": {
+        "median": 278.616,
+        "min": 276.303,
+        "max": 279.136
+      },
+      "history_pack_ms": {
+        "median": 0.0,
+        "min": 0.0,
+        "max": 0.0
+      },
+      "snapshot_ms": {
+        "median": 1.674,
+        "min": 1.655,
+        "max": 1.685
+      },
+      "moved": 115,
+      "decisions": 301,
+      "destinations": 151,
+      "activities": 79,
+      "invitations": 71,
+      "messages": 410,
+      "memories": 148,
+      "pathfinds": 559
+    },
+    {
+      "engine": "rust",
+      "players": 10000,
+      "simulated_ms": 76800,
+      "loop_ms": {
+        "median": 24362.906,
+        "min": 24204.229,
+        "max": 24556.039
+      },
+      "history_pack_ms": {
+        "median": 0.0,
+        "min": 0.0,
+        "max": 0.0
+      },
+      "snapshot_ms": {
+        "median": 144.184,
+        "min": 143.091,
+        "max": 159.605
+      },
+      "moved": 6859,
+      "decisions": 18328,
+      "destinations": 9179,
+      "activities": 4489,
+      "invitations": 4660,
+      "messages": 5839,
+      "memories": 8902,
+      "pathfinds": 10459
+    }
+  ]
+}
