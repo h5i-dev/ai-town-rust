@@ -33,6 +33,8 @@ pub struct Town {
     pub fixture: Value,
     pub metrics: Metrics,
     pub command_ms: Option<[f64; 6]>,
+    pub history_pack_ms: f64,
+    pub history_bytes: usize,
 }
 impl Town {
     pub fn load(path: &str) -> Self {
@@ -180,6 +182,8 @@ impl Town {
             fixture: f,
             metrics: Metrics::default(),
             command_ms: None,
+            history_pack_ms: 0.0,
+            history_bytes: 0,
         }
     }
     fn command(&mut self, owner: u64, cmd: Command) -> bool {
@@ -317,10 +321,15 @@ impl Town {
     pub fn step(&mut self, ticks: u64) -> f64 {
         let clock = Instant::now();
         let end = self.state.meta.now_ms + ticks * 16;
-        run_ticks(&mut self.state, end);
+        let (_, _, capture) = run_ticks_captured(&mut self.state, end, false);
         self.metrics.pathfinds += self.state.meta.pathfinds as u64;
         self.drain();
-        clock.elapsed().as_secs_f64() * 1000.0
+        let tick_ms = clock.elapsed().as_secs_f64() * 1000.0;
+        let pack_clock = Instant::now();
+        self.state.motion_history = capture.finish(self.state.meta.now_ms);
+        self.history_pack_ms += pack_clock.elapsed().as_secs_f64() * 1000.0;
+        self.history_bytes += self.state.motion_history.data.len();
+        tick_ms
     }
     pub fn snapshot(&self, tick_ms: f64, step_ms: u64) -> String {
         let mut v = ai_town_server::to_value_with_options(&self.state, false, 100);

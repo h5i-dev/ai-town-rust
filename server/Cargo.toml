@@ -11,6 +11,7 @@ default = []
 gpu = ["dep:ai-town-gpu"]
 
 [dependencies]
+base64 = "0.22"
 ai-town-gpu = { path = "../gpu", optional = true }
 ai-town-kernel = { path = "../kernel" }
 axum = { version = "0.8", features = ["ws", "json"] }

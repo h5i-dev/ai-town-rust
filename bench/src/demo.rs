@@ -168,7 +168,9 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
             let mut ticks = 1;
             loop {
                 let clock = Instant::now();
-                let tick_ms = town.step(ticks);
+                let previous_pack_ms = town.history_pack_ms;
+                let loop_ms = town.step(ticks);
+                let tick_ms = loop_ms + town.history_pack_ms - previous_pack_ms;
                 if tx
                     .send(Arc::new(town.snapshot(tick_ms, ticks * 16)))
                     .is_err()

@@ -45,3 +45,39 @@ is not applied to production code or the generated Lean extraction.
 
 `validation/` records tests, source hashes, a browser interaction check and a
 48-second live UI cadence check. UI pacing is not a frame-rate measurement.
+
+## Tick history comparison
+
+The `history-*` directories are a separate rerun with actual tick recording,
+upstream-compatible compression and retained delivery packets in both engines.
+See [current measurements](../../../docs/TOWN_BENCHMARKS.md#tick-history-and-playback--2026-10-23).
+`history-summary.json` aggregates these results independently of the older
+`summary.json`, whose Rust runs did not record motion history.
+
+The short-window comparison uses Rust CSVs from `history-short-rust-final/` and
+original CSVs from `history-short/`. Rust was rerun after the codec helpers were
+restructured to support Lean extraction; the earlier Rust CSVs are retained for
+traceability and excluded from the summary. Upstream sources were unchanged.
+`history-lifecycle/` measures both engines at 32 and 128 residents;
+`history-lifecycle-10000-rust/` measures Rust at 10,000. Original at 10,000 over
+76.8 simulated seconds was not measured. All cases use one warmup, three samples,
+seed 1 and 60 ticks per batch. They ran sequentially on a shared, unpinned host;
+part of the initial short-window run overlapped Lean extraction/build work.
+
+Each directory has raw CSVs, launch-time source/version/host metadata and fixture
+SHA-256 hashes. The generated fixture JSON is omitted and can be regenerated with
+`node bench/scenarios/town.mjs COUNT OUTPUT 1`.
+
+```bash
+./bench/town.sh --out /tmp/history-short
+./bench/town.sh --engine rust --out /tmp/history-short-rust-final
+./bench/town.sh --players 32,128 --steps 80 --out /tmp/history-lifecycle
+./bench/town.sh --engine rust --players 10000 --steps 80 --out /tmp/history-lifecycle-10000-rust
+```
+
+`history-validation/` contains Rust/GPU, JavaScript codec/playback, frontend build,
+Lean gate and actual browser validation logs. Its metadata lists commands and
+source hashes. The 10,000-resident demo browser check and the 128-resident original
+check saw actual history playback with no console/request errors. These are
+in-memory checks: no live LLM or PostgreSQL integration was run. Node tests need
+Node 22.18+ for native TypeScript stripping; Node 24.21.0 was used.

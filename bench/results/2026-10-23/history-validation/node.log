@@ -1,0 +1,25 @@
+✔ town fixture: 1 residents (14.881201ms)
+✔ town fixture: 32 residents (10.568459ms)
+✔ town fixture: 1000 residents (19.265982ms)
+✔ town fixture: 10000 residents (133.332243ms)
+✔ seed reproduces fixture; changing it changes spawn locations (30.864094ms)
+✔ browser decoder matches upstream on varied actual native packets (52.347012ms)
+✔ rendered pose obeys actual ticks, turns and stops even if a future path exists (0.781125ms)
+✔ native quantization can produce a 61-value run including the initial value (0.415157ms)
+✔ native path interpolation stays finite at equal timestamps (45.927015ms)
+✔ upstream packet decodes quantized tick samples, never interpolates a planned path (1.269152ms)
+✔ facing and speed retain starts, turns and stops (0.263258ms)
+✔ accepts 61 identical quantized values: initial value plus 60 changed raw samples (0.330457ms)
+✔ rejects truncated packets, wrong configuration, invalid runs and out-of-interval samples (0.836954ms)
+✔ playback holds at last computed tick and duplicates do not restart time (0.458577ms)
+✔ stationary residents receive empty tracks, suppressing future-path fallback (0.689816ms)
+✔ gaps skip unrecorded time; reconnect to an older world resets playback (1.44657ms)
+✔ retention and playback lag stay bounded after a suspended tab (0.519726ms)
+ℹ tests 17
+ℹ suites 0
+ℹ pass 17
+ℹ fail 0
+ℹ cancelled 0
+ℹ skipped 0
+ℹ todo 0
+ℹ duration_ms 299.142371

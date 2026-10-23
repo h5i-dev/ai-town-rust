@@ -662,7 +662,7 @@ def geom.colinear
             else ok false
 
 /-- [ai_town_kernel::{impl core::clone::Clone for ai_town_kernel::PathNode}::clone]:
-    Source: 'kernel/src/lib.rs', lines 121:13-121:18
+    Source: 'kernel/src/lib.rs', lines 131:13-131:18
     Visibility: public -/
 def PathNode.Insts.CoreCloneClone.clone
   (self : PathNode) : Result PathNode := do
@@ -685,7 +685,7 @@ def PathNode.Insts.CoreCloneClone.clone
     }
 
 /-- Trait implementation: [ai_town_kernel::{impl core::clone::Clone for ai_town_kernel::PathNode}]
-    Source: 'kernel/src/lib.rs', lines 121:13-121:18 -/
+    Source: 'kernel/src/lib.rs', lines 131:13-131:18 -/
 @[reducible]
 def PathNode.Insts.CoreCloneClone : core.clone.Clone PathNode := {
   clone := PathNode.Insts.CoreCloneClone.clone
@@ -2062,188 +2062,91 @@ def geom.grid_yield
           geom.grid_yield_loop0 height head next xs ys ids x y self_id skip y0
             x1 y1 false tx
 
-/-- [ai_town_kernel::TALK_SQ]
-    Source: 'kernel/src/lib.rs', lines 20:0-20:37
-    Visibility: public -/
-@[global_simps, irreducible]
-def TALK_SQ : Result Std.U64 := 1300#u64 * 1300#u64
+/-- [ai_town_kernel::history::Field]
+    Source: 'kernel/src/history.rs', lines 5:0-10:1 -/
+structure history.Field where
+  raw : Std.U32
+  initial : Std.I64
+  times : alloc.vec.Vec Std.U64
+  values : alloc.vec.Vec Std.I64
 
-/-- [ai_town_kernel::TICK_MS]
-    Source: 'kernel/src/lib.rs', lines 21:0-21:28
-    Visibility: public -/
-@[global_simps, irreducible] def TICK_MS : Std.U64 := 16#u64
+/-- [ai_town_kernel::history::Resident]
+    Source: 'kernel/src/history.rs', lines 11:0-11:47 -/
+structure history.Resident where
+  id : Std.U64
+  fields : alloc.vec.Vec history.Field
 
-/-- [ai_town_kernel::MAX_TICKS]
-    Source: 'kernel/src/lib.rs', lines 22:0-22:30
+/-- [ai_town_kernel::history::Capture]
+    Source: 'kernel/src/history.rs', lines 12:0-12:59
     Visibility: public -/
-@[global_simps, irreducible] def MAX_TICKS : Std.U32 := 60#u32
+structure history.Capture where
+  start : Std.U64
+  residents : alloc.vec.Vec history.Resident
 
-/-- [ai_town_kernel::MAX_PATHFINDS]
-    Source: 'kernel/src/lib.rs', lines 23:0-23:34
+/-- [ai_town_kernel::Player]
+    Source: '/cargo/registry/src/index.crates.io-1949cf8c6b5b557f/h5i-app-schema-0.1.2/src/lib.rs', lines 95:12-98:13
     Visibility: public -/
-@[global_simps, irreducible] def MAX_PATHFINDS : Std.U32 := 16#u32
+structure Player where
+  id : Std.U64
+  owner : Std.U64
+  is_human : Bool
+  x : Std.U32
+  y : Std.U32
+  face_dx : Std.U32
+  face_dy : Std.U32
+  speed : Std.U32
+  dest_x : Std.U32
+  dest_y : Std.U32
+  pf : Std.U32
+  pf_started : Std.U64
+  wait_until : Std.U64
+  last_input : Std.U64
+  activity : Std.U32
+  activity_until : Std.U64
+  character : Std.U32
+  «name» : alloc.vec.Vec Std.U8
 
-/-- [ai_town_kernel::PATH_TIMEOUT_MS]
-    Source: 'kernel/src/lib.rs', lines 24:0-24:40
-    Visibility: public -/
-@[global_simps, irreducible] def PATH_TIMEOUT_MS : Std.U64 := 60000#u64
+/-- [ai_town_kernel::history::raw]:
+    Source: 'kernel/src/history.rs', lines 14:0-16:1 -/
+def history.raw (p : Player) (field : Std.Usize) : Result Std.U32 := do
+  match field.val with
+  | 0 => ok p.x
+  | 1 => ok p.y
+  | 2 => ok p.face_dx
+  | 3 => ok p.face_dy
+  | _ => ok p.speed
 
-/-- [ai_town_kernel::BACKOFF_MS]
-    Source: 'kernel/src/lib.rs', lines 25:0-25:33
-    Visibility: public -/
-@[global_simps, irreducible] def BACKOFF_MS : Std.U64 := 1000#u64
+/-- [ai_town_kernel::history::quantized]:
+    Source: 'kernel/src/history.rs', lines 17:0-22:1 -/
+def history.quantized
+  (value : Std.U32) (field : Std.Usize) : Result Std.I64 := do
+  let factor ← if field = 4#usize
+                 then ok 65536#i64
+                 else ok 256#i64
+  let v ←
+    if field = 2#usize
+    then do
+         let i ← lift (UScalar.hcast .I64 value)
+         i - 1000#i64
+    else
+      if field = 3#usize
+      then do
+           let i ← lift (UScalar.hcast .I64 value)
+           i - 1000#i64
+      else ok (UScalar.hcast .I64 value)
+  let n ← v * factor
+  if n < 0#i64
+  then let i ← n - 999#i64
+       i / 1000#i64
+  else n / 1000#i64
 
-/-- [ai_town_kernel::MAX_HUMANS]
-    Source: 'kernel/src/lib.rs', lines 26:0-26:32
+/-- [ai_town_kernel::MotionHistory]
+    Source: '/cargo/registry/src/index.crates.io-1949cf8c6b5b557f/h5i-app-schema-0.1.2/src/lib.rs', lines 95:12-98:13
     Visibility: public -/
-@[global_simps, irreducible] def MAX_HUMANS : Std.Usize := 8#usize
-
-/-- [ai_town_kernel::IDLE_MS]
-    Source: 'kernel/src/lib.rs', lines 27:0-27:39
-    Visibility: public -/
-@[global_simps, irreducible]
-def IDLE_MS : Result Std.U64 := do let i ← 5#u64 * 60#u64
-                                   i * 1000#u64
-
-/-- [ai_town_kernel::TYPING_MS]
-    Source: 'kernel/src/lib.rs', lines 28:0-28:34
-    Visibility: public -/
-@[global_simps, irreducible] def TYPING_MS : Std.U64 := 15000#u64
-
-/-- [ai_town_kernel::INVITE_MS]
-    Source: 'kernel/src/lib.rs', lines 29:0-29:34
-    Visibility: public -/
-@[global_simps, irreducible] def INVITE_MS : Std.U64 := 60000#u64
-
-/-- [ai_town_kernel::CONV_COOLDOWN_MS]
-    Source: 'kernel/src/lib.rs', lines 30:0-30:41
-    Visibility: public -/
-@[global_simps, irreducible] def CONV_COOLDOWN_MS : Std.U64 := 15000#u64
-
-/-- [ai_town_kernel::AWKWARD_MS]
-    Source: 'kernel/src/lib.rs', lines 31:0-31:35
-    Visibility: public -/
-@[global_simps, irreducible] def AWKWARD_MS : Std.U64 := 60000#u64
-
-/-- [ai_town_kernel::MAX_CONV_MS]
-    Source: 'kernel/src/lib.rs', lines 32:0-32:44
-    Visibility: public -/
-@[global_simps, irreducible]
-def MAX_CONV_MS : Result Std.U64 := do let i ← 10#u64 * 60#u64
-                                       i * 1000#u64
-
-/-- [ai_town_kernel::MAX_MESSAGES]
-    Source: 'kernel/src/lib.rs', lines 33:0-33:32
-    Visibility: public -/
-@[global_simps, irreducible] def MAX_MESSAGES : Std.U64 := 8#u64
-
-/-- [ai_town_kernel::MESSAGE_COOLDOWN_MS]
-    Source: 'kernel/src/lib.rs', lines 34:0-34:43
-    Visibility: public -/
-@[global_simps, irreducible] def MESSAGE_COOLDOWN_MS : Std.U64 := 2000#u64
-
-/-- [ai_town_kernel::ACTION_TIMEOUT_MS]
-    Source: 'kernel/src/lib.rs', lines 35:0-35:43
-    Visibility: public -/
-@[global_simps, irreducible] def ACTION_TIMEOUT_MS : Std.U64 := 120000#u64
-
-/-- [ai_town_kernel::ACTIVITY_MS]
-    Source: 'kernel/src/lib.rs', lines 36:0-36:36
-    Visibility: public -/
-@[global_simps, irreducible] def ACTIVITY_MS : Std.U64 := 60000#u64
-
-/-- [ai_town_kernel::ENGINE]
-    Source: 'kernel/src/lib.rs', lines 37:0-37:26
-    Visibility: public -/
-@[global_simps, irreducible] def ENGINE : Std.U64 := 0#u64
-
-/-- [ai_town_kernel::AGENT_BASE]
-    Source: 'kernel/src/lib.rs', lines 38:0-38:38
-    Visibility: public -/
-@[global_simps, irreducible] def AGENT_BASE : Std.U64 := 1000000#u64
-
-/-- [ai_town_kernel::MAX_DIM]
-    Source: 'kernel/src/lib.rs', lines 39:0-39:29
-    Visibility: public -/
-@[global_simps, irreducible] def MAX_DIM : Std.U32 := 128#u32
-
-/-- [ai_town_kernel::MAX_NAME]
-    Source: 'kernel/src/lib.rs', lines 40:0-40:31
-    Visibility: public -/
-@[global_simps, irreducible] def MAX_NAME : Std.Usize := 32#usize
-
-/-- [ai_town_kernel::MAX_TEXT]
-    Source: 'kernel/src/lib.rs', lines 41:0-41:32
-    Visibility: public -/
-@[global_simps, irreducible] def MAX_TEXT : Std.Usize := 280#usize
-
-/-- [ai_town_kernel::MAX_PLAN]
-    Source: 'kernel/src/lib.rs', lines 42:0-42:34
-    Visibility: public -/
-@[global_simps, irreducible] def MAX_PLAN : Std.Usize := 2000#usize
-
-/-- [ai_town_kernel::PF_NONE]
-    Source: 'kernel/src/lib.rs', lines 44:0-44:27
-    Visibility: public -/
-@[global_simps, irreducible] def PF_NONE : Std.U32 := 0#u32
-
-/-- [ai_town_kernel::PF_NEED]
-    Source: 'kernel/src/lib.rs', lines 45:0-45:27
-    Visibility: public -/
-@[global_simps, irreducible] def PF_NEED : Std.U32 := 1#u32
-
-/-- [ai_town_kernel::PF_WAIT]
-    Source: 'kernel/src/lib.rs', lines 46:0-46:27
-    Visibility: public -/
-@[global_simps, irreducible] def PF_WAIT : Std.U32 := 2#u32
-
-/-- [ai_town_kernel::PF_MOVE]
-    Source: 'kernel/src/lib.rs', lines 47:0-47:27
-    Visibility: public -/
-@[global_simps, irreducible] def PF_MOVE : Std.U32 := 3#u32
-
-/-- [ai_town_kernel::ST_INVITED]
-    Source: 'kernel/src/lib.rs', lines 49:0-49:30
-    Visibility: public -/
-@[global_simps, irreducible] def ST_INVITED : Std.U32 := 1#u32
-
-/-- [ai_town_kernel::ST_WALKING]
-    Source: 'kernel/src/lib.rs', lines 50:0-50:30
-    Visibility: public -/
-@[global_simps, irreducible] def ST_WALKING : Std.U32 := 2#u32
-
-/-- [ai_town_kernel::ST_TALKING]
-    Source: 'kernel/src/lib.rs', lines 51:0-51:30
-    Visibility: public -/
-@[global_simps, irreducible] def ST_TALKING : Std.U32 := 3#u32
-
-/-- [ai_town_kernel::OP_NONE]
-    Source: 'kernel/src/lib.rs', lines 53:0-53:27
-    Visibility: public -/
-@[global_simps, irreducible] def OP_NONE : Std.U32 := 0#u32
-
-/-- [ai_town_kernel::OP_DO]
-    Source: 'kernel/src/lib.rs', lines 54:0-54:25
-    Visibility: public -/
-@[global_simps, irreducible] def OP_DO : Std.U32 := 1#u32
-
-/-- [ai_town_kernel::OP_REMEMBER]
-    Source: 'kernel/src/lib.rs', lines 55:0-55:31
-    Visibility: public -/
-@[global_simps, irreducible] def OP_REMEMBER : Std.U32 := 2#u32
-
-/-- [ai_town_kernel::OP_SPEAK]
-    Source: 'kernel/src/lib.rs', lines 56:0-56:28
-    Visibility: public -/
-@[global_simps, irreducible] def OP_SPEAK : Std.U32 := 3#u32
-
-/-- [ai_town_kernel::Principal]
-    Source: 'kernel/src/lib.rs', lines 60:0-64:1
-    Visibility: public -/
-structure Principal where
-  org : Std.U64
-  user : Std.U64
-  now_ms : Std.U64
+structure MotionHistory where
+  start_ms : Std.U64
+  end_ms : Std.U64
+  data : alloc.vec.Vec Std.U8
 
 /-- [ai_town_kernel::Terrain]
     Source: '/cargo/registry/src/index.crates.io-1949cf8c6b5b557f/h5i-app-schema-0.1.2/src/lib.rs', lines 95:12-98:13
@@ -2323,35 +2226,13 @@ structure Conversation where
   last_at : Std.U64
   num_messages : Std.U64
 
-/-- [ai_town_kernel::Player]
-    Source: '/cargo/registry/src/index.crates.io-1949cf8c6b5b557f/h5i-app-schema-0.1.2/src/lib.rs', lines 95:12-98:13
-    Visibility: public -/
-structure Player where
-  id : Std.U64
-  owner : Std.U64
-  is_human : Bool
-  x : Std.U32
-  y : Std.U32
-  face_dx : Std.U32
-  face_dy : Std.U32
-  speed : Std.U32
-  dest_x : Std.U32
-  dest_y : Std.U32
-  pf : Std.U32
-  pf_started : Std.U64
-  wait_until : Std.U64
-  last_input : Std.U64
-  activity : Std.U32
-  activity_until : Std.U64
-  character : Std.U32
-  «name» : alloc.vec.Vec Std.U8
-
 /-- [ai_town_kernel::Snapshot]
     Source: '/cargo/registry/src/index.crates.io-1949cf8c6b5b557f/h5i-app-schema-0.1.2/src/lib.rs', lines 278:8-280:9
     Visibility: public -/
 structure Snapshot where
   «meta» : Meta
   terrain : Terrain
+  motion_history : MotionHistory
   players : alloc.vec.Vec Player
   paths : alloc.vec.Vec PathNode
   conversations : alloc.vec.Vec Conversation
@@ -2360,8 +2241,986 @@ structure Snapshot where
   memories : alloc.vec.Vec Memory
   messages : alloc.vec.Vec Message
 
+/-- [ai_town_kernel::history::{ai_town_kernel::history::Capture}::new]: loop body 1:
+    Source: 'kernel/src/history.rs', lines 31:12-34:13
+    Visibility: public -/
+@[rust_loop_body]
+def history.Capture.new_loop0_loop0.body
+  (p : Player) (fields : alloc.vec.Vec history.Field) (f : Std.Usize) :
+  Result (ControlFlow ((alloc.vec.Vec history.Field) × Std.Usize)
+    (alloc.vec.Vec history.Field))
+  := do
+  if f < 5#usize
+  then
+    let i ← history.raw p f
+    let i1 ← history.quantized i f
+    let fields1 ←
+      alloc.vec.Vec.push fields
+        ({
+           raw := i,
+           initial := i1,
+           times := (alloc.vec.Vec.new Std.U64),
+           values := (alloc.vec.Vec.new Std.I64)
+         } : history.Field)
+    let f1 ← f + 1#usize
+    ok (cont (fields1, f1))
+  else ok (done fields)
+
+/-- [ai_town_kernel::history::{ai_town_kernel::history::Capture}::new]: loop 1:
+    Source: 'kernel/src/history.rs', lines 31:12-34:13
+    Visibility: public -/
+@[rust_loop]
+def history.Capture.new_loop0_loop0
+  (p : Player) (fields : alloc.vec.Vec history.Field) (f : Std.Usize) :
+  Result (alloc.vec.Vec history.Field)
+  := do
+  loop
+    (fun (fields1, f1) => history.Capture.new_loop0_loop0.body p fields1 f1)
+    (fields, f)
+
+/-- [ai_town_kernel::history::{ai_town_kernel::history::Capture}::new]: loop body 0:
+    Source: 'kernel/src/history.rs', lines 27:8-37:9
+    Visibility: public -/
+@[rust_loop_body]
+def history.Capture.new_loop0.body
+  (s : Snapshot) (residents : alloc.vec.Vec history.Resident) (i : Std.Usize) :
+  Result (ControlFlow ((alloc.vec.Vec history.Resident) × Std.Usize) (Meta ×
+    (alloc.vec.Vec history.Resident)))
+  := do
+  let i1 := alloc.vec.Vec.len s.players
+  if i < i1
+  then
+    let p ←
+      alloc.vec.Vec.index (core.slice.index.SliceIndexUsizeSlice Player)
+        s.players i
+    let fields ←
+      history.Capture.new_loop0_loop0 p (alloc.vec.Vec.new history.Field)
+        0#usize
+    let residents1 ←
+      alloc.vec.Vec.push residents ({ id := p.id, fields } : history.Resident)
+    let i2 ← i + 1#usize
+    ok (cont (residents1, i2))
+  else ok (done (s.meta, residents))
+
+/-- [ai_town_kernel::history::{ai_town_kernel::history::Capture}::new]: loop 0:
+    Source: 'kernel/src/history.rs', lines 27:8-37:9
+    Visibility: public -/
+@[rust_loop]
+def history.Capture.new_loop0
+  (s : Snapshot) (residents : alloc.vec.Vec history.Resident) (i : Std.Usize) :
+  Result (Meta × (alloc.vec.Vec history.Resident))
+  := do
+  loop
+    (fun (residents1, i1) => history.Capture.new_loop0.body s residents1 i1)
+    (residents, i)
+
+/-- [ai_town_kernel::history::{ai_town_kernel::history::Capture}::new]:
+    Source: 'kernel/src/history.rs', lines 24:4-39:5
+    Visibility: public -/
+def history.Capture.new (s : Snapshot) : Result history.Capture := do
+  let (m, residents) ←
+    history.Capture.new_loop0 s (alloc.vec.Vec.new history.Resident) 0#usize
+  ok { start := m.now_ms, residents }
+
+/-- [ai_town_kernel::history::resident_index]: loop body 0:
+    Source: 'kernel/src/history.rs', lines 159:4-164:1 -/
+@[rust_loop_body]
+def history.resident_index_loop.body
+  (residents : alloc.vec.Vec history.Resident) (id : Std.U64)
+  (cursor : Std.Usize) :
+  Result (ControlFlow Std.Usize Std.Usize)
+  := do
+  let i := alloc.vec.Vec.len residents
+  if cursor < i
+  then
+    let r ←
+      alloc.vec.Vec.index (core.slice.index.SliceIndexUsizeSlice
+        history.Resident) residents cursor
+    if r.id = id
+    then ok (done cursor)
+    else let cursor1 ← cursor + 1#usize
+         ok (cont cursor1)
+  else ok (done cursor)
+
+/-- [ai_town_kernel::history::resident_index]: loop 0:
+    Source: 'kernel/src/history.rs', lines 159:4-164:1 -/
+@[rust_loop]
+def history.resident_index_loop
+  (residents : alloc.vec.Vec history.Resident) (id : Std.U64)
+  (cursor : Std.Usize) :
+  Result Std.Usize
+  := do
+  loop
+    (fun cursor1 => history.resident_index_loop.body residents id cursor1)
+    cursor
+
+/-- [ai_town_kernel::history::resident_index]:
+    Source: 'kernel/src/history.rs', lines 157:0-164:1 -/
+@[reducible]
+def history.resident_index
+  (residents : alloc.vec.Vec history.Resident) (id : Std.U64)
+  (start : Std.Usize) :
+  Result Std.Usize
+  := do
+  history.resident_index_loop residents id start
+
+/-- [ai_town_kernel::history::{ai_town_kernel::history::Capture}::record]: loop body 1:
+    Source: 'kernel/src/history.rs', lines 49:16-58:17
+    Visibility: public -/
+@[rust_loop_body]
+def history.Capture.record_loop0_loop0.body
+  (v : alloc.vec.Vec Player) (i : Std.Usize) (cursor : Std.Usize)
+  (v1 : alloc.vec.Vec history.Resident) (m : Meta) (f : Std.Usize) :
+  Result (ControlFlow ((alloc.vec.Vec history.Resident) × Meta × Std.Usize)
+    ((alloc.vec.Vec history.Resident) × Meta))
+  := do
+  if f < 5#usize
+  then
+    let (r, index_mut_back) ←
+      alloc.vec.Vec.index_mut (core.slice.index.SliceIndexUsizeSlice
+        history.Resident) v1 cursor
+    let (field, index_mut_back1) ←
+      alloc.vec.Vec.index_mut (core.slice.index.SliceIndexUsizeSlice
+        history.Field) r.fields f
+    let p ←
+      alloc.vec.Vec.index (core.slice.index.SliceIndexUsizeSlice Player) v i
+    let value ← history.raw p f
+    let (m1, i1, v2, v3) ←
+      if field.raw != value
+      then
+        do
+        let v4 ← alloc.vec.Vec.push field.times m.now_ms
+        let i2 ← history.quantized value f
+        let v5 ← alloc.vec.Vec.push field.values i2
+        ok (m, value, v4, v5)
+      else ok (m, field.raw, field.times, field.values)
+    let f1 ← f + 1#usize
+    let v4 :=
+      index_mut_back1 { field with raw := i1, times := v2, values := v3 }
+    let v5 := index_mut_back { r with fields := v4 }
+    ok (cont (v5, m1, f1))
+  else ok (done (v1, m))
+
+/-- [ai_town_kernel::history::{ai_town_kernel::history::Capture}::record]: loop 1:
+    Source: 'kernel/src/history.rs', lines 49:16-58:17
+    Visibility: public -/
+@[rust_loop]
+def history.Capture.record_loop0_loop0
+  (v : alloc.vec.Vec history.Resident) (m : Meta) (v1 : alloc.vec.Vec Player)
+  (i : Std.Usize) (cursor : Std.Usize) (f : Std.Usize) :
+  Result ((alloc.vec.Vec history.Resident) × Meta)
+  := do
+  loop
+    (fun (v2, m1, f1) => history.Capture.record_loop0_loop0.body v1 i cursor v2
+      m1 f1)
+    (v, m, f)
+
+/-- [ai_town_kernel::history::{ai_town_kernel::history::Capture}::record]: loop body 0:
+    Source: 'kernel/src/history.rs', lines 44:8-61:9
+    Visibility: public -/
+@[rust_loop_body]
+def history.Capture.record_loop0.body
+  (self : history.Capture) (s : Snapshot) (i : Std.Usize) (cursor : Std.Usize)
+  :
+  Result (ControlFlow (history.Capture × Snapshot × Std.Usize × Std.Usize)
+    history.Capture)
+  := do
+  let i1 := alloc.vec.Vec.len s.players
+  if i < i1
+  then
+    let p ←
+      alloc.vec.Vec.index (core.slice.index.SliceIndexUsizeSlice Player)
+        s.players i
+    let cursor1 ← history.resident_index self.residents p.id cursor
+    let i2 := alloc.vec.Vec.len self.residents
+    if cursor1 < i2
+    then
+      let (v, m) ←
+        history.Capture.record_loop0_loop0 self.residents s.meta s.players i
+          cursor1 0#usize
+      let i3 ← i + 1#usize
+      ok (cont ({ self with residents := v }, { s with «meta» := m }, i3,
+        cursor1))
+    else let i3 ← i + 1#usize
+         ok (cont (self, s, i3, cursor1))
+  else ok (done self)
+
+/-- [ai_town_kernel::history::{ai_town_kernel::history::Capture}::record]: loop 0:
+    Source: 'kernel/src/history.rs', lines 44:8-61:9
+    Visibility: public -/
+@[rust_loop]
+def history.Capture.record_loop0
+  (self : history.Capture) (s : Snapshot) (i : Std.Usize) (cursor : Std.Usize)
+  :
+  Result history.Capture
+  := do
+  loop
+    (fun (self1, s1, i1, cursor1) => history.Capture.record_loop0.body self1 s1
+      i1 cursor1)
+    (self, s, i, cursor)
+
+/-- [ai_town_kernel::history::{ai_town_kernel::history::Capture}::record]:
+    Source: 'kernel/src/history.rs', lines 40:4-62:5
+    Visibility: public -/
+@[reducible]
+def history.Capture.record
+  (self : history.Capture) (s : Snapshot) : Result history.Capture := do
+  history.Capture.record_loop0 self s 0#usize 0#usize
+
+/-- [ai_town_kernel::history::rle]: loop body 1:
+    Source: 'kernel/src/history.rs', lines 103:8-103:76 -/
+@[rust_loop_body]
+def history.rle_loop0_loop0.body
+  (values : alloc.vec.Vec Std.I64) (value : Std.I64) (i : Std.Usize)
+  (count : Std.I64) :
+  Result (ControlFlow (Std.Usize × Std.I64) (Std.Usize × Std.I64))
+  := do
+  let i1 := alloc.vec.Vec.len values
+  if i < i1
+  then
+    let i2 ←
+      alloc.vec.Vec.index (core.slice.index.SliceIndexUsizeSlice Std.I64)
+        values i
+    if i2 = value
+    then
+      let count1 ← count + 1#i64
+      let i3 ← i + 1#usize
+      ok (cont (i3, count1))
+    else ok (done (i, count))
+  else ok (done (i, count))
+
+/-- [ai_town_kernel::history::rle]: loop 1:
+    Source: 'kernel/src/history.rs', lines 103:8-103:76 -/
+@[rust_loop]
+def history.rle_loop0_loop0
+  (values : alloc.vec.Vec Std.I64) (i : Std.Usize) (value : Std.I64)
+  (count : Std.I64) :
+  Result (Std.Usize × Std.I64)
+  := do
+  loop
+    (fun (i1, count1) => history.rle_loop0_loop0.body values value i1 count1)
+    (i, count)
+
+/-- [ai_town_kernel::history::rle]: loop body 0:
+    Source: 'kernel/src/history.rs', lines 99:4-105:5 -/
+@[rust_loop_body]
+def history.rle_loop0.body
+  (values : alloc.vec.Vec Std.I64) (out : alloc.vec.Vec Std.I64)
+  (i : Std.Usize) :
+  Result (ControlFlow ((alloc.vec.Vec Std.I64) × Std.Usize) (alloc.vec.Vec
+    Std.I64))
+  := do
+  let i1 := alloc.vec.Vec.len values
+  if i < i1
+  then
+    let value ←
+      alloc.vec.Vec.index (core.slice.index.SliceIndexUsizeSlice Std.I64)
+        values i
+    let i2 ← i + 1#usize
+    let (i3, count) ← history.rle_loop0_loop0 values i2 value 1#i64
+    let out1 ← alloc.vec.Vec.push out value
+    let out2 ← alloc.vec.Vec.push out1 count
+    ok (cont (out2, i3))
+  else ok (done out)
+
+/-- [ai_town_kernel::history::rle]: loop 0:
+    Source: 'kernel/src/history.rs', lines 99:4-105:5 -/
+@[rust_loop]
+def history.rle_loop0
+  (values : alloc.vec.Vec Std.I64) (out : alloc.vec.Vec Std.I64)
+  (i : Std.Usize) :
+  Result (alloc.vec.Vec Std.I64)
+  := do
+  loop
+    (fun (out1, i1) => history.rle_loop0.body values out1 i1)
+    (out, i)
+
+/-- [ai_town_kernel::history::rle]:
+    Source: 'kernel/src/history.rs', lines 96:0-107:1 -/
+@[reducible]
+def history.rle
+  (values : alloc.vec.Vec Std.I64) : Result (alloc.vec.Vec Std.I64) := do
+  history.rle_loop0 values (alloc.vec.Vec.new Std.I64) 0#usize
+
+/-- [ai_town_kernel::history::compressed]: loop body 1:
+    Source: 'kernel/src/history.rs', lines 90:8-90:70 -/
+@[rust_loop_body]
+def history.compressed_loop0_loop0.body
+  (out : alloc.vec.Vec Std.U8) (n : Std.U64) :
+  Result (ControlFlow ((alloc.vec.Vec Std.U8) × Std.U64) ((alloc.vec.Vec
+    Std.U8) × Std.U64))
+  := do
+  if n >= 128#u64
+  then
+    let i ← lift (n &&& 127#u64)
+    let i1 ← lift (i ||| 128#u64)
+    let i2 ← lift (UScalar.cast .U8 i1)
+    let out1 ← alloc.vec.Vec.push out i2
+    let n1 ← n >>> 7#i32
+    ok (cont (out1, n1))
+  else ok (done (out, n))
+
+/-- [ai_town_kernel::history::compressed]: loop 1:
+    Source: 'kernel/src/history.rs', lines 90:8-90:70 -/
+@[rust_loop]
+def history.compressed_loop0_loop0
+  (out : alloc.vec.Vec Std.U8) (n : Std.U64) :
+  Result ((alloc.vec.Vec Std.U8) × Std.U64)
+  := do
+  loop
+    (fun (out1, n1) => history.compressed_loop0_loop0.body out1 n1)
+    (out, n)
+
+/-- [ai_town_kernel::history::compressed]: loop body 0:
+    Source: 'kernel/src/history.rs', lines 87:4-93:5 -/
+@[rust_loop_body]
+def history.compressed_loop0.body
+  (values : alloc.vec.Vec Std.I64) (out : alloc.vec.Vec Std.U8) (i : Std.Usize)
+  :
+  Result (ControlFlow ((alloc.vec.Vec Std.U8) × Std.Usize) (alloc.vec.Vec
+    Std.U8))
+  := do
+  let i1 := alloc.vec.Vec.len values
+  if i < i1
+  then
+    let v ←
+      alloc.vec.Vec.index (core.slice.index.SliceIndexUsizeSlice Std.I64)
+        values i
+    let n ←
+      if v < 0#i64
+      then
+        do
+        let i2 ← -. v
+        let i3 ← lift (IScalar.hcast .U64 i2)
+        let i4 ← i3 * 2#u64
+        i4 - 1#u64
+      else do
+           let i2 ← lift (IScalar.hcast .U64 v)
+           i2 * 2#u64
+    let (out1, n1) ← history.compressed_loop0_loop0 out n
+    let i2 ← lift (UScalar.cast .U8 n1)
+    let out2 ← alloc.vec.Vec.push out1 i2
+    let i3 ← i + 1#usize
+    ok (cont (out2, i3))
+  else ok (done out)
+
+/-- [ai_town_kernel::history::compressed]: loop 0:
+    Source: 'kernel/src/history.rs', lines 87:4-93:5 -/
+@[rust_loop]
+def history.compressed_loop0
+  (values : alloc.vec.Vec Std.I64) (out : alloc.vec.Vec Std.U8) (i : Std.Usize)
+  :
+  Result (alloc.vec.Vec Std.U8)
+  := do
+  loop
+    (fun (out1, i1) => history.compressed_loop0.body values out1 i1)
+    (out, i)
+
+/-- [ai_town_kernel::history::compressed]:
+    Source: 'kernel/src/history.rs', lines 84:0-95:1 -/
+@[reducible]
+def history.compressed
+  (values : alloc.vec.Vec Std.I64) : Result (alloc.vec.Vec Std.U8) := do
+  history.compressed_loop0 values (alloc.vec.Vec.new Std.U8) 0#usize
+
+/-- [ai_town_kernel::history::little]: loop body 0:
+    Source: 'kernel/src/history.rs', lines 82:4-82:75 -/
+@[rust_loop_body]
+def history.little_loop.body
+  (bytes : Std.Usize) (out : alloc.vec.Vec Std.U8) (value : Std.U64)
+  (i : Std.Usize) :
+  Result (ControlFlow ((alloc.vec.Vec Std.U8) × Std.U64 × Std.Usize)
+    (alloc.vec.Vec Std.U8))
+  := do
+  if i < bytes
+  then
+    let i1 ← lift (value &&& 255#u64)
+    let i2 ← lift (UScalar.cast .U8 i1)
+    let out1 ← alloc.vec.Vec.push out i2
+    let value1 ← value >>> 8#i32
+    let i3 ← i + 1#usize
+    ok (cont (out1, value1, i3))
+  else ok (done out)
+
+/-- [ai_town_kernel::history::little]: loop 0:
+    Source: 'kernel/src/history.rs', lines 82:4-82:75 -/
+@[rust_loop]
+def history.little_loop
+  (out : alloc.vec.Vec Std.U8) (value : Std.U64) (bytes : Std.Usize)
+  (i : Std.Usize) :
+  Result (alloc.vec.Vec Std.U8)
+  := do
+  loop
+    (fun (out1, value1, i1) => history.little_loop.body bytes out1 value1 i1)
+    (out, value, i)
+
+/-- [ai_town_kernel::history::little]:
+    Source: 'kernel/src/history.rs', lines 80:0-83:1 -/
+@[reducible]
+def history.little
+  (out : alloc.vec.Vec Std.U8) (value : Std.U64) (bytes : Std.Usize) :
+  Result (alloc.vec.Vec Std.U8)
+  := do
+  history.little_loop out value bytes 0#usize
+
+/-- [ai_town_kernel::history::pack_field]: loop body 0:
+    Source: 'kernel/src/history.rs', lines 169:12-173:13 -/
+@[rust_loop_body]
+def history.pack_field_loop0.body
+  (v : alloc.vec.Vec Std.U64) (timestamps : alloc.vec.Vec Std.I64)
+  (i : Std.Usize) :
+  Result (ControlFlow ((alloc.vec.Vec Std.I64) × Std.Usize) (alloc.vec.Vec
+    Std.I64))
+  := do
+  let i1 := alloc.vec.Vec.len v
+  if i < i1
+  then
+    let current ←
+      alloc.vec.Vec.index (core.slice.index.SliceIndexUsizeSlice Std.U64) v i
+    let i2 ← i - 1#usize
+    let previous ←
+      alloc.vec.Vec.index (core.slice.index.SliceIndexUsizeSlice Std.U64) v i2
+    let i3 ← current - previous
+    let i4 ← lift (UScalar.hcast .I64 i3)
+    let timestamps1 ← alloc.vec.Vec.push timestamps i4
+    let i5 ← i + 1#usize
+    ok (cont (timestamps1, i5))
+  else ok (done timestamps)
+
+/-- [ai_town_kernel::history::pack_field]: loop 0:
+    Source: 'kernel/src/history.rs', lines 169:12-173:13 -/
+@[rust_loop]
+def history.pack_field_loop0
+  (v : alloc.vec.Vec Std.U64) (timestamps : alloc.vec.Vec Std.I64)
+  (i : Std.Usize) :
+  Result (alloc.vec.Vec Std.I64)
+  := do
+  loop
+    (fun (timestamps1, i1) => history.pack_field_loop0.body v timestamps1 i1)
+    (timestamps, i)
+
+/-- [ai_town_kernel::history::pack_field]: loop body 1:
+    Source: 'kernel/src/history.rs', lines 179:12-181:13 -/
+@[rust_loop_body]
+def history.pack_field_loop1.body
+  (v : alloc.vec.Vec Std.I64) (i : Std.Usize) (values : alloc.vec.Vec Std.I64)
+  (previous : Std.I64) :
+  Result (ControlFlow (Std.Usize × (alloc.vec.Vec Std.I64) × Std.I64)
+    (alloc.vec.Vec Std.I64))
+  := do
+  let i1 := alloc.vec.Vec.len v
+  if i < i1
+  then
+    let i2 ←
+      alloc.vec.Vec.index (core.slice.index.SliceIndexUsizeSlice Std.I64) v i
+    let i3 ← i2 - previous
+    let values1 ← alloc.vec.Vec.push values i3
+    let i4 ← i + 1#usize
+    ok (cont (i4, values1, i2))
+  else ok (done values)
+
+/-- [ai_town_kernel::history::pack_field]: loop 1:
+    Source: 'kernel/src/history.rs', lines 179:12-181:13 -/
+@[rust_loop]
+def history.pack_field_loop1
+  (v : alloc.vec.Vec Std.I64) (i : Std.Usize) (values : alloc.vec.Vec Std.I64)
+  (previous : Std.I64) :
+  Result (alloc.vec.Vec Std.I64)
+  := do
+  loop
+    (fun (i1, values1, previous1) => history.pack_field_loop1.body v i1 values1
+      previous1)
+    (i, values, previous)
+
+/-- [ai_town_kernel::history::pack_field]: loop body 2:
+    Source: 'kernel/src/history.rs', lines 188:19-188:72 -/
+@[rust_loop_body]
+def history.pack_field_loop2.body
+  (times : alloc.vec.Vec Std.U8) (out : alloc.vec.Vec Std.U8) (i : Std.Usize) :
+  Result (ControlFlow ((alloc.vec.Vec Std.U8) × Std.Usize) (alloc.vec.Vec
+    Std.U8))
+  := do
+  let i1 := alloc.vec.Vec.len times
+  if i < i1
+  then
+    let i2 ←
+      alloc.vec.Vec.index (core.slice.index.SliceIndexUsizeSlice Std.U8) times
+        i
+    let out1 ← alloc.vec.Vec.push out i2
+    let i3 ← i + 1#usize
+    ok (cont (out1, i3))
+  else ok (done out)
+
+/-- [ai_town_kernel::history::pack_field]: loop 2:
+    Source: 'kernel/src/history.rs', lines 188:19-188:72 -/
+@[rust_loop]
+def history.pack_field_loop2
+  (out : alloc.vec.Vec Std.U8) (i : Std.Usize) (times : alloc.vec.Vec Std.U8) :
+  Result (alloc.vec.Vec Std.U8)
+  := do
+  loop
+    (fun (out1, i1) => history.pack_field_loop2.body times out1 i1)
+    (out, i)
+
+/-- [ai_town_kernel::history::pack_field]: loop body 3:
+    Source: 'kernel/src/history.rs', lines 190:19-190:72 -/
+@[rust_loop_body]
+def history.pack_field_loop3.body
+  (bytes : alloc.vec.Vec Std.U8) (out : alloc.vec.Vec Std.U8) (i : Std.Usize) :
+  Result (ControlFlow ((alloc.vec.Vec Std.U8) × Std.Usize) (alloc.vec.Vec
+    Std.U8))
+  := do
+  let i1 := alloc.vec.Vec.len bytes
+  if i < i1
+  then
+    let i2 ←
+      alloc.vec.Vec.index (core.slice.index.SliceIndexUsizeSlice Std.U8) bytes
+        i
+    let out1 ← alloc.vec.Vec.push out i2
+    let i3 ← i + 1#usize
+    ok (cont (out1, i3))
+  else ok (done out)
+
+/-- [ai_town_kernel::history::pack_field]: loop 3:
+    Source: 'kernel/src/history.rs', lines 190:19-190:72 -/
+@[rust_loop]
+def history.pack_field_loop3
+  (out : alloc.vec.Vec Std.U8) (i : Std.Usize) (bytes : alloc.vec.Vec Std.U8) :
+  Result (alloc.vec.Vec Std.U8)
+  := do
+  loop
+    (fun (out1, i1) => history.pack_field_loop3.body bytes out1 i1)
+    (out, i)
+
+/-- [ai_town_kernel::history::pack_field]: loop body 4:
+    Source: 'kernel/src/history.rs', lines 188:19-188:72 -/
+@[rust_loop_body]
+def history.pack_field_loop4.body
+  (times : alloc.vec.Vec Std.U8) (out : alloc.vec.Vec Std.U8) (i : Std.Usize) :
+  Result (ControlFlow ((alloc.vec.Vec Std.U8) × Std.Usize) (alloc.vec.Vec
+    Std.U8))
+  := do
+  let i1 := alloc.vec.Vec.len times
+  if i < i1
+  then
+    let i2 ←
+      alloc.vec.Vec.index (core.slice.index.SliceIndexUsizeSlice Std.U8) times
+        i
+    let out1 ← alloc.vec.Vec.push out i2
+    let i3 ← i + 1#usize
+    ok (cont (out1, i3))
+  else ok (done out)
+
+/-- [ai_town_kernel::history::pack_field]: loop 4:
+    Source: 'kernel/src/history.rs', lines 188:19-188:72 -/
+@[rust_loop]
+def history.pack_field_loop4
+  (out : alloc.vec.Vec Std.U8) (i : Std.Usize) (times : alloc.vec.Vec Std.U8) :
+  Result (alloc.vec.Vec Std.U8)
+  := do
+  loop
+    (fun (out1, i1) => history.pack_field_loop4.body times out1 i1)
+    (out, i)
+
+/-- [ai_town_kernel::history::pack_field]: loop body 5:
+    Source: 'kernel/src/history.rs', lines 190:19-190:72 -/
+@[rust_loop_body]
+def history.pack_field_loop5.body
+  (bytes : alloc.vec.Vec Std.U8) (out : alloc.vec.Vec Std.U8) (i : Std.Usize) :
+  Result (ControlFlow ((alloc.vec.Vec Std.U8) × Std.Usize) (alloc.vec.Vec
+    Std.U8))
+  := do
+  let i1 := alloc.vec.Vec.len bytes
+  if i < i1
+  then
+    let i2 ←
+      alloc.vec.Vec.index (core.slice.index.SliceIndexUsizeSlice Std.U8) bytes
+        i
+    let out1 ← alloc.vec.Vec.push out i2
+    let i3 ← i + 1#usize
+    ok (cont (out1, i3))
+  else ok (done out)
+
+/-- [ai_town_kernel::history::pack_field]: loop 5:
+    Source: 'kernel/src/history.rs', lines 190:19-190:72 -/
+@[rust_loop]
+def history.pack_field_loop5
+  (out : alloc.vec.Vec Std.U8) (i : Std.Usize) (bytes : alloc.vec.Vec Std.U8) :
+  Result (alloc.vec.Vec Std.U8)
+  := do
+  loop
+    (fun (out1, i1) => history.pack_field_loop5.body bytes out1 i1)
+    (out, i)
+
+/-- [ai_town_kernel::history::pack_field]:
+    Source: 'kernel/src/history.rs', lines 165:0-193:1 -/
+def history.pack_field
+  (field : history.Field) (f : Std.Usize) (out : alloc.vec.Vec Std.U8) :
+  Result (alloc.vec.Vec Std.U8)
+  := do
+  let i := alloc.vec.Vec.len field.times
+  if i > 0#usize
+  then
+    let timestamps ←
+      history.pack_field_loop0 field.times (alloc.vec.Vec.new Std.I64) 1#usize
+    let v ← history.rle timestamps
+    let times ← history.compressed v
+    let values ← alloc.vec.Vec.push (alloc.vec.Vec.new Std.I64) field.initial
+    let values1 ←
+      history.pack_field_loop1 field.values 0#usize values field.initial
+    let runs ← history.rle values1
+    let i1 := alloc.vec.Vec.len runs
+    let i2 := alloc.vec.Vec.len values1
+    let (use_rle, bytes) ←
+      if i1 < i2
+      then do
+           let bytes1 ← history.compressed runs
+           ok (true, bytes1)
+      else do
+           let bytes1 ← history.compressed values1
+           ok (false, bytes1)
+    let i3 ← lift (UScalar.cast .U8 f)
+    if use_rle
+    then
+      let i4 ← lift (i3 ||| 16#u8)
+      let out1 ← alloc.vec.Vec.push out i4
+      let i5 ←
+        alloc.vec.Vec.index (core.slice.index.SliceIndexUsizeSlice Std.U64)
+          field.times 0#usize
+      let out2 ← history.little out1 i5 8#usize
+      let i6 := alloc.vec.Vec.len times
+      let i7 ← lift (UScalar.cast .U64 i6)
+      let out3 ← history.little out2 i7 2#usize
+      let out4 ← history.pack_field_loop2 out3 0#usize times
+      let i8 := alloc.vec.Vec.len bytes
+      let i9 ← lift (UScalar.cast .U64 i8)
+      let out5 ← history.little out4 i9 2#usize
+      history.pack_field_loop3 out5 0#usize bytes
+    else
+      let i4 ← lift (i3 ||| 0#u8)
+      let out1 ← alloc.vec.Vec.push out i4
+      let i5 ←
+        alloc.vec.Vec.index (core.slice.index.SliceIndexUsizeSlice Std.U64)
+          field.times 0#usize
+      let out2 ← history.little out1 i5 8#usize
+      let i6 := alloc.vec.Vec.len times
+      let i7 ← lift (UScalar.cast .U64 i6)
+      let out3 ← history.little out2 i7 2#usize
+      let out4 ← history.pack_field_loop4 out3 0#usize times
+      let i8 := alloc.vec.Vec.len bytes
+      let i9 ← lift (UScalar.cast .U64 i8)
+      let out5 ← history.little out4 i9 2#usize
+      history.pack_field_loop5 out5 0#usize bytes
+  else ok out
+
+/-- [ai_town_kernel::history::pack]: loop body 0:
+    Source: 'kernel/src/history.rs', lines 113:4-116:5 -/
+@[rust_loop_body]
+def history.pack_loop.body
+  (resident : history.Resident) (out : alloc.vec.Vec Std.U8) (f : Std.Usize) :
+  Result (ControlFlow ((alloc.vec.Vec Std.U8) × Std.Usize) (alloc.vec.Vec
+    Std.U8))
+  := do
+  let i := alloc.vec.Vec.len resident.fields
+  if f < i
+  then
+    let f1 ←
+      alloc.vec.Vec.index (core.slice.index.SliceIndexUsizeSlice history.Field)
+        resident.fields f
+    let out1 ← history.pack_field f1 f out
+    let f2 ← f + 1#usize
+    ok (cont (out1, f2))
+  else ok (done out)
+
+/-- [ai_town_kernel::history::pack]: loop 0:
+    Source: 'kernel/src/history.rs', lines 113:4-116:5 -/
+@[rust_loop]
+def history.pack_loop
+  (resident : history.Resident) (out : alloc.vec.Vec Std.U8) (f : Std.Usize) :
+  Result (alloc.vec.Vec Std.U8)
+  := do
+  loop
+    (fun (out1, f1) => history.pack_loop.body resident out1 f1)
+    (out, f)
+
+/-- [ai_town_kernel::history::pack]:
+    Source: 'kernel/src/history.rs', lines 108:0-118:1 -/
+def history.pack
+  (resident : history.Resident) : Result (alloc.vec.Vec Std.U8) := do
+  let out ← history.little (alloc.vec.Vec.new Std.U8) 134607547#u64 4#usize
+  history.pack_loop resident out 0#usize
+
+/-- [ai_town_kernel::history::{ai_town_kernel::history::Capture}::finish]: loop body 1:
+    Source: 'kernel/src/history.rs', lines 73:16-73:72
+    Visibility: public -/
+@[rust_loop_body]
+def history.Capture.finish_loop0_loop0.body
+  (packet : alloc.vec.Vec Std.U8) (data : alloc.vec.Vec Std.U8) (j : Std.Usize)
+  :
+  Result (ControlFlow ((alloc.vec.Vec Std.U8) × Std.Usize) (alloc.vec.Vec
+    Std.U8))
+  := do
+  let i := alloc.vec.Vec.len packet
+  if j < i
+  then
+    let i1 ←
+      alloc.vec.Vec.index (core.slice.index.SliceIndexUsizeSlice Std.U8) packet
+        j
+    let data1 ← alloc.vec.Vec.push data i1
+    let j1 ← j + 1#usize
+    ok (cont (data1, j1))
+  else ok (done data)
+
+/-- [ai_town_kernel::history::{ai_town_kernel::history::Capture}::finish]: loop 1:
+    Source: 'kernel/src/history.rs', lines 73:16-73:72
+    Visibility: public -/
+@[rust_loop]
+def history.Capture.finish_loop0_loop0
+  (data : alloc.vec.Vec Std.U8) (packet : alloc.vec.Vec Std.U8) (j : Std.Usize)
+  :
+  Result (alloc.vec.Vec Std.U8)
+  := do
+  loop
+    (fun (data1, j1) => history.Capture.finish_loop0_loop0.body packet data1
+      j1)
+    (data, j)
+
+/-- [ai_town_kernel::history::{ai_town_kernel::history::Capture}::finish]: loop body 0:
+    Source: 'kernel/src/history.rs', lines 66:8-76:9
+    Visibility: public -/
+@[rust_loop_body]
+def history.Capture.finish_loop0.body
+  (self : history.Capture) (data : alloc.vec.Vec Std.U8) (i : Std.Usize) :
+  Result (ControlFlow ((alloc.vec.Vec Std.U8) × Std.Usize) (Std.U64 ×
+    (alloc.vec.Vec Std.U8)))
+  := do
+  let i1 := alloc.vec.Vec.len self.residents
+  if i < i1
+  then
+    let resident ←
+      alloc.vec.Vec.index (core.slice.index.SliceIndexUsizeSlice
+        history.Resident) self.residents i
+    let packet ← history.pack resident
+    let i2 := alloc.vec.Vec.len packet
+    if i2 > 4#usize
+    then
+      let data1 ← history.little data resident.id 8#usize
+      let i3 := alloc.vec.Vec.len packet
+      let i4 ← lift (UScalar.cast .U64 i3)
+      let data2 ← history.little data1 i4 4#usize
+      let data3 ← history.Capture.finish_loop0_loop0 data2 packet 0#usize
+      let i5 ← i + 1#usize
+      ok (cont (data3, i5))
+    else let i3 ← i + 1#usize
+         ok (cont (data, i3))
+  else ok (done (self.start, data))
+
+/-- [ai_town_kernel::history::{ai_town_kernel::history::Capture}::finish]: loop 0:
+    Source: 'kernel/src/history.rs', lines 66:8-76:9
+    Visibility: public -/
+@[rust_loop]
+def history.Capture.finish_loop0
+  (self : history.Capture) (data : alloc.vec.Vec Std.U8) (i : Std.Usize) :
+  Result (Std.U64 × (alloc.vec.Vec Std.U8))
+  := do
+  loop
+    (fun (data1, i1) => history.Capture.finish_loop0.body self data1 i1)
+    (data, i)
+
+/-- [ai_town_kernel::history::{ai_town_kernel::history::Capture}::finish]:
+    Source: 'kernel/src/history.rs', lines 63:4-78:5
+    Visibility: public -/
+def history.Capture.finish
+  (self : history.Capture) («end» : Std.U64) : Result MotionHistory := do
+  let (i, data) ←
+    history.Capture.finish_loop0 self (alloc.vec.Vec.new Std.U8) 0#usize
+  ok { start_ms := i, end_ms := «end», data }
+
+/-- [ai_town_kernel::TALK_SQ]
+    Source: 'kernel/src/lib.rs', lines 21:0-21:37
+    Visibility: public -/
+@[global_simps, irreducible]
+def TALK_SQ : Result Std.U64 := 1300#u64 * 1300#u64
+
+/-- [ai_town_kernel::TICK_MS]
+    Source: 'kernel/src/lib.rs', lines 22:0-22:28
+    Visibility: public -/
+@[global_simps, irreducible] def TICK_MS : Std.U64 := 16#u64
+
+/-- [ai_town_kernel::MAX_TICKS]
+    Source: 'kernel/src/lib.rs', lines 23:0-23:30
+    Visibility: public -/
+@[global_simps, irreducible] def MAX_TICKS : Std.U32 := 60#u32
+
+/-- [ai_town_kernel::MAX_PATHFINDS]
+    Source: 'kernel/src/lib.rs', lines 24:0-24:34
+    Visibility: public -/
+@[global_simps, irreducible] def MAX_PATHFINDS : Std.U32 := 16#u32
+
+/-- [ai_town_kernel::PATH_TIMEOUT_MS]
+    Source: 'kernel/src/lib.rs', lines 25:0-25:40
+    Visibility: public -/
+@[global_simps, irreducible] def PATH_TIMEOUT_MS : Std.U64 := 60000#u64
+
+/-- [ai_town_kernel::BACKOFF_MS]
+    Source: 'kernel/src/lib.rs', lines 26:0-26:33
+    Visibility: public -/
+@[global_simps, irreducible] def BACKOFF_MS : Std.U64 := 1000#u64
+
+/-- [ai_town_kernel::MAX_HUMANS]
+    Source: 'kernel/src/lib.rs', lines 27:0-27:32
+    Visibility: public -/
+@[global_simps, irreducible] def MAX_HUMANS : Std.Usize := 8#usize
+
+/-- [ai_town_kernel::IDLE_MS]
+    Source: 'kernel/src/lib.rs', lines 28:0-28:39
+    Visibility: public -/
+@[global_simps, irreducible]
+def IDLE_MS : Result Std.U64 := do let i ← 5#u64 * 60#u64
+                                   i * 1000#u64
+
+/-- [ai_town_kernel::TYPING_MS]
+    Source: 'kernel/src/lib.rs', lines 29:0-29:34
+    Visibility: public -/
+@[global_simps, irreducible] def TYPING_MS : Std.U64 := 15000#u64
+
+/-- [ai_town_kernel::INVITE_MS]
+    Source: 'kernel/src/lib.rs', lines 30:0-30:34
+    Visibility: public -/
+@[global_simps, irreducible] def INVITE_MS : Std.U64 := 60000#u64
+
+/-- [ai_town_kernel::CONV_COOLDOWN_MS]
+    Source: 'kernel/src/lib.rs', lines 31:0-31:41
+    Visibility: public -/
+@[global_simps, irreducible] def CONV_COOLDOWN_MS : Std.U64 := 15000#u64
+
+/-- [ai_town_kernel::AWKWARD_MS]
+    Source: 'kernel/src/lib.rs', lines 32:0-32:35
+    Visibility: public -/
+@[global_simps, irreducible] def AWKWARD_MS : Std.U64 := 60000#u64
+
+/-- [ai_town_kernel::MAX_CONV_MS]
+    Source: 'kernel/src/lib.rs', lines 33:0-33:44
+    Visibility: public -/
+@[global_simps, irreducible]
+def MAX_CONV_MS : Result Std.U64 := do let i ← 10#u64 * 60#u64
+                                       i * 1000#u64
+
+/-- [ai_town_kernel::MAX_MESSAGES]
+    Source: 'kernel/src/lib.rs', lines 34:0-34:32
+    Visibility: public -/
+@[global_simps, irreducible] def MAX_MESSAGES : Std.U64 := 8#u64
+
+/-- [ai_town_kernel::MESSAGE_COOLDOWN_MS]
+    Source: 'kernel/src/lib.rs', lines 35:0-35:43
+    Visibility: public -/
+@[global_simps, irreducible] def MESSAGE_COOLDOWN_MS : Std.U64 := 2000#u64
+
+/-- [ai_town_kernel::ACTION_TIMEOUT_MS]
+    Source: 'kernel/src/lib.rs', lines 36:0-36:43
+    Visibility: public -/
+@[global_simps, irreducible] def ACTION_TIMEOUT_MS : Std.U64 := 120000#u64
+
+/-- [ai_town_kernel::ACTIVITY_MS]
+    Source: 'kernel/src/lib.rs', lines 37:0-37:36
+    Visibility: public -/
+@[global_simps, irreducible] def ACTIVITY_MS : Std.U64 := 60000#u64
+
+/-- [ai_town_kernel::ENGINE]
+    Source: 'kernel/src/lib.rs', lines 38:0-38:26
+    Visibility: public -/
+@[global_simps, irreducible] def ENGINE : Std.U64 := 0#u64
+
+/-- [ai_town_kernel::AGENT_BASE]
+    Source: 'kernel/src/lib.rs', lines 39:0-39:38
+    Visibility: public -/
+@[global_simps, irreducible] def AGENT_BASE : Std.U64 := 1000000#u64
+
+/-- [ai_town_kernel::MAX_DIM]
+    Source: 'kernel/src/lib.rs', lines 40:0-40:29
+    Visibility: public -/
+@[global_simps, irreducible] def MAX_DIM : Std.U32 := 128#u32
+
+/-- [ai_town_kernel::MAX_NAME]
+    Source: 'kernel/src/lib.rs', lines 41:0-41:31
+    Visibility: public -/
+@[global_simps, irreducible] def MAX_NAME : Std.Usize := 32#usize
+
+/-- [ai_town_kernel::MAX_TEXT]
+    Source: 'kernel/src/lib.rs', lines 42:0-42:32
+    Visibility: public -/
+@[global_simps, irreducible] def MAX_TEXT : Std.Usize := 280#usize
+
+/-- [ai_town_kernel::MAX_PLAN]
+    Source: 'kernel/src/lib.rs', lines 43:0-43:34
+    Visibility: public -/
+@[global_simps, irreducible] def MAX_PLAN : Std.Usize := 2000#usize
+
+/-- [ai_town_kernel::PF_NONE]
+    Source: 'kernel/src/lib.rs', lines 45:0-45:27
+    Visibility: public -/
+@[global_simps, irreducible] def PF_NONE : Std.U32 := 0#u32
+
+/-- [ai_town_kernel::PF_NEED]
+    Source: 'kernel/src/lib.rs', lines 46:0-46:27
+    Visibility: public -/
+@[global_simps, irreducible] def PF_NEED : Std.U32 := 1#u32
+
+/-- [ai_town_kernel::PF_WAIT]
+    Source: 'kernel/src/lib.rs', lines 47:0-47:27
+    Visibility: public -/
+@[global_simps, irreducible] def PF_WAIT : Std.U32 := 2#u32
+
+/-- [ai_town_kernel::PF_MOVE]
+    Source: 'kernel/src/lib.rs', lines 48:0-48:27
+    Visibility: public -/
+@[global_simps, irreducible] def PF_MOVE : Std.U32 := 3#u32
+
+/-- [ai_town_kernel::ST_INVITED]
+    Source: 'kernel/src/lib.rs', lines 50:0-50:30
+    Visibility: public -/
+@[global_simps, irreducible] def ST_INVITED : Std.U32 := 1#u32
+
+/-- [ai_town_kernel::ST_WALKING]
+    Source: 'kernel/src/lib.rs', lines 51:0-51:30
+    Visibility: public -/
+@[global_simps, irreducible] def ST_WALKING : Std.U32 := 2#u32
+
+/-- [ai_town_kernel::ST_TALKING]
+    Source: 'kernel/src/lib.rs', lines 52:0-52:30
+    Visibility: public -/
+@[global_simps, irreducible] def ST_TALKING : Std.U32 := 3#u32
+
+/-- [ai_town_kernel::OP_NONE]
+    Source: 'kernel/src/lib.rs', lines 54:0-54:27
+    Visibility: public -/
+@[global_simps, irreducible] def OP_NONE : Std.U32 := 0#u32
+
+/-- [ai_town_kernel::OP_DO]
+    Source: 'kernel/src/lib.rs', lines 55:0-55:25
+    Visibility: public -/
+@[global_simps, irreducible] def OP_DO : Std.U32 := 1#u32
+
+/-- [ai_town_kernel::OP_REMEMBER]
+    Source: 'kernel/src/lib.rs', lines 56:0-56:31
+    Visibility: public -/
+@[global_simps, irreducible] def OP_REMEMBER : Std.U32 := 2#u32
+
+/-- [ai_town_kernel::OP_SPEAK]
+    Source: 'kernel/src/lib.rs', lines 57:0-57:28
+    Visibility: public -/
+@[global_simps, irreducible] def OP_SPEAK : Std.U32 := 3#u32
+
+/-- [ai_town_kernel::Principal]
+    Source: 'kernel/src/lib.rs', lines 61:0-65:1
+    Visibility: public -/
+structure Principal where
+  org : Std.U64
+  user : Std.U64
+  now_ms : Std.U64
+
 /-- [ai_town_kernel::{impl core::clone::Clone for ai_town_kernel::Message}::clone]:
-    Source: 'kernel/src/lib.rs', lines 177:13-177:18
+    Source: 'kernel/src/lib.rs', lines 187:13-187:18
     Visibility: public -/
 def Message.Insts.CoreCloneClone.clone (self : Message) : Result Message := do
   let i ← lift (core.clone.impls.CloneU64.clone self.id)
@@ -2372,14 +3231,14 @@ def Message.Insts.CoreCloneClone.clone (self : Message) : Result Message := do
   ok { id := i, conversation := i1, author := i2, ts := i3, text := v }
 
 /-- Trait implementation: [ai_town_kernel::{impl core::clone::Clone for ai_town_kernel::Message}]
-    Source: 'kernel/src/lib.rs', lines 177:13-177:18 -/
+    Source: 'kernel/src/lib.rs', lines 187:13-187:18 -/
 @[reducible]
 def Message.Insts.CoreCloneClone : core.clone.Clone Message := {
   clone := Message.Insts.CoreCloneClone.clone
 }
 
 /-- [ai_town_kernel::{impl core::clone::Clone for ai_town_kernel::Memory}::clone]:
-    Source: 'kernel/src/lib.rs', lines 168:13-168:18
+    Source: 'kernel/src/lib.rs', lines 178:13-178:18
     Visibility: public -/
 def Memory.Insts.CoreCloneClone.clone (self : Memory) : Result Memory := do
   let i ← lift (core.clone.impls.CloneU64.clone self.id)
@@ -2390,14 +3249,14 @@ def Memory.Insts.CoreCloneClone.clone (self : Memory) : Result Memory := do
   ok { id := i, agent := i1, other := i2, conversation := i3, summary := v }
 
 /-- Trait implementation: [ai_town_kernel::{impl core::clone::Clone for ai_town_kernel::Memory}]
-    Source: 'kernel/src/lib.rs', lines 168:13-168:18 -/
+    Source: 'kernel/src/lib.rs', lines 178:13-178:18 -/
 @[reducible]
 def Memory.Insts.CoreCloneClone : core.clone.Clone Memory := {
   clone := Memory.Insts.CoreCloneClone.clone
 }
 
 /-- [ai_town_kernel::{impl core::clone::Clone for ai_town_kernel::Agent}::clone]:
-    Source: 'kernel/src/lib.rs', lines 151:13-151:18
+    Source: 'kernel/src/lib.rs', lines 161:13-161:18
     Visibility: public -/
 def Agent.Insts.CoreCloneClone.clone (self : Agent) : Result Agent := do
   let i ← lift (core.clone.impls.CloneU64.clone self.id)
@@ -2431,14 +3290,14 @@ def Agent.Insts.CoreCloneClone.clone (self : Agent) : Result Agent := do
     }
 
 /-- Trait implementation: [ai_town_kernel::{impl core::clone::Clone for ai_town_kernel::Agent}]
-    Source: 'kernel/src/lib.rs', lines 151:13-151:18 -/
+    Source: 'kernel/src/lib.rs', lines 161:13-161:18 -/
 @[reducible]
 def Agent.Insts.CoreCloneClone : core.clone.Clone Agent := {
   clone := Agent.Insts.CoreCloneClone.clone
 }
 
 /-- [ai_town_kernel::{impl core::clone::Clone for ai_town_kernel::Member}::clone]:
-    Source: 'kernel/src/lib.rs', lines 143:13-143:18
+    Source: 'kernel/src/lib.rs', lines 153:13-153:18
     Visibility: public -/
 def Member.Insts.CoreCloneClone.clone (self : Member) : Result Member := do
   let i ← lift (core.clone.impls.CloneU64.clone self.conversation)
@@ -2456,14 +3315,14 @@ def Member.Insts.CoreCloneClone.clone (self : Member) : Result Member := do
     }
 
 /-- Trait implementation: [ai_town_kernel::{impl core::clone::Clone for ai_town_kernel::Member}]
-    Source: 'kernel/src/lib.rs', lines 143:13-143:18 -/
+    Source: 'kernel/src/lib.rs', lines 153:13-153:18 -/
 @[reducible]
 def Member.Insts.CoreCloneClone : core.clone.Clone Member := {
   clone := Member.Insts.CoreCloneClone.clone
 }
 
 /-- [ai_town_kernel::{impl core::clone::Clone for ai_town_kernel::Conversation}::clone]:
-    Source: 'kernel/src/lib.rs', lines 131:13-131:18
+    Source: 'kernel/src/lib.rs', lines 141:13-141:18
     Visibility: public -/
 def Conversation.Insts.CoreCloneClone.clone
   (self : Conversation) : Result Conversation := do
@@ -2488,14 +3347,14 @@ def Conversation.Insts.CoreCloneClone.clone
     }
 
 /-- Trait implementation: [ai_town_kernel::{impl core::clone::Clone for ai_town_kernel::Conversation}]
-    Source: 'kernel/src/lib.rs', lines 131:13-131:18 -/
+    Source: 'kernel/src/lib.rs', lines 141:13-141:18 -/
 @[reducible]
 def Conversation.Insts.CoreCloneClone : core.clone.Clone Conversation := {
   clone := Conversation.Insts.CoreCloneClone.clone
 }
 
 /-- [ai_town_kernel::{impl core::clone::Clone for ai_town_kernel::Player}::clone]:
-    Source: 'kernel/src/lib.rs', lines 99:13-99:18
+    Source: 'kernel/src/lib.rs', lines 109:13-109:18
     Visibility: public -/
 def Player.Insts.CoreCloneClone.clone (self : Player) : Result Player := do
   let i ← lift (core.clone.impls.CloneU64.clone self.id)
@@ -2539,21 +3398,31 @@ def Player.Insts.CoreCloneClone.clone (self : Player) : Result Player := do
     }
 
 /-- Trait implementation: [ai_town_kernel::{impl core::clone::Clone for ai_town_kernel::Player}]
-    Source: 'kernel/src/lib.rs', lines 99:13-99:18 -/
+    Source: 'kernel/src/lib.rs', lines 109:13-109:18 -/
 @[reducible]
 def Player.Insts.CoreCloneClone : core.clone.Clone Player := {
   clone := Player.Insts.CoreCloneClone.clone
 }
 
+/-- [ai_town_kernel::{impl core::clone::Clone for ai_town_kernel::MotionHistory}::clone]:
+    Source: 'kernel/src/lib.rs', lines 101:13-101:18
+    Visibility: public -/
+def MotionHistory.Insts.CoreCloneClone.clone
+  (self : MotionHistory) : Result MotionHistory := do
+  let i ← lift (core.clone.impls.CloneU64.clone self.start_ms)
+  let i1 ← lift (core.clone.impls.CloneU64.clone self.end_ms)
+  let v ← alloc.vec.CloneVec.clone core.clone.CloneU8 self.data
+  ok { start_ms := i, end_ms := i1, data := v }
+
 /-- [ai_town_kernel::{impl core::clone::Clone for ai_town_kernel::Terrain}::clone]:
-    Source: 'kernel/src/lib.rs', lines 93:13-93:18
+    Source: 'kernel/src/lib.rs', lines 95:13-95:18
     Visibility: public -/
 def Terrain.Insts.CoreCloneClone.clone (self : Terrain) : Result Terrain := do
   let v ← alloc.vec.CloneVec.clone core.clone.CloneU8 self.mask
   ok { mask := v }
 
 /-- [ai_town_kernel::{impl core::clone::Clone for ai_town_kernel::Meta}::clone]:
-    Source: 'kernel/src/lib.rs', lines 82:13-82:18
+    Source: 'kernel/src/lib.rs', lines 84:13-84:18
     Visibility: public -/
 def Meta.Insts.CoreCloneClone.clone (self : Meta) : Result Meta := do
   let i ← lift (core.clone.impls.CloneU64.clone self.next_id)
@@ -2573,12 +3442,13 @@ def Meta.Insts.CoreCloneClone.clone (self : Meta) : Result Meta := do
     }
 
 /-- [ai_town_kernel::{impl core::clone::Clone for ai_town_kernel::Snapshot}::clone]:
-    Source: 'kernel/src/lib.rs', lines 69:13-69:18
+    Source: 'kernel/src/lib.rs', lines 70:13-70:18
     Visibility: public -/
 def Snapshot.Insts.CoreCloneClone.clone
   (self : Snapshot) : Result Snapshot := do
   let m ← Meta.Insts.CoreCloneClone.clone self.meta
   let t ← Terrain.Insts.CoreCloneClone.clone self.terrain
+  let mh ← MotionHistory.Insts.CoreCloneClone.clone self.motion_history
   let v ← alloc.vec.CloneVec.clone Player.Insts.CoreCloneClone self.players
   let v1 ← alloc.vec.CloneVec.clone PathNode.Insts.CoreCloneClone self.paths
   let v2 ←
@@ -2593,6 +3463,7 @@ def Snapshot.Insts.CoreCloneClone.clone
     {
       «meta» := m,
       terrain := t,
+      motion_history := mh,
       players := v,
       paths := v1,
       conversations := v2,
@@ -2603,7 +3474,7 @@ def Snapshot.Insts.CoreCloneClone.clone
     }
 
 /-- [ai_town_kernel::{impl core::cmp::PartialEq<ai_town_kernel::Meta> for ai_town_kernel::Meta}::eq]:
-    Source: 'kernel/src/lib.rs', lines 82:36-82:45
+    Source: 'kernel/src/lib.rs', lines 84:36-84:45
     Visibility: public -/
 def Meta.Insts.CoreCmpPartialEqMeta.eq
   (self : Meta) (other : Meta) : Result Bool := do
@@ -2624,7 +3495,7 @@ def Meta.Insts.CoreCmpPartialEqMeta.eq
   else ok false
 
 /-- Trait implementation: [ai_town_kernel::{impl core::cmp::PartialEq<ai_town_kernel::Meta> for ai_town_kernel::Meta}]
-    Source: 'kernel/src/lib.rs', lines 82:36-82:45 -/
+    Source: 'kernel/src/lib.rs', lines 84:36-84:45 -/
 @[reducible]
 impl_def Meta.Insts.CoreCmpPartialEqMeta : core.cmp.PartialEq Meta Meta := {
   eq := Meta.Insts.CoreCmpPartialEqMeta.eq
@@ -2632,7 +3503,7 @@ impl_def Meta.Insts.CoreCmpPartialEqMeta : core.cmp.PartialEq Meta Meta := {
 }
 
 /-- [ai_town_kernel::{impl core::cmp::PartialEq<ai_town_kernel::Terrain> for ai_town_kernel::Terrain}::eq]:
-    Source: 'kernel/src/lib.rs', lines 93:36-93:45
+    Source: 'kernel/src/lib.rs', lines 95:36-95:45
     Visibility: public -/
 def Terrain.Insts.CoreCmpPartialEqTerrain.eq
   (self : Terrain) (other : Terrain) : Result Bool := do
@@ -2640,7 +3511,7 @@ def Terrain.Insts.CoreCmpPartialEqTerrain.eq
     other.mask
 
 /-- Trait implementation: [ai_town_kernel::{impl core::cmp::PartialEq<ai_town_kernel::Terrain> for ai_town_kernel::Terrain}]
-    Source: 'kernel/src/lib.rs', lines 93:36-93:45 -/
+    Source: 'kernel/src/lib.rs', lines 95:36-95:45 -/
 @[reducible]
 impl_def Terrain.Insts.CoreCmpPartialEqTerrain : core.cmp.PartialEq Terrain
   Terrain := {
@@ -2649,8 +3520,32 @@ impl_def Terrain.Insts.CoreCmpPartialEqTerrain : core.cmp.PartialEq Terrain
     Terrain.Insts.CoreCmpPartialEqTerrain
 }
 
+/-- [ai_town_kernel::{impl core::cmp::PartialEq<ai_town_kernel::MotionHistory> for ai_town_kernel::MotionHistory}::eq]:
+    Source: 'kernel/src/lib.rs', lines 101:36-101:45
+    Visibility: public -/
+def MotionHistory.Insts.CoreCmpPartialEqMotionHistory.eq
+  (self : MotionHistory) (other : MotionHistory) : Result Bool := do
+  if self.start_ms = other.start_ms
+  then
+    if self.end_ms = other.end_ms
+    then
+      alloc.vec.partial_eq.PartialEqVec.eq core.cmp.PartialEqU8 self.data
+        other.data
+    else ok false
+  else ok false
+
+/-- Trait implementation: [ai_town_kernel::{impl core::cmp::PartialEq<ai_town_kernel::MotionHistory> for ai_town_kernel::MotionHistory}]
+    Source: 'kernel/src/lib.rs', lines 101:36-101:45 -/
+@[reducible]
+impl_def MotionHistory.Insts.CoreCmpPartialEqMotionHistory : core.cmp.PartialEq
+  MotionHistory MotionHistory := {
+  eq := MotionHistory.Insts.CoreCmpPartialEqMotionHistory.eq
+  ne := core.cmp.PartialEq.ne.trait_default
+    MotionHistory.Insts.CoreCmpPartialEqMotionHistory
+}
+
 /-- [ai_town_kernel::{impl core::cmp::PartialEq<ai_town_kernel::Player> for ai_town_kernel::Player}::eq]:
-    Source: 'kernel/src/lib.rs', lines 99:27-99:36
+    Source: 'kernel/src/lib.rs', lines 109:27-109:36
     Visibility: public -/
 def Player.Insts.CoreCmpPartialEqPlayer.eq
   (self : Player) (other : Player) : Result Bool := do
@@ -2710,7 +3605,7 @@ def Player.Insts.CoreCmpPartialEqPlayer.eq
   else ok false
 
 /-- Trait implementation: [ai_town_kernel::{impl core::cmp::PartialEq<ai_town_kernel::Player> for ai_town_kernel::Player}]
-    Source: 'kernel/src/lib.rs', lines 99:27-99:36 -/
+    Source: 'kernel/src/lib.rs', lines 109:27-109:36 -/
 @[reducible]
 impl_def Player.Insts.CoreCmpPartialEqPlayer : core.cmp.PartialEq Player Player
   := {
@@ -2719,7 +3614,7 @@ impl_def Player.Insts.CoreCmpPartialEqPlayer : core.cmp.PartialEq Player Player
 }
 
 /-- [ai_town_kernel::{impl core::cmp::PartialEq<ai_town_kernel::PathNode> for ai_town_kernel::PathNode}::eq]:
-    Source: 'kernel/src/lib.rs', lines 121:27-121:36
+    Source: 'kernel/src/lib.rs', lines 131:27-131:36
     Visibility: public -/
 def PathNode.Insts.CoreCmpPartialEqPathNode.eq
   (self : PathNode) (other : PathNode) : Result Bool := do
@@ -2743,7 +3638,7 @@ def PathNode.Insts.CoreCmpPartialEqPathNode.eq
   else ok false
 
 /-- Trait implementation: [ai_town_kernel::{impl core::cmp::PartialEq<ai_town_kernel::PathNode> for ai_town_kernel::PathNode}]
-    Source: 'kernel/src/lib.rs', lines 121:27-121:36 -/
+    Source: 'kernel/src/lib.rs', lines 131:27-131:36 -/
 @[reducible]
 impl_def PathNode.Insts.CoreCmpPartialEqPathNode : core.cmp.PartialEq PathNode
   PathNode := {
@@ -2753,7 +3648,7 @@ impl_def PathNode.Insts.CoreCmpPartialEqPathNode : core.cmp.PartialEq PathNode
 }
 
 /-- [ai_town_kernel::{impl core::cmp::PartialEq<ai_town_kernel::Conversation> for ai_town_kernel::Conversation}::eq]:
-    Source: 'kernel/src/lib.rs', lines 131:27-131:36
+    Source: 'kernel/src/lib.rs', lines 141:27-141:36
     Visibility: public -/
 def Conversation.Insts.CoreCmpPartialEqConversation.eq
   (self : Conversation) (other : Conversation) : Result Bool := do
@@ -2780,7 +3675,7 @@ def Conversation.Insts.CoreCmpPartialEqConversation.eq
   else ok false
 
 /-- Trait implementation: [ai_town_kernel::{impl core::cmp::PartialEq<ai_town_kernel::Conversation> for ai_town_kernel::Conversation}]
-    Source: 'kernel/src/lib.rs', lines 131:27-131:36 -/
+    Source: 'kernel/src/lib.rs', lines 141:27-141:36 -/
 @[reducible]
 impl_def Conversation.Insts.CoreCmpPartialEqConversation : core.cmp.PartialEq
   Conversation Conversation := {
@@ -2790,7 +3685,7 @@ impl_def Conversation.Insts.CoreCmpPartialEqConversation : core.cmp.PartialEq
 }
 
 /-- [ai_town_kernel::{impl core::cmp::PartialEq<ai_town_kernel::Member> for ai_town_kernel::Member}::eq]:
-    Source: 'kernel/src/lib.rs', lines 143:27-143:36
+    Source: 'kernel/src/lib.rs', lines 153:27-153:36
     Visibility: public -/
 def Member.Insts.CoreCmpPartialEqMember.eq
   (self : Member) (other : Member) : Result Bool := do
@@ -2808,7 +3703,7 @@ def Member.Insts.CoreCmpPartialEqMember.eq
   else ok false
 
 /-- Trait implementation: [ai_town_kernel::{impl core::cmp::PartialEq<ai_town_kernel::Member> for ai_town_kernel::Member}]
-    Source: 'kernel/src/lib.rs', lines 143:27-143:36 -/
+    Source: 'kernel/src/lib.rs', lines 153:27-153:36 -/
 @[reducible]
 impl_def Member.Insts.CoreCmpPartialEqMember : core.cmp.PartialEq Member Member
   := {
@@ -2817,7 +3712,7 @@ impl_def Member.Insts.CoreCmpPartialEqMember : core.cmp.PartialEq Member Member
 }
 
 /-- [ai_town_kernel::{impl core::cmp::PartialEq<ai_town_kernel::Agent> for ai_town_kernel::Agent}::eq]:
-    Source: 'kernel/src/lib.rs', lines 151:27-151:36
+    Source: 'kernel/src/lib.rs', lines 161:27-161:36
     Visibility: public -/
 def Agent.Insts.CoreCmpPartialEqAgent.eq
   (self : Agent) (other : Agent) : Result Bool := do
@@ -2867,7 +3762,7 @@ def Agent.Insts.CoreCmpPartialEqAgent.eq
   else ok false
 
 /-- Trait implementation: [ai_town_kernel::{impl core::cmp::PartialEq<ai_town_kernel::Agent> for ai_town_kernel::Agent}]
-    Source: 'kernel/src/lib.rs', lines 151:27-151:36 -/
+    Source: 'kernel/src/lib.rs', lines 161:27-161:36 -/
 @[reducible]
 impl_def Agent.Insts.CoreCmpPartialEqAgent : core.cmp.PartialEq Agent Agent
   := {
@@ -2876,7 +3771,7 @@ impl_def Agent.Insts.CoreCmpPartialEqAgent : core.cmp.PartialEq Agent Agent
 }
 
 /-- [ai_town_kernel::{impl core::cmp::PartialEq<ai_town_kernel::Memory> for ai_town_kernel::Memory}::eq]:
-    Source: 'kernel/src/lib.rs', lines 168:27-168:36
+    Source: 'kernel/src/lib.rs', lines 178:27-178:36
     Visibility: public -/
 def Memory.Insts.CoreCmpPartialEqMemory.eq
   (self : Memory) (other : Memory) : Result Bool := do
@@ -2896,7 +3791,7 @@ def Memory.Insts.CoreCmpPartialEqMemory.eq
   else ok false
 
 /-- Trait implementation: [ai_town_kernel::{impl core::cmp::PartialEq<ai_town_kernel::Memory> for ai_town_kernel::Memory}]
-    Source: 'kernel/src/lib.rs', lines 168:27-168:36 -/
+    Source: 'kernel/src/lib.rs', lines 178:27-178:36 -/
 @[reducible]
 impl_def Memory.Insts.CoreCmpPartialEqMemory : core.cmp.PartialEq Memory Memory
   := {
@@ -2905,7 +3800,7 @@ impl_def Memory.Insts.CoreCmpPartialEqMemory : core.cmp.PartialEq Memory Memory
 }
 
 /-- [ai_town_kernel::{impl core::cmp::PartialEq<ai_town_kernel::Message> for ai_town_kernel::Message}::eq]:
-    Source: 'kernel/src/lib.rs', lines 177:27-177:36
+    Source: 'kernel/src/lib.rs', lines 187:27-187:36
     Visibility: public -/
 def Message.Insts.CoreCmpPartialEqMessage.eq
   (self : Message) (other : Message) : Result Bool := do
@@ -2925,7 +3820,7 @@ def Message.Insts.CoreCmpPartialEqMessage.eq
   else ok false
 
 /-- Trait implementation: [ai_town_kernel::{impl core::cmp::PartialEq<ai_town_kernel::Message> for ai_town_kernel::Message}]
-    Source: 'kernel/src/lib.rs', lines 177:27-177:36 -/
+    Source: 'kernel/src/lib.rs', lines 187:27-187:36 -/
 @[reducible]
 impl_def Message.Insts.CoreCmpPartialEqMessage : core.cmp.PartialEq Message
   Message := {
@@ -2935,7 +3830,7 @@ impl_def Message.Insts.CoreCmpPartialEqMessage : core.cmp.PartialEq Message
 }
 
 /-- [ai_town_kernel::Command]
-    Source: 'kernel/src/lib.rs', lines 188:0-212:1
+    Source: 'kernel/src/lib.rs', lines 198:0-222:1
     Visibility: public -/
 @[discriminant isize]
 inductive Command where
@@ -2966,12 +3861,13 @@ inductive Command where
 | Resume : Command
 
 /-- [ai_town_kernel::Write]
-    Source: 'kernel/src/lib.rs', lines 215:0-230:1
+    Source: 'kernel/src/lib.rs', lines 225:0-241:1
     Visibility: public -/
 @[discriminant isize]
 inductive Write where
 | PutMeta : Meta → Write
 | PutTerrain : Terrain → Write
+| PutMotionHistory : MotionHistory → Write
 | PutPlayer : Player → Write
 | DelPlayer : Std.U64 → Write
 | PutPath : PathNode → Write
@@ -2986,7 +3882,7 @@ inductive Write where
 | PutMessage : Message → Write
 
 /-- [ai_town_kernel::{impl core::clone::Clone for ai_town_kernel::Write}::clone]:
-    Source: 'kernel/src/lib.rs', lines 214:9-214:14
+    Source: 'kernel/src/lib.rs', lines 224:9-224:14
     Visibility: public -/
 def Write.Insts.CoreCloneClone.clone (self : Write) : Result Write := do
   match self with
@@ -2996,6 +3892,9 @@ def Write.Insts.CoreCloneClone.clone (self : Write) : Result Write := do
   | Write.PutTerrain __self_0 =>
     let t ← Terrain.Insts.CoreCloneClone.clone __self_0
     ok (Write.PutTerrain t)
+  | Write.PutMotionHistory __self_0 =>
+    let mh ← MotionHistory.Insts.CoreCloneClone.clone __self_0
+    ok (Write.PutMotionHistory mh)
   | Write.PutPlayer __self_0 =>
     let p ← Player.Insts.CoreCloneClone.clone __self_0
     ok (Write.PutPlayer p)
@@ -3035,7 +3934,7 @@ def Write.Insts.CoreCloneClone.clone (self : Write) : Result Write := do
     ok (Write.PutMessage m)
 
 /-- [ai_town_kernel::Reply]
-    Source: 'kernel/src/lib.rs', lines 233:0-239:1
+    Source: 'kernel/src/lib.rs', lines 244:0-250:1
     Visibility: public -/
 @[discriminant isize]
 inductive Reply where
@@ -3045,7 +3944,7 @@ inductive Reply where
 | Stepped : Std.U64 → Std.U32 → Std.U32 → Reply
 
 /-- [ai_town_kernel::Error]
-    Source: 'kernel/src/lib.rs', lines 242:0-253:1
+    Source: 'kernel/src/lib.rs', lines 253:0-264:1
     Visibility: public -/
 @[discriminant isize]
 inductive Error where
@@ -3061,7 +3960,7 @@ inductive Error where
 | Limit : Error
 
 /-- [ai_town_kernel::rules::message_index]: loop body 0:
-    Source: 'kernel/src/rules.rs', lines 2313:4-2316:5 -/
+    Source: 'kernel/src/rules.rs', lines 2327:4-2330:5 -/
 @[rust_loop_body]
 def rules.message_index_loop0.body
   (rows : alloc.vec.Vec Message) (id : Std.U64) (lo : Std.Usize)
@@ -3083,7 +3982,7 @@ def rules.message_index_loop0.body
   else ok (done lo)
 
 /-- [ai_town_kernel::rules::message_index]: loop 0:
-    Source: 'kernel/src/rules.rs', lines 2313:4-2316:5 -/
+    Source: 'kernel/src/rules.rs', lines 2327:4-2330:5 -/
 @[rust_loop]
 def rules.message_index_loop0
   (rows : alloc.vec.Vec Message) (id : Std.U64) (lo : Std.Usize)
@@ -3095,7 +3994,7 @@ def rules.message_index_loop0
     (lo, hi)
 
 /-- [ai_town_kernel::rules::message_index]: loop body 1:
-    Source: 'kernel/src/rules.rs', lines 2319:4-2326:1 -/
+    Source: 'kernel/src/rules.rs', lines 2333:4-2340:1 -/
 @[rust_loop_body]
 def rules.message_index_loop1.body
   (rows : alloc.vec.Vec Message) (id : Std.U64) (i : Std.Usize) :
@@ -3114,7 +4013,7 @@ def rules.message_index_loop1.body
   else ok (done none)
 
 /-- [ai_town_kernel::rules::message_index]: loop 1:
-    Source: 'kernel/src/rules.rs', lines 2319:4-2326:1 -/
+    Source: 'kernel/src/rules.rs', lines 2333:4-2340:1 -/
 @[rust_loop]
 def rules.message_index_loop1
   (rows : alloc.vec.Vec Message) (id : Std.U64) (i : Std.Usize) :
@@ -3125,7 +4024,7 @@ def rules.message_index_loop1
     i
 
 /-- [ai_town_kernel::rules::message_index]: loop body 2:
-    Source: 'kernel/src/rules.rs', lines 2319:4-2326:1 -/
+    Source: 'kernel/src/rules.rs', lines 2333:4-2340:1 -/
 @[rust_loop_body]
 def rules.message_index_loop2.body
   (rows : alloc.vec.Vec Message) (id : Std.U64) (i : Std.Usize) :
@@ -3144,7 +4043,7 @@ def rules.message_index_loop2.body
   else ok (done none)
 
 /-- [ai_town_kernel::rules::message_index]: loop 2:
-    Source: 'kernel/src/rules.rs', lines 2319:4-2326:1 -/
+    Source: 'kernel/src/rules.rs', lines 2333:4-2340:1 -/
 @[rust_loop]
 def rules.message_index_loop2
   (rows : alloc.vec.Vec Message) (id : Std.U64) (i : Std.Usize) :
@@ -3155,7 +4054,7 @@ def rules.message_index_loop2
     i
 
 /-- [ai_town_kernel::rules::message_index]:
-    Source: 'kernel/src/rules.rs', lines 2310:0-2326:1 -/
+    Source: 'kernel/src/rules.rs', lines 2324:0-2340:1 -/
 def rules.message_index
   (rows : alloc.vec.Vec Message) (id : Std.U64) :
   Result (Option Std.Usize)
@@ -3174,7 +4073,7 @@ def rules.message_index
   else rules.message_index_loop2 rows id 0#usize
 
 /-- [ai_town_kernel::rules::diff_messages]: loop body 0:
-    Source: 'kernel/src/rules.rs', lines 2333:4-2338:5 -/
+    Source: 'kernel/src/rules.rs', lines 2347:4-2352:5 -/
 @[rust_loop_body]
 def rules.diff_messages_loop.body
   (v : alloc.vec.Vec Message) (v1 : alloc.vec.Vec Message)
@@ -3201,7 +4100,7 @@ def rules.diff_messages_loop.body
   else ok (done ws)
 
 /-- [ai_town_kernel::rules::diff_messages]: loop 0:
-    Source: 'kernel/src/rules.rs', lines 2333:4-2338:5 -/
+    Source: 'kernel/src/rules.rs', lines 2347:4-2352:5 -/
 @[rust_loop]
 def rules.diff_messages_loop
   (v : alloc.vec.Vec Message) (v1 : alloc.vec.Vec Message)
@@ -3213,7 +4112,7 @@ def rules.diff_messages_loop
     (ws, i)
 
 /-- [ai_town_kernel::rules::diff_messages]:
-    Source: 'kernel/src/rules.rs', lines 2328:0-2339:1 -/
+    Source: 'kernel/src/rules.rs', lines 2342:0-2353:1 -/
 def rules.diff_messages
   (before : Snapshot) (after : Snapshot) (ws : alloc.vec.Vec Write) :
   Result (alloc.vec.Vec Write)
@@ -3226,7 +4125,7 @@ def rules.diff_messages
   else rules.diff_messages_loop before.messages after.messages ws 0#usize
 
 /-- [ai_town_kernel::rules::memory_index]: loop body 0:
-    Source: 'kernel/src/rules.rs', lines 2282:4-2285:5 -/
+    Source: 'kernel/src/rules.rs', lines 2296:4-2299:5 -/
 @[rust_loop_body]
 def rules.memory_index_loop0.body
   (rows : alloc.vec.Vec Memory) (id : Std.U64) (lo : Std.Usize)
@@ -3248,7 +4147,7 @@ def rules.memory_index_loop0.body
   else ok (done lo)
 
 /-- [ai_town_kernel::rules::memory_index]: loop 0:
-    Source: 'kernel/src/rules.rs', lines 2282:4-2285:5 -/
+    Source: 'kernel/src/rules.rs', lines 2296:4-2299:5 -/
 @[rust_loop]
 def rules.memory_index_loop0
   (rows : alloc.vec.Vec Memory) (id : Std.U64) (lo : Std.Usize)
@@ -3260,7 +4159,7 @@ def rules.memory_index_loop0
     (lo, hi)
 
 /-- [ai_town_kernel::rules::memory_index]: loop body 1:
-    Source: 'kernel/src/rules.rs', lines 2288:4-2295:1 -/
+    Source: 'kernel/src/rules.rs', lines 2302:4-2309:1 -/
 @[rust_loop_body]
 def rules.memory_index_loop1.body
   (rows : alloc.vec.Vec Memory) (id : Std.U64) (i : Std.Usize) :
@@ -3278,7 +4177,7 @@ def rules.memory_index_loop1.body
   else ok (done none)
 
 /-- [ai_town_kernel::rules::memory_index]: loop 1:
-    Source: 'kernel/src/rules.rs', lines 2288:4-2295:1 -/
+    Source: 'kernel/src/rules.rs', lines 2302:4-2309:1 -/
 @[rust_loop]
 def rules.memory_index_loop1
   (rows : alloc.vec.Vec Memory) (id : Std.U64) (i : Std.Usize) :
@@ -3289,7 +4188,7 @@ def rules.memory_index_loop1
     i
 
 /-- [ai_town_kernel::rules::memory_index]: loop body 2:
-    Source: 'kernel/src/rules.rs', lines 2288:4-2295:1 -/
+    Source: 'kernel/src/rules.rs', lines 2302:4-2309:1 -/
 @[rust_loop_body]
 def rules.memory_index_loop2.body
   (rows : alloc.vec.Vec Memory) (id : Std.U64) (i : Std.Usize) :
@@ -3307,7 +4206,7 @@ def rules.memory_index_loop2.body
   else ok (done none)
 
 /-- [ai_town_kernel::rules::memory_index]: loop 2:
-    Source: 'kernel/src/rules.rs', lines 2288:4-2295:1 -/
+    Source: 'kernel/src/rules.rs', lines 2302:4-2309:1 -/
 @[rust_loop]
 def rules.memory_index_loop2
   (rows : alloc.vec.Vec Memory) (id : Std.U64) (i : Std.Usize) :
@@ -3318,7 +4217,7 @@ def rules.memory_index_loop2
     i
 
 /-- [ai_town_kernel::rules::memory_index]:
-    Source: 'kernel/src/rules.rs', lines 2279:0-2295:1 -/
+    Source: 'kernel/src/rules.rs', lines 2293:0-2309:1 -/
 def rules.memory_index
   (rows : alloc.vec.Vec Memory) (id : Std.U64) :
   Result (Option Std.Usize)
@@ -3337,7 +4236,7 @@ def rules.memory_index
   else rules.memory_index_loop2 rows id 0#usize
 
 /-- [ai_town_kernel::rules::diff_memories]: loop body 0:
-    Source: 'kernel/src/rules.rs', lines 2302:4-2307:5 -/
+    Source: 'kernel/src/rules.rs', lines 2316:4-2321:5 -/
 @[rust_loop_body]
 def rules.diff_memories_loop.body
   (v : alloc.vec.Vec Memory) (v1 : alloc.vec.Vec Memory)
@@ -3364,7 +4263,7 @@ def rules.diff_memories_loop.body
   else ok (done ws)
 
 /-- [ai_town_kernel::rules::diff_memories]: loop 0:
-    Source: 'kernel/src/rules.rs', lines 2302:4-2307:5 -/
+    Source: 'kernel/src/rules.rs', lines 2316:4-2321:5 -/
 @[rust_loop]
 def rules.diff_memories_loop
   (v : alloc.vec.Vec Memory) (v1 : alloc.vec.Vec Memory)
@@ -3376,7 +4275,7 @@ def rules.diff_memories_loop
     (ws, i)
 
 /-- [ai_town_kernel::rules::diff_memories]:
-    Source: 'kernel/src/rules.rs', lines 2297:0-2308:1 -/
+    Source: 'kernel/src/rules.rs', lines 2311:0-2322:1 -/
 def rules.diff_memories
   (before : Snapshot) (after : Snapshot) (ws : alloc.vec.Vec Write) :
   Result (alloc.vec.Vec Write)
@@ -3389,7 +4288,7 @@ def rules.diff_memories
   else rules.diff_memories_loop before.memories after.memories ws 0#usize
 
 /-- [ai_town_kernel::rules::diff_agents]: loop body 0:
-    Source: 'kernel/src/rules.rs', lines 2262:4-2276:5 -/
+    Source: 'kernel/src/rules.rs', lines 2276:4-2290:5 -/
 @[rust_loop_body]
 def rules.diff_agents_loop.body
   (before : Snapshot) (after : Snapshot) (ws : alloc.vec.Vec Write)
@@ -3669,7 +4568,7 @@ def rules.diff_agents_loop.body
     else ok (done ws)
 
 /-- [ai_town_kernel::rules::diff_agents]: loop 0:
-    Source: 'kernel/src/rules.rs', lines 2262:4-2276:5 -/
+    Source: 'kernel/src/rules.rs', lines 2276:4-2290:5 -/
 @[rust_loop]
 def rules.diff_agents_loop
   (before : Snapshot) (after : Snapshot) (ws : alloc.vec.Vec Write)
@@ -3681,7 +4580,7 @@ def rules.diff_agents_loop
     (ws, i, j)
 
 /-- [ai_town_kernel::rules::diff_agents]:
-    Source: 'kernel/src/rules.rs', lines 2259:0-2277:1 -/
+    Source: 'kernel/src/rules.rs', lines 2273:0-2291:1 -/
 @[reducible]
 def rules.diff_agents
   (before : Snapshot) (after : Snapshot) (ws : alloc.vec.Vec Write) :
@@ -3690,7 +4589,7 @@ def rules.diff_agents
   rules.diff_agents_loop before after ws 0#usize 0#usize
 
 /-- [ai_town_kernel::rules::member_key_index]: loop body 0:
-    Source: 'kernel/src/rules.rs', lines 2213:4-2216:5 -/
+    Source: 'kernel/src/rules.rs', lines 2227:4-2230:5 -/
 @[rust_loop_body]
 def rules.member_key_index_loop0.body
   (rows : alloc.vec.Vec Member) (conv : Std.U64) (lo : Std.Usize)
@@ -3712,7 +4611,7 @@ def rules.member_key_index_loop0.body
   else ok (done lo)
 
 /-- [ai_town_kernel::rules::member_key_index]: loop 0:
-    Source: 'kernel/src/rules.rs', lines 2213:4-2216:5 -/
+    Source: 'kernel/src/rules.rs', lines 2227:4-2230:5 -/
 @[rust_loop]
 def rules.member_key_index_loop0
   (rows : alloc.vec.Vec Member) (conv : Std.U64) (lo : Std.Usize)
@@ -3724,7 +4623,7 @@ def rules.member_key_index_loop0
     (lo, hi)
 
 /-- [ai_town_kernel::rules::member_key_index]: loop body 1:
-    Source: 'kernel/src/rules.rs', lines 2219:4-2222:5 -/
+    Source: 'kernel/src/rules.rs', lines 2233:4-2236:5 -/
 @[rust_loop_body]
 def rules.member_key_index_loop1.body
   (rows : alloc.vec.Vec Member) (conv : Std.U64) (player : Std.U64)
@@ -3751,7 +4650,7 @@ def rules.member_key_index_loop1.body
   else ok (done found)
 
 /-- [ai_town_kernel::rules::member_key_index]: loop 1:
-    Source: 'kernel/src/rules.rs', lines 2219:4-2222:5 -/
+    Source: 'kernel/src/rules.rs', lines 2233:4-2236:5 -/
 @[rust_loop]
 def rules.member_key_index_loop1
   (rows : alloc.vec.Vec Member) (conv : Std.U64) (player : Std.U64)
@@ -3764,7 +4663,7 @@ def rules.member_key_index_loop1
     (found, k)
 
 /-- [ai_town_kernel::rules::member_key_index]: loop body 2:
-    Source: 'kernel/src/rules.rs', lines 2224:4-2229:5 -/
+    Source: 'kernel/src/rules.rs', lines 2238:4-2243:5 -/
 @[rust_loop_body]
 def rules.member_key_index_loop2.body
   (rows : alloc.vec.Vec Member) (conv : Std.U64) (player : Std.U64)
@@ -3792,7 +4691,7 @@ def rules.member_key_index_loop2.body
   else ok (done found)
 
 /-- [ai_town_kernel::rules::member_key_index]: loop 2:
-    Source: 'kernel/src/rules.rs', lines 2224:4-2229:5 -/
+    Source: 'kernel/src/rules.rs', lines 2238:4-2243:5 -/
 @[rust_loop]
 def rules.member_key_index_loop2
   (rows : alloc.vec.Vec Member) (conv : Std.U64) (player : Std.U64)
@@ -3805,7 +4704,7 @@ def rules.member_key_index_loop2
     (found, i)
 
 /-- [ai_town_kernel::rules::member_key_index]:
-    Source: 'kernel/src/rules.rs', lines 2210:0-2231:1 -/
+    Source: 'kernel/src/rules.rs', lines 2224:0-2245:1 -/
 def rules.member_key_index
   (rows : alloc.vec.Vec Member) (conv : Std.U64) (player : Std.U64) :
   Result (Option Std.Usize)
@@ -3816,7 +4715,7 @@ def rules.member_key_index
   rules.member_key_index_loop2 rows conv player found 0#usize
 
 /-- [ai_town_kernel::rules::diff_members]: loop body 0:
-    Source: 'kernel/src/rules.rs', lines 2238:4-2244:5 -/
+    Source: 'kernel/src/rules.rs', lines 2252:4-2258:5 -/
 @[rust_loop_body]
 def rules.diff_members_loop0.body
   (v : alloc.vec.Vec Member) (v1 : alloc.vec.Vec Member)
@@ -3840,7 +4739,7 @@ def rules.diff_members_loop0.body
   else ok (done ws)
 
 /-- [ai_town_kernel::rules::diff_members]: loop 0:
-    Source: 'kernel/src/rules.rs', lines 2238:4-2244:5 -/
+    Source: 'kernel/src/rules.rs', lines 2252:4-2258:5 -/
 @[rust_loop]
 def rules.diff_members_loop0
   (v : alloc.vec.Vec Member) (v1 : alloc.vec.Vec Member)
@@ -3852,7 +4751,7 @@ def rules.diff_members_loop0
     (ws, i)
 
 /-- [ai_town_kernel::rules::diff_members]: loop body 1:
-    Source: 'kernel/src/rules.rs', lines 2246:4-2256:5 -/
+    Source: 'kernel/src/rules.rs', lines 2260:4-2270:5 -/
 @[rust_loop_body]
 def rules.diff_members_loop1.body
   (v : alloc.vec.Vec Member) (v1 : alloc.vec.Vec Member)
@@ -3888,7 +4787,7 @@ def rules.diff_members_loop1.body
   else ok (done ws)
 
 /-- [ai_town_kernel::rules::diff_members]: loop 1:
-    Source: 'kernel/src/rules.rs', lines 2246:4-2256:5 -/
+    Source: 'kernel/src/rules.rs', lines 2260:4-2270:5 -/
 @[rust_loop]
 def rules.diff_members_loop1
   (v : alloc.vec.Vec Member) (v1 : alloc.vec.Vec Member)
@@ -3900,7 +4799,7 @@ def rules.diff_members_loop1
     (ws, i)
 
 /-- [ai_town_kernel::rules::diff_members]:
-    Source: 'kernel/src/rules.rs', lines 2233:0-2257:1 -/
+    Source: 'kernel/src/rules.rs', lines 2247:0-2271:1 -/
 def rules.diff_members
   (before : Snapshot) (after : Snapshot) (ws : alloc.vec.Vec Write) :
   Result (alloc.vec.Vec Write)
@@ -4029,7 +4928,7 @@ def rules.conv_index
   else rules.conv_index_loop2 convs id 0#usize
 
 /-- [ai_town_kernel::rules::diff_convs]: loop body 0:
-    Source: 'kernel/src/rules.rs', lines 2190:4-2195:5 -/
+    Source: 'kernel/src/rules.rs', lines 2204:4-2209:5 -/
 @[rust_loop_body]
 def rules.diff_convs_loop0.body
   (v : alloc.vec.Vec Conversation) (v1 : alloc.vec.Vec Conversation)
@@ -4053,7 +4952,7 @@ def rules.diff_convs_loop0.body
   else ok (done ws)
 
 /-- [ai_town_kernel::rules::diff_convs]: loop 0:
-    Source: 'kernel/src/rules.rs', lines 2190:4-2195:5 -/
+    Source: 'kernel/src/rules.rs', lines 2204:4-2209:5 -/
 @[rust_loop]
 def rules.diff_convs_loop0
   (v : alloc.vec.Vec Conversation) (v1 : alloc.vec.Vec Conversation)
@@ -4065,7 +4964,7 @@ def rules.diff_convs_loop0
     (ws, i)
 
 /-- [ai_town_kernel::rules::diff_convs]: loop body 1:
-    Source: 'kernel/src/rules.rs', lines 2197:4-2207:5 -/
+    Source: 'kernel/src/rules.rs', lines 2211:4-2221:5 -/
 @[rust_loop_body]
 def rules.diff_convs_loop1.body
   (v : alloc.vec.Vec Conversation) (v1 : alloc.vec.Vec Conversation)
@@ -4102,7 +5001,7 @@ def rules.diff_convs_loop1.body
   else ok (done ws)
 
 /-- [ai_town_kernel::rules::diff_convs]: loop 1:
-    Source: 'kernel/src/rules.rs', lines 2197:4-2207:5 -/
+    Source: 'kernel/src/rules.rs', lines 2211:4-2221:5 -/
 @[rust_loop]
 def rules.diff_convs_loop1
   (v : alloc.vec.Vec Conversation) (v1 : alloc.vec.Vec Conversation)
@@ -4114,7 +5013,7 @@ def rules.diff_convs_loop1
     (ws, i)
 
 /-- [ai_town_kernel::rules::diff_convs]:
-    Source: 'kernel/src/rules.rs', lines 2185:0-2208:1 -/
+    Source: 'kernel/src/rules.rs', lines 2199:0-2222:1 -/
 def rules.diff_convs
   (before : Snapshot) (after : Snapshot) (ws : alloc.vec.Vec Write) :
   Result (alloc.vec.Vec Write)
@@ -4132,7 +5031,7 @@ def rules.diff_convs
     rules.diff_convs_loop1 before.conversations after.conversations ws1 0#usize
 
 /-- [ai_town_kernel::rules::push_id]: loop body 0:
-    Source: 'kernel/src/rules.rs', lines 2176:4-2183:1 -/
+    Source: 'kernel/src/rules.rs', lines 2190:4-2197:1 -/
 @[rust_loop_body]
 def rules.push_id_loop.body
   (ids : alloc.vec.Vec Std.U64) (id : Std.U64) (i : Std.Usize) :
@@ -4151,7 +5050,7 @@ def rules.push_id_loop.body
        ok (done ids1)
 
 /-- [ai_town_kernel::rules::push_id]: loop 0:
-    Source: 'kernel/src/rules.rs', lines 2176:4-2183:1 -/
+    Source: 'kernel/src/rules.rs', lines 2190:4-2197:1 -/
 @[rust_loop]
 def rules.push_id_loop
   (ids : alloc.vec.Vec Std.U64) (id : Std.U64) (i : Std.Usize) :
@@ -4162,7 +5061,7 @@ def rules.push_id_loop
     i
 
 /-- [ai_town_kernel::rules::push_id]:
-    Source: 'kernel/src/rules.rs', lines 2174:0-2183:1 -/
+    Source: 'kernel/src/rules.rs', lines 2188:0-2197:1 -/
 @[reducible]
 def rules.push_id
   (ids : alloc.vec.Vec Std.U64) (id : Std.U64) :
@@ -4171,7 +5070,7 @@ def rules.push_id
   rules.push_id_loop ids id 0#usize
 
 /-- [ai_town_kernel::rules::path_of]: loop body 0:
-    Source: 'kernel/src/rules.rs', lines 1311:4-1316:5 -/
+    Source: 'kernel/src/rules.rs', lines 1320:4-1325:5 -/
 @[rust_loop_body]
 def rules.path_of_loop.body
   (paths : alloc.vec.Vec PathNode) (player : Std.U64)
@@ -4197,7 +5096,7 @@ def rules.path_of_loop.body
   else ok (done out)
 
 /-- [ai_town_kernel::rules::path_of]: loop 0:
-    Source: 'kernel/src/rules.rs', lines 1311:4-1316:5 -/
+    Source: 'kernel/src/rules.rs', lines 1320:4-1325:5 -/
 @[rust_loop]
 def rules.path_of_loop
   (paths : alloc.vec.Vec PathNode) (player : Std.U64)
@@ -4209,7 +5108,7 @@ def rules.path_of_loop
     (out, i)
 
 /-- [ai_town_kernel::rules::path_of]:
-    Source: 'kernel/src/rules.rs', lines 1308:0-1318:1 -/
+    Source: 'kernel/src/rules.rs', lines 1317:0-1327:1 -/
 @[reducible]
 def rules.path_of
   (paths : alloc.vec.Vec PathNode) (player : Std.U64) :
@@ -4260,7 +5159,7 @@ def rules.player_index
   rules.player_index_loop players id 0#usize
 
 /-- [ai_town_kernel::rules::diff_paths_scan]: loop body 0:
-    Source: 'kernel/src/rules.rs', lines 2144:4-2147:5 -/
+    Source: 'kernel/src/rules.rs', lines 2158:4-2161:5 -/
 @[rust_loop_body]
 def rules.diff_paths_scan_loop0.body
   (before : Snapshot) (ids : alloc.vec.Vec Std.U64) (i : Std.Usize) :
@@ -4279,7 +5178,7 @@ def rules.diff_paths_scan_loop0.body
   else ok (done (before.players, before.paths, ids))
 
 /-- [ai_town_kernel::rules::diff_paths_scan]: loop 0:
-    Source: 'kernel/src/rules.rs', lines 2144:4-2147:5 -/
+    Source: 'kernel/src/rules.rs', lines 2158:4-2161:5 -/
 @[rust_loop]
 def rules.diff_paths_scan_loop0
   (before : Snapshot) (ids : alloc.vec.Vec Std.U64) (i : Std.Usize) :
@@ -4291,7 +5190,7 @@ def rules.diff_paths_scan_loop0
     (ids, i)
 
 /-- [ai_town_kernel::rules::diff_paths_scan]: loop body 1:
-    Source: 'kernel/src/rules.rs', lines 2149:4-2152:5 -/
+    Source: 'kernel/src/rules.rs', lines 2163:4-2166:5 -/
 @[rust_loop_body]
 def rules.diff_paths_scan_loop1.body
   (after : Snapshot) (ids : alloc.vec.Vec Std.U64) (i : Std.Usize) :
@@ -4310,7 +5209,7 @@ def rules.diff_paths_scan_loop1.body
   else ok (done (after.players, after.paths, ids))
 
 /-- [ai_town_kernel::rules::diff_paths_scan]: loop 1:
-    Source: 'kernel/src/rules.rs', lines 2149:4-2152:5 -/
+    Source: 'kernel/src/rules.rs', lines 2163:4-2166:5 -/
 @[rust_loop]
 def rules.diff_paths_scan_loop1
   (after : Snapshot) (ids : alloc.vec.Vec Std.U64) (i : Std.Usize) :
@@ -4322,7 +5221,7 @@ def rules.diff_paths_scan_loop1
     (ids, i)
 
 /-- [ai_town_kernel::rules::diff_paths_scan]: loop body 3:
-    Source: 'kernel/src/rules.rs', lines 2165:12-2168:13 -/
+    Source: 'kernel/src/rules.rs', lines 2179:12-2182:13 -/
 @[rust_loop_body]
 def rules.diff_paths_scan_loop2_loop0.body
   (b : alloc.vec.Vec PathNode) (ws : alloc.vec.Vec Write) (j : Std.Usize) :
@@ -4341,7 +5240,7 @@ def rules.diff_paths_scan_loop2_loop0.body
   else ok (done ws)
 
 /-- [ai_town_kernel::rules::diff_paths_scan]: loop 3:
-    Source: 'kernel/src/rules.rs', lines 2165:12-2168:13 -/
+    Source: 'kernel/src/rules.rs', lines 2179:12-2182:13 -/
 @[rust_loop]
 def rules.diff_paths_scan_loop2_loop0
   (ws : alloc.vec.Vec Write) (b : alloc.vec.Vec PathNode) (j : Std.Usize) :
@@ -4352,7 +5251,7 @@ def rules.diff_paths_scan_loop2_loop0
     (ws, j)
 
 /-- [ai_town_kernel::rules::diff_paths_scan]: loop body 4:
-    Source: 'kernel/src/rules.rs', lines 2165:12-2168:13 -/
+    Source: 'kernel/src/rules.rs', lines 2179:12-2182:13 -/
 @[rust_loop_body]
 def rules.diff_paths_scan_loop2_loop1.body
   (b : alloc.vec.Vec PathNode) (ws : alloc.vec.Vec Write) (j : Std.Usize) :
@@ -4371,7 +5270,7 @@ def rules.diff_paths_scan_loop2_loop1.body
   else ok (done ws)
 
 /-- [ai_town_kernel::rules::diff_paths_scan]: loop 4:
-    Source: 'kernel/src/rules.rs', lines 2165:12-2168:13 -/
+    Source: 'kernel/src/rules.rs', lines 2179:12-2182:13 -/
 @[rust_loop]
 def rules.diff_paths_scan_loop2_loop1
   (ws : alloc.vec.Vec Write) (b : alloc.vec.Vec PathNode) (j : Std.Usize) :
@@ -4382,7 +5281,7 @@ def rules.diff_paths_scan_loop2_loop1
     (ws, j)
 
 /-- [ai_town_kernel::rules::diff_paths_scan]: loop body 2:
-    Source: 'kernel/src/rules.rs', lines 2154:4-2171:5 -/
+    Source: 'kernel/src/rules.rs', lines 2168:4-2185:5 -/
 @[rust_loop_body]
 def rules.diff_paths_scan_loop2.body
   (v : alloc.vec.Vec Player) (v1 : alloc.vec.Vec PathNode)
@@ -4436,7 +5335,7 @@ def rules.diff_paths_scan_loop2.body
   else ok (done ws)
 
 /-- [ai_town_kernel::rules::diff_paths_scan]: loop 2:
-    Source: 'kernel/src/rules.rs', lines 2154:4-2171:5 -/
+    Source: 'kernel/src/rules.rs', lines 2168:4-2185:5 -/
 @[rust_loop]
 def rules.diff_paths_scan_loop2
   (v : alloc.vec.Vec Player) (v1 : alloc.vec.Vec PathNode)
@@ -4449,7 +5348,7 @@ def rules.diff_paths_scan_loop2
     (ws, i)
 
 /-- [ai_town_kernel::rules::diff_paths_scan]:
-    Source: 'kernel/src/rules.rs', lines 2141:0-2172:1 -/
+    Source: 'kernel/src/rules.rs', lines 2155:0-2186:1 -/
 def rules.diff_paths_scan
   (before : Snapshot) (after : Snapshot) (ws : alloc.vec.Vec Write) :
   Result (alloc.vec.Vec Write)
@@ -4460,7 +5359,7 @@ def rules.diff_paths_scan
   rules.diff_paths_scan_loop2 v v1 v2 v3 ws ids1 0#usize
 
 /-- [ai_town_kernel::rules::span_eq]: loop body 0:
-    Source: 'kernel/src/rules.rs', lines 2132:4-2139:1 -/
+    Source: 'kernel/src/rules.rs', lines 2146:4-2153:1 -/
 @[rust_loop_body]
 def rules.span_eq_loop.body
   (a : alloc.vec.Vec PathNode) (a0 : Std.U32) (b : alloc.vec.Vec PathNode)
@@ -4487,7 +5386,7 @@ def rules.span_eq_loop.body
   else ok (done true)
 
 /-- [ai_town_kernel::rules::span_eq]: loop 0:
-    Source: 'kernel/src/rules.rs', lines 2132:4-2139:1 -/
+    Source: 'kernel/src/rules.rs', lines 2146:4-2153:1 -/
 @[rust_loop]
 def rules.span_eq_loop
   (a : alloc.vec.Vec PathNode) (a0 : Std.U32) (b : alloc.vec.Vec PathNode)
@@ -4499,7 +5398,7 @@ def rules.span_eq_loop
     k
 
 /-- [ai_town_kernel::rules::span_eq]:
-    Source: 'kernel/src/rules.rs', lines 2122:0-2139:1 -/
+    Source: 'kernel/src/rules.rs', lines 2136:0-2153:1 -/
 def rules.span_eq
   (a : alloc.vec.Vec PathNode) (a0 : Std.U32) (a1 : Std.U32)
   (b : alloc.vec.Vec PathNode) (b0 : Std.U32) (b1 : Std.U32) :
@@ -4532,7 +5431,7 @@ def rules.span_eq
           else rules.span_eq_loop a a0 b b0 an 0#usize
 
 /-- [ai_town_kernel::rules::span_at]:
-    Source: 'kernel/src/rules.rs', lines 2114:0-2120:1 -/
+    Source: 'kernel/src/rules.rs', lines 2128:0-2134:1 -/
 def rules.span_at
   (start : alloc.vec.Vec Std.U32) («end» : alloc.vec.Vec Std.U32)
   (id : Std.Usize) :
@@ -4558,7 +5457,7 @@ def rules.span_at
         ok (i2, i3)
 
 /-- [ai_town_kernel::rules::diff_paths_indexed]: loop body 0:
-    Source: 'kernel/src/rules.rs', lines 2069:4-2073:5 -/
+    Source: 'kernel/src/rules.rs', lines 2083:4-2087:5 -/
 @[rust_loop_body]
 def rules.diff_paths_indexed_loop0.body
   (limit : Std.Usize) (was : alloc.vec.Vec Bool) (now : alloc.vec.Vec Bool)
@@ -4575,7 +5474,7 @@ def rules.diff_paths_indexed_loop0.body
   else ok (done (was, now))
 
 /-- [ai_town_kernel::rules::diff_paths_indexed]: loop 0:
-    Source: 'kernel/src/rules.rs', lines 2069:4-2073:5 -/
+    Source: 'kernel/src/rules.rs', lines 2083:4-2087:5 -/
 @[rust_loop]
 def rules.diff_paths_indexed_loop0
   (limit : Std.Usize) (was : alloc.vec.Vec Bool) (now : alloc.vec.Vec Bool)
@@ -4588,7 +5487,7 @@ def rules.diff_paths_indexed_loop0
     (was, now, i)
 
 /-- [ai_town_kernel::rules::diff_paths_indexed]: loop body 1:
-    Source: 'kernel/src/rules.rs', lines 2075:4-2081:5 -/
+    Source: 'kernel/src/rules.rs', lines 2089:4-2095:5 -/
 @[rust_loop_body]
 def rules.diff_paths_indexed_loop1.body
   (before : Snapshot) (was : alloc.vec.Vec Bool) (i : Std.Usize) :
@@ -4617,7 +5516,7 @@ def rules.diff_paths_indexed_loop1.body
   else ok (done (before.paths, was))
 
 /-- [ai_town_kernel::rules::diff_paths_indexed]: loop 1:
-    Source: 'kernel/src/rules.rs', lines 2075:4-2081:5 -/
+    Source: 'kernel/src/rules.rs', lines 2089:4-2095:5 -/
 @[rust_loop]
 def rules.diff_paths_indexed_loop1
   (before : Snapshot) (was : alloc.vec.Vec Bool) (i : Std.Usize) :
@@ -4628,7 +5527,7 @@ def rules.diff_paths_indexed_loop1
     (was, i)
 
 /-- [ai_town_kernel::rules::diff_paths_indexed]: loop body 2:
-    Source: 'kernel/src/rules.rs', lines 2083:4-2089:5 -/
+    Source: 'kernel/src/rules.rs', lines 2097:4-2103:5 -/
 @[rust_loop_body]
 def rules.diff_paths_indexed_loop2.body
   (after : Snapshot) (now : alloc.vec.Vec Bool) (i : Std.Usize) :
@@ -4657,7 +5556,7 @@ def rules.diff_paths_indexed_loop2.body
   else ok (done (after.paths, now))
 
 /-- [ai_town_kernel::rules::diff_paths_indexed]: loop 2:
-    Source: 'kernel/src/rules.rs', lines 2083:4-2089:5 -/
+    Source: 'kernel/src/rules.rs', lines 2097:4-2103:5 -/
 @[rust_loop]
 def rules.diff_paths_indexed_loop2
   (after : Snapshot) (now : alloc.vec.Vec Bool) (i : Std.Usize) :
@@ -4668,7 +5567,7 @@ def rules.diff_paths_indexed_loop2
     (now, i)
 
 /-- [ai_town_kernel::rules::diff_paths_indexed]: loop body 4:
-    Source: 'kernel/src/rules.rs', lines 2102:12-2108:13 -/
+    Source: 'kernel/src/rules.rs', lines 2116:12-2122:13 -/
 @[rust_loop_body]
 def rules.diff_paths_indexed_loop3_loop0.body
   (v : alloc.vec.Vec PathNode) (a1 : Std.U32) (ws : alloc.vec.Vec Write)
@@ -4693,7 +5592,7 @@ def rules.diff_paths_indexed_loop3_loop0.body
   else ok (done ws)
 
 /-- [ai_town_kernel::rules::diff_paths_indexed]: loop 4:
-    Source: 'kernel/src/rules.rs', lines 2102:12-2108:13 -/
+    Source: 'kernel/src/rules.rs', lines 2116:12-2122:13 -/
 @[rust_loop]
 def rules.diff_paths_indexed_loop3_loop0
   (v : alloc.vec.Vec PathNode) (ws : alloc.vec.Vec Write) (a1 : Std.U32)
@@ -4705,7 +5604,7 @@ def rules.diff_paths_indexed_loop3_loop0
     (ws, j)
 
 /-- [ai_town_kernel::rules::diff_paths_indexed]: loop body 5:
-    Source: 'kernel/src/rules.rs', lines 2102:12-2108:13 -/
+    Source: 'kernel/src/rules.rs', lines 2116:12-2122:13 -/
 @[rust_loop_body]
 def rules.diff_paths_indexed_loop3_loop1.body
   (v : alloc.vec.Vec PathNode) (a1 : Std.U32) (ws : alloc.vec.Vec Write)
@@ -4730,7 +5629,7 @@ def rules.diff_paths_indexed_loop3_loop1.body
   else ok (done ws)
 
 /-- [ai_town_kernel::rules::diff_paths_indexed]: loop 5:
-    Source: 'kernel/src/rules.rs', lines 2102:12-2108:13 -/
+    Source: 'kernel/src/rules.rs', lines 2116:12-2122:13 -/
 @[rust_loop]
 def rules.diff_paths_indexed_loop3_loop1
   (v : alloc.vec.Vec PathNode) (ws : alloc.vec.Vec Write) (a1 : Std.U32)
@@ -4742,7 +5641,7 @@ def rules.diff_paths_indexed_loop3_loop1
     (ws, j)
 
 /-- [ai_town_kernel::rules::diff_paths_indexed]: loop body 3:
-    Source: 'kernel/src/rules.rs', lines 2091:4-2111:5 -/
+    Source: 'kernel/src/rules.rs', lines 2105:4-2125:5 -/
 @[rust_loop_body]
 def rules.diff_paths_indexed_loop3.body
   (v : alloc.vec.Vec PathNode) (v1 : alloc.vec.Vec PathNode)
@@ -4796,7 +5695,7 @@ def rules.diff_paths_indexed_loop3.body
   else ok (done ws)
 
 /-- [ai_town_kernel::rules::diff_paths_indexed]: loop 3:
-    Source: 'kernel/src/rules.rs', lines 2091:4-2111:5 -/
+    Source: 'kernel/src/rules.rs', lines 2105:4-2125:5 -/
 @[rust_loop]
 def rules.diff_paths_indexed_loop3
   (v : alloc.vec.Vec PathNode) (v1 : alloc.vec.Vec PathNode)
@@ -4812,7 +5711,7 @@ def rules.diff_paths_indexed_loop3
     (ws, i)
 
 /-- [ai_town_kernel::rules::diff_paths_indexed]:
-    Source: 'kernel/src/rules.rs', lines 2058:0-2112:1 -/
+    Source: 'kernel/src/rules.rs', lines 2072:0-2126:1 -/
 def rules.diff_paths_indexed
   (before : Snapshot) (after : Snapshot)
   (bspan : ((alloc.vec.Vec Std.U32) × (alloc.vec.Vec Std.U32)))
@@ -4828,7 +5727,7 @@ def rules.diff_paths_indexed
   rules.diff_paths_indexed_loop3 v v1 bspan aspan limit ws was1 now1 0#usize
 
 /-- [ai_town_kernel::rules::fill_path_spans]: loop body 0:
-    Source: 'kernel/src/rules.rs', lines 1247:4-1249:5 -/
+    Source: 'kernel/src/rules.rs', lines 1256:4-1258:5 -/
 @[rust_loop_body]
 def rules.fill_path_spans_loop0.body
   (limit : Std.Usize) (start : alloc.vec.Vec Std.U32) :
@@ -4842,7 +5741,7 @@ def rules.fill_path_spans_loop0.body
   else ok (done start)
 
 /-- [ai_town_kernel::rules::fill_path_spans]: loop 0:
-    Source: 'kernel/src/rules.rs', lines 1247:4-1249:5 -/
+    Source: 'kernel/src/rules.rs', lines 1256:4-1258:5 -/
 @[rust_loop]
 def rules.fill_path_spans_loop0
   (limit : Std.Usize) (start : alloc.vec.Vec Std.U32) :
@@ -4853,7 +5752,7 @@ def rules.fill_path_spans_loop0
     start
 
 /-- [ai_town_kernel::rules::fill_path_spans]: loop body 1:
-    Source: 'kernel/src/rules.rs', lines 1250:4-1252:5 -/
+    Source: 'kernel/src/rules.rs', lines 1259:4-1261:5 -/
 @[rust_loop_body]
 def rules.fill_path_spans_loop1.body
   (limit : Std.Usize) («end» : alloc.vec.Vec Std.U32) :
@@ -4866,7 +5765,7 @@ def rules.fill_path_spans_loop1.body
   else ok (done «end»)
 
 /-- [ai_town_kernel::rules::fill_path_spans]: loop 1:
-    Source: 'kernel/src/rules.rs', lines 1250:4-1252:5 -/
+    Source: 'kernel/src/rules.rs', lines 1259:4-1261:5 -/
 @[rust_loop]
 def rules.fill_path_spans_loop1
   (limit : Std.Usize) («end» : alloc.vec.Vec Std.U32) :
@@ -4877,7 +5776,7 @@ def rules.fill_path_spans_loop1
     «end»
 
 /-- [ai_town_kernel::rules::fill_path_spans]: loop body 2:
-    Source: 'kernel/src/rules.rs', lines 1254:4-1258:5 -/
+    Source: 'kernel/src/rules.rs', lines 1263:4-1267:5 -/
 @[rust_loop_body]
 def rules.fill_path_spans_loop2.body
   (limit : Std.Usize) (start : alloc.vec.Vec Std.U32)
@@ -4900,7 +5799,7 @@ def rules.fill_path_spans_loop2.body
   else ok (done (start, «end»))
 
 /-- [ai_town_kernel::rules::fill_path_spans]: loop 2:
-    Source: 'kernel/src/rules.rs', lines 1254:4-1258:5 -/
+    Source: 'kernel/src/rules.rs', lines 1263:4-1267:5 -/
 @[rust_loop]
 def rules.fill_path_spans_loop2
   (limit : Std.Usize) (start : alloc.vec.Vec Std.U32)
@@ -4913,7 +5812,7 @@ def rules.fill_path_spans_loop2
     (start, «end», i)
 
 /-- [ai_town_kernel::rules::fill_path_spans]: loop body 3:
-    Source: 'kernel/src/rules.rs', lines 1261:4-1274:5 -/
+    Source: 'kernel/src/rules.rs', lines 1270:4-1283:5 -/
 @[rust_loop_body]
 def rules.fill_path_spans_loop3.body
   (paths : alloc.vec.Vec PathNode) (limit : Std.Usize)
@@ -4975,7 +5874,7 @@ def rules.fill_path_spans_loop3.body
   else ok (done (ok1, start, «end»))
 
 /-- [ai_town_kernel::rules::fill_path_spans]: loop 3:
-    Source: 'kernel/src/rules.rs', lines 1261:4-1274:5 -/
+    Source: 'kernel/src/rules.rs', lines 1270:4-1283:5 -/
 @[rust_loop]
 def rules.fill_path_spans_loop3
   (paths : alloc.vec.Vec PathNode) (limit : Std.Usize)
@@ -4989,7 +5888,7 @@ def rules.fill_path_spans_loop3
     (start, «end», i, ok1)
 
 /-- [ai_town_kernel::rules::fill_path_spans]:
-    Source: 'kernel/src/rules.rs', lines 1246:0-1276:1 -/
+    Source: 'kernel/src/rules.rs', lines 1255:0-1285:1 -/
 def rules.fill_path_spans
   (paths : alloc.vec.Vec PathNode) (limit : Std.Usize)
   (start : alloc.vec.Vec Std.U32) («end» : alloc.vec.Vec Std.U32) :
@@ -5001,7 +5900,7 @@ def rules.fill_path_spans
   rules.fill_path_spans_loop3 paths limit start2 end2 0#usize true
 
 /-- [ai_town_kernel::rules::path_spans]:
-    Source: 'kernel/src/rules.rs', lines 1278:0-1286:1 -/
+    Source: 'kernel/src/rules.rs', lines 1287:0-1295:1 -/
 def rules.path_spans
   (paths : alloc.vec.Vec PathNode) (limit : Std.Usize) :
   Result (Option ((alloc.vec.Vec Std.U32) × (alloc.vec.Vec Std.U32)))
@@ -5014,7 +5913,7 @@ def rules.path_spans
   else ok none
 
 /-- [ai_town_kernel::rules::id_limit]:
-    Source: 'kernel/src/rules.rs', lines 1235:0-1242:1 -/
+    Source: 'kernel/src/rules.rs', lines 1244:0-1251:1 -/
 def rules.id_limit
   (a : Snapshot) (b : Snapshot) : Result (Option Std.Usize) := do
   let n ←
@@ -5030,7 +5929,7 @@ def rules.id_limit
          ok (some i)
 
 /-- [ai_town_kernel::rules::diff_paths]:
-    Source: 'kernel/src/rules.rs', lines 2041:0-2056:1 -/
+    Source: 'kernel/src/rules.rs', lines 2055:0-2070:1 -/
 def rules.diff_paths
   (before : Snapshot) (after : Snapshot) (ws : alloc.vec.Vec Write) :
   Result (alloc.vec.Vec Write)
@@ -5062,7 +5961,7 @@ def rules.diff_paths
             rules.diff_paths_indexed before after bspan aspan limit ws
 
 /-- [ai_town_kernel::rules::diff_player_rows]: loop body 0:
-    Source: 'kernel/src/rules.rs', lines 2023:4-2038:5 -/
+    Source: 'kernel/src/rules.rs', lines 2037:4-2052:5 -/
 @[rust_loop_body]
 def rules.diff_player_rows_loop.body
   (before : alloc.vec.Vec Player) (after : alloc.vec.Vec Player)
@@ -5346,7 +6245,7 @@ def rules.diff_player_rows_loop.body
     else ok (done ws)
 
 /-- [ai_town_kernel::rules::diff_player_rows]: loop 0:
-    Source: 'kernel/src/rules.rs', lines 2023:4-2038:5 -/
+    Source: 'kernel/src/rules.rs', lines 2037:4-2052:5 -/
 @[rust_loop]
 def rules.diff_player_rows_loop
   (before : alloc.vec.Vec Player) (after : alloc.vec.Vec Player)
@@ -5359,7 +6258,7 @@ def rules.diff_player_rows_loop
     (ws, i, j)
 
 /-- [ai_town_kernel::rules::diff_player_rows]:
-    Source: 'kernel/src/rules.rs', lines 2020:0-2039:1 -/
+    Source: 'kernel/src/rules.rs', lines 2034:0-2053:1 -/
 @[reducible]
 def rules.diff_player_rows
   (before : alloc.vec.Vec Player) (after : alloc.vec.Vec Player)
@@ -5369,7 +6268,7 @@ def rules.diff_player_rows
   rules.diff_player_rows_loop before after ws 0#usize 0#usize
 
 /-- [ai_town_kernel::rules::diff]:
-    Source: 'kernel/src/rules.rs', lines 2002:0-2018:1
+    Source: 'kernel/src/rules.rs', lines 2013:0-2032:1
     Visibility: public -/
 def rules.diff
   (before : Snapshot) (after : Snapshot) : Result (alloc.vec.Vec Write) := do
@@ -5393,13 +6292,24 @@ def rules.diff
       let t ← Terrain.Insts.CoreCloneClone.clone after.terrain
       alloc.vec.Vec.push ws (Write.PutTerrain t)
     else ok ws
-  let ws2 ← rules.diff_player_rows before.players after.players ws1
-  let ws3 ← rules.diff_paths before after ws2
-  let ws4 ← rules.diff_convs before after ws3
-  let ws5 ← rules.diff_members before after ws4
-  let ws6 ← rules.diff_agents before after ws5
-  let ws7 ← rules.diff_memories before after ws6
-  rules.diff_messages before after ws7
+  let b2 ←
+    core.cmp.PartialEq.ne.trait_default
+      MotionHistory.Insts.CoreCmpPartialEqMotionHistory before.motion_history
+      after.motion_history
+  let ws2 ←
+    if b2
+    then
+      do
+      let mh ← MotionHistory.Insts.CoreCloneClone.clone after.motion_history
+      alloc.vec.Vec.push ws1 (Write.PutMotionHistory mh)
+    else ok ws1
+  let ws3 ← rules.diff_player_rows before.players after.players ws2
+  let ws4 ← rules.diff_paths before after ws3
+  let ws5 ← rules.diff_convs before after ws4
+  let ws6 ← rules.diff_members before after ws5
+  let ws7 ← rules.diff_agents before after ws6
+  let ws8 ← rules.diff_memories before after ws7
+  rules.diff_messages before after ws8
 
 /-- [ai_town_kernel::rules::player_by_owner]: loop body 0:
     Source: 'kernel/src/rules.rs', lines 51:4-58:1
@@ -5444,7 +6354,7 @@ def rules.player_by_owner
   rules.player_by_owner_loop players owner 0#usize
 
 /-- [ai_town_kernel::rules::own_player]:
-    Source: 'kernel/src/rules.rs', lines 1547:0-1552:1 -/
+    Source: 'kernel/src/rules.rs', lines 1556:0-1561:1 -/
 def rules.own_player
   (s : Snapshot) (owner : Std.U64) :
   Result (core.result.Result Std.U64 Error)
@@ -5510,7 +6420,7 @@ def rules.is_talking (s : Snapshot) (player : Std.U64) : Result Bool := do
     ok (m.status = ST_TALKING)
 
 /-- [ai_town_kernel::rules::dispatch_activity]:
-    Source: 'kernel/src/rules.rs', lines 1741:0-1756:1 -/
+    Source: 'kernel/src/rules.rs', lines 1750:0-1765:1 -/
 def rules.dispatch_activity
   (s : Snapshot) (owner : Std.U64) (kind : Std.U32) (now : Std.U64) :
   Result ((core.result.Result Reply Error) × Snapshot)
@@ -5549,7 +6459,7 @@ def rules.dispatch_activity
       | core.result.Result.Err e => ok (core.result.Result.Err e, s)
 
 /-- [ai_town_kernel::rules::own_agent]: loop body 0:
-    Source: 'kernel/src/rules.rs', lines 1697:4-1700:5 -/
+    Source: 'kernel/src/rules.rs', lines 1706:4-1709:5 -/
 @[rust_loop_body]
 def rules.own_agent_loop0.body
   (v : alloc.vec.Vec Agent) (owner : Std.U64) (lo : Std.Usize) (hi : Std.Usize)
@@ -5570,7 +6480,7 @@ def rules.own_agent_loop0.body
   else ok (done lo)
 
 /-- [ai_town_kernel::rules::own_agent]: loop 0:
-    Source: 'kernel/src/rules.rs', lines 1697:4-1700:5 -/
+    Source: 'kernel/src/rules.rs', lines 1706:4-1709:5 -/
 @[rust_loop]
 def rules.own_agent_loop0
   (v : alloc.vec.Vec Agent) (owner : Std.U64) (lo : Std.Usize) (hi : Std.Usize)
@@ -5582,7 +6492,7 @@ def rules.own_agent_loop0
     (lo, hi)
 
 /-- [ai_town_kernel::rules::own_agent]: loop body 1:
-    Source: 'kernel/src/rules.rs', lines 1703:4-1710:1 -/
+    Source: 'kernel/src/rules.rs', lines 1712:4-1719:1 -/
 @[rust_loop_body]
 def rules.own_agent_loop1.body
   (v : alloc.vec.Vec Agent) (owner : Std.U64) (i : Std.Usize) :
@@ -5600,7 +6510,7 @@ def rules.own_agent_loop1.body
   else ok (done (core.result.Result.Err Error.NotFound))
 
 /-- [ai_town_kernel::rules::own_agent]: loop 1:
-    Source: 'kernel/src/rules.rs', lines 1703:4-1710:1 -/
+    Source: 'kernel/src/rules.rs', lines 1712:4-1719:1 -/
 @[rust_loop]
 def rules.own_agent_loop1
   (v : alloc.vec.Vec Agent) (owner : Std.U64) (i : Std.Usize) :
@@ -5611,7 +6521,7 @@ def rules.own_agent_loop1
     i
 
 /-- [ai_town_kernel::rules::own_agent]: loop body 2:
-    Source: 'kernel/src/rules.rs', lines 1703:4-1710:1 -/
+    Source: 'kernel/src/rules.rs', lines 1712:4-1719:1 -/
 @[rust_loop_body]
 def rules.own_agent_loop2.body
   (v : alloc.vec.Vec Agent) (owner : Std.U64) (i : Std.Usize) :
@@ -5629,7 +6539,7 @@ def rules.own_agent_loop2.body
   else ok (done (core.result.Result.Err Error.NotFound))
 
 /-- [ai_town_kernel::rules::own_agent]: loop 2:
-    Source: 'kernel/src/rules.rs', lines 1703:4-1710:1 -/
+    Source: 'kernel/src/rules.rs', lines 1712:4-1719:1 -/
 @[rust_loop]
 def rules.own_agent_loop2
   (v : alloc.vec.Vec Agent) (owner : Std.U64) (i : Std.Usize) :
@@ -5640,7 +6550,7 @@ def rules.own_agent_loop2
     i
 
 /-- [ai_town_kernel::rules::own_agent]:
-    Source: 'kernel/src/rules.rs', lines 1694:0-1710:1 -/
+    Source: 'kernel/src/rules.rs', lines 1703:0-1719:1 -/
 def rules.own_agent
   (s : Snapshot) (owner : Std.U64) :
   Result (core.result.Result Std.Usize Error)
@@ -5659,7 +6569,7 @@ def rules.own_agent
   else rules.own_agent_loop2 s.agents owner 0#usize
 
 /-- [ai_town_kernel::rules::other_member]: loop body 0:
-    Source: 'kernel/src/rules.rs', lines 922:4-929:1 -/
+    Source: 'kernel/src/rules.rs', lines 931:4-938:1 -/
 @[rust_loop_body]
 def rules.other_member_loop.body
   (s : Snapshot) (conv : Std.U64) (player : Std.U64) (i : Std.Usize) :
@@ -5682,7 +6592,7 @@ def rules.other_member_loop.body
   else ok (done none)
 
 /-- [ai_town_kernel::rules::other_member]: loop 0:
-    Source: 'kernel/src/rules.rs', lines 922:4-929:1 -/
+    Source: 'kernel/src/rules.rs', lines 931:4-938:1 -/
 @[rust_loop]
 def rules.other_member_loop
   (s : Snapshot) (conv : Std.U64) (player : Std.U64) (i : Std.Usize) :
@@ -5693,7 +6603,7 @@ def rules.other_member_loop
     i
 
 /-- [ai_town_kernel::rules::other_member]:
-    Source: 'kernel/src/rules.rs', lines 920:0-929:1 -/
+    Source: 'kernel/src/rules.rs', lines 929:0-938:1 -/
 @[reducible]
 def rules.other_member
   (s : Snapshot) (conv : Std.U64) (player : Std.U64) :
@@ -5726,7 +6636,7 @@ def rules.text_ok
   else ok false
 
 /-- [ai_town_kernel::rules::dispatch_remember]:
-    Source: 'kernel/src/rules.rs', lines 1719:0-1739:1 -/
+    Source: 'kernel/src/rules.rs', lines 1728:0-1748:1 -/
 def rules.dispatch_remember
   (s : Snapshot) (owner : Std.U64) (summary : alloc.vec.Vec Std.U8)
   (now : Std.U64) :
@@ -5780,7 +6690,7 @@ def rules.dispatch_remember
   else ok (core.result.Result.Err Error.BadText, s)
 
 /-- [ai_town_kernel::rules::dispatch_finish]:
-    Source: 'kernel/src/rules.rs', lines 1712:0-1717:1 -/
+    Source: 'kernel/src/rules.rs', lines 1721:0-1726:1 -/
 def rules.dispatch_finish
   (s : Snapshot) (owner : Std.U64) :
   Result ((core.result.Result Reply Error) × Snapshot)
@@ -5800,7 +6710,7 @@ def rules.dispatch_finish
   | core.result.Result.Err e => ok (core.result.Result.Err e, s)
 
 /-- [ai_town_kernel::rules::own_member]:
-    Source: 'kernel/src/rules.rs', lines 1606:0-1612:1 -/
+    Source: 'kernel/src/rules.rs', lines 1615:0-1621:1 -/
 def rules.own_member
   (s : Snapshot) (owner : Std.U64) :
   Result (core.result.Result Member Error)
@@ -5820,7 +6730,7 @@ def rules.own_member
   | core.result.Result.Err e => ok (core.result.Result.Err e)
 
 /-- [ai_town_kernel::rules::dispatch_say]:
-    Source: 'kernel/src/rules.rs', lines 1668:0-1692:1 -/
+    Source: 'kernel/src/rules.rs', lines 1677:0-1701:1 -/
 def rules.dispatch_say
   (s : Snapshot) (owner : Std.U64) (text : alloc.vec.Vec Std.U8)
   (now : Std.U64) :
@@ -5901,7 +6811,7 @@ def rules.dispatch_say
   else ok (core.result.Result.Err Error.BadText, s)
 
 /-- [ai_town_kernel::rules::dispatch_typing]:
-    Source: 'kernel/src/rules.rs', lines 1651:0-1666:1 -/
+    Source: 'kernel/src/rules.rs', lines 1660:0-1675:1 -/
 def rules.dispatch_typing
   (s : Snapshot) (owner : Std.U64) (now : Std.U64) :
   Result ((core.result.Result Reply Error) × Snapshot)
@@ -5957,10 +6867,10 @@ def rules.stop_conv_loop0.body
   (s : Snapshot) (conv : Std.U64) (players : alloc.vec.Vec Std.U64)
   (i : Std.Usize) :
   Result (ControlFlow ((alloc.vec.Vec Std.U64) × Std.Usize) (Meta × Terrain
-    × (alloc.vec.Vec Player) × (alloc.vec.Vec PathNode) × (alloc.vec.Vec
-    Conversation) × (alloc.vec.Vec Member) × (alloc.vec.Vec Agent) ×
-    (alloc.vec.Vec Memory) × (alloc.vec.Vec Message) × (alloc.vec.Vec
-    Std.U64)))
+    × MotionHistory × (alloc.vec.Vec Player) × (alloc.vec.Vec PathNode) ×
+    (alloc.vec.Vec Conversation) × (alloc.vec.Vec Member) × (alloc.vec.Vec
+    Agent) × (alloc.vec.Vec Memory) × (alloc.vec.Vec Message) ×
+    (alloc.vec.Vec Std.U64)))
   := do
   let i1 := alloc.vec.Vec.len s.members
   if i < i1
@@ -5975,8 +6885,8 @@ def rules.stop_conv_loop0.body
     let i2 ← i + 1#usize
     ok (cont (players1, i2))
   else
-    ok (done (s.meta, s.terrain, s.players, s.paths, s.conversations,
-      s.members, s.agents, s.memories, s.messages, players))
+    ok (done (s.meta, s.terrain, s.motion_history, s.players, s.paths,
+      s.conversations, s.members, s.agents, s.memories, s.messages, players))
 
 /-- [ai_town_kernel::rules::stop_conv]: loop 0:
     Source: 'kernel/src/rules.rs', lines 484:4-489:5 -/
@@ -5984,10 +6894,10 @@ def rules.stop_conv_loop0.body
 def rules.stop_conv_loop0
   (s : Snapshot) (conv : Std.U64) (players : alloc.vec.Vec Std.U64)
   (i : Std.Usize) :
-  Result (Meta × Terrain × (alloc.vec.Vec Player) × (alloc.vec.Vec PathNode)
-    × (alloc.vec.Vec Conversation) × (alloc.vec.Vec Member) × (alloc.vec.Vec
-    Agent) × (alloc.vec.Vec Memory) × (alloc.vec.Vec Message) ×
-    (alloc.vec.Vec Std.U64))
+  Result (Meta × Terrain × MotionHistory × (alloc.vec.Vec Player) ×
+    (alloc.vec.Vec PathNode) × (alloc.vec.Vec Conversation) × (alloc.vec.Vec
+    Member) × (alloc.vec.Vec Agent) × (alloc.vec.Vec Memory) ×
+    (alloc.vec.Vec Message) × (alloc.vec.Vec Std.U64))
   := do
   loop
     (fun (players1, i1) => rules.stop_conv_loop0.body s conv players1 i1)
@@ -6147,7 +7057,7 @@ def rules.stop_conv_loop3
     Source: 'kernel/src/rules.rs', lines 481:0-520:1 -/
 def rules.stop_conv
   (s : Snapshot) (conv : Std.U64) (now : Std.U64) : Result Snapshot := do
-  let (m, t, v, v1, v2, v3, v4, v5, v6, players) ←
+  let (m, t, mh, v, v1, v2, v3, v4, v5, v6, players) ←
     rules.stop_conv_loop0 s conv (alloc.vec.Vec.new Std.U64) 0#usize
   let v7 ← rules.stop_conv_loop1 v4 conv now players 0#usize
   let members ←
@@ -6158,6 +7068,7 @@ def rules.stop_conv
     {
       «meta» := m,
       terrain := t,
+      motion_history := mh,
       players := v,
       paths := v1,
       conversations := convs,
@@ -6168,7 +7079,7 @@ def rules.stop_conv
     }
 
 /-- [ai_town_kernel::rules::dispatch_leave_conv]:
-    Source: 'kernel/src/rules.rs', lines 1642:0-1649:1 -/
+    Source: 'kernel/src/rules.rs', lines 1651:0-1658:1 -/
 def rules.dispatch_leave_conv
   (s : Snapshot) (owner : Std.U64) (now : Std.U64) :
   Result ((core.result.Result Reply Error) × Snapshot)
@@ -6189,7 +7100,7 @@ def rules.dispatch_leave_conv
   | core.result.Result.Err e => ok (core.result.Result.Err e, s)
 
 /-- [ai_town_kernel::rules::dispatch_reject]:
-    Source: 'kernel/src/rules.rs', lines 1630:0-1640:1 -/
+    Source: 'kernel/src/rules.rs', lines 1639:0-1649:1 -/
 def rules.dispatch_reject
   (s : Snapshot) (owner : Std.U64) (now : Std.U64) :
   Result ((core.result.Result Reply Error) × Snapshot)
@@ -6213,7 +7124,7 @@ def rules.dispatch_reject
   | core.result.Result.Err e => ok (core.result.Result.Err e, s)
 
 /-- [ai_town_kernel::rules::stop_motion]:
-    Source: 'kernel/src/rules.rs', lines 1408:0-1414:1 -/
+    Source: 'kernel/src/rules.rs', lines 1417:0-1423:1 -/
 def rules.stop_motion (p : Player) : Result Player := do
   ok
     {
@@ -6289,7 +7200,7 @@ def rules.halt (s : Snapshot) (id : Std.U64) : Result Snapshot := do
     ok { s with players := v1, paths := v }
 
 /-- [ai_town_kernel::rules::dispatch_accept]:
-    Source: 'kernel/src/rules.rs', lines 1614:0-1628:1 -/
+    Source: 'kernel/src/rules.rs', lines 1623:0-1637:1 -/
 def rules.dispatch_accept
   (s : Snapshot) (owner : Std.U64) (now : Std.U64) :
   Result ((core.result.Result Reply Error) × Snapshot)
@@ -6327,7 +7238,7 @@ def rules.dispatch_accept
   | core.result.Result.Err e => ok (core.result.Result.Err e, s)
 
 /-- [ai_town_kernel::rules::dispatch_start]:
-    Source: 'kernel/src/rules.rs', lines 1576:0-1604:1 -/
+    Source: 'kernel/src/rules.rs', lines 1585:0-1613:1 -/
 def rules.dispatch_start
   (s : Snapshot) (owner : Std.U64) (invitee : Std.U64) (now : Std.U64) :
   Result ((core.result.Result Reply Error) × Snapshot)
@@ -6402,7 +7313,7 @@ def rules.dispatch_start
   | core.result.Result.Err e => ok (core.result.Result.Err e, s)
 
 /-- [ai_town_kernel::rules::dispatch_stop]:
-    Source: 'kernel/src/rules.rs', lines 1567:0-1574:1 -/
+    Source: 'kernel/src/rules.rs', lines 1576:0-1583:1 -/
 def rules.dispatch_stop
   (s : Snapshot) (owner : Std.U64) (now : Std.U64) :
   Result ((core.result.Result Reply Error) × Snapshot)
@@ -6423,7 +7334,7 @@ def rules.dispatch_stop
   | core.result.Result.Err e => ok (core.result.Result.Err e, s)
 
 /-- [ai_town_kernel::rules::require_world]:
-    Source: 'kernel/src/rules.rs', lines 1416:0-1422:1 -/
+    Source: 'kernel/src/rules.rs', lines 1425:0-1431:1 -/
 def rules.require_world
   (s : Snapshot) : Result (core.result.Result Unit Error) := do
   if s.meta.width = 0#u32
@@ -9461,7 +10372,7 @@ def rules.begin_move
                   ok (core.result.Result.Ok (), s4)
 
 /-- [ai_town_kernel::rules::dispatch_move]:
-    Source: 'kernel/src/rules.rs', lines 1560:0-1565:1 -/
+    Source: 'kernel/src/rules.rs', lines 1569:0-1574:1 -/
 def rules.dispatch_move
   (s : Snapshot) (owner : Std.U64) (x : Std.U32) (y : Std.U32) (now : Std.U64)
   :
@@ -9592,7 +10503,7 @@ def rules.remove_player
   ok { s1 with players := v1, paths := v, agents := v2 }
 
 /-- [ai_town_kernel::rules::dispatch_leave]:
-    Source: 'kernel/src/rules.rs', lines 1554:0-1558:1 -/
+    Source: 'kernel/src/rules.rs', lines 1563:0-1567:1 -/
 def rules.dispatch_leave
   (s : Snapshot) (owner : Std.U64) (now : Std.U64) :
   Result ((core.result.Result Reply Error) × Snapshot)
@@ -9605,7 +10516,7 @@ def rules.dispatch_leave
   | core.result.Result.Err e => ok (core.result.Result.Err e, s)
 
 /-- [ai_town_kernel::rules::human_count]: loop body 0:
-    Source: 'kernel/src/rules.rs', lines 1496:4-1501:5 -/
+    Source: 'kernel/src/rules.rs', lines 1505:4-1510:5 -/
 @[rust_loop_body]
 def rules.human_count_loop.body
   (s : Snapshot) (n : Std.Usize) (i : Std.Usize) :
@@ -9625,7 +10536,7 @@ def rules.human_count_loop.body
   else ok (done n)
 
 /-- [ai_town_kernel::rules::human_count]: loop 0:
-    Source: 'kernel/src/rules.rs', lines 1496:4-1501:5 -/
+    Source: 'kernel/src/rules.rs', lines 1505:4-1510:5 -/
 @[rust_loop]
 def rules.human_count_loop
   (s : Snapshot) (n : Std.Usize) (i : Std.Usize) : Result Std.Usize := do
@@ -9634,7 +10545,7 @@ def rules.human_count_loop
     (n, i)
 
 /-- [ai_town_kernel::rules::human_count]:
-    Source: 'kernel/src/rules.rs', lines 1493:0-1503:1 -/
+    Source: 'kernel/src/rules.rs', lines 1502:0-1512:1 -/
 @[reducible]
 def rules.human_count (s : Snapshot) : Result Std.Usize := do
   rules.human_count_loop s 0#usize 0#usize
@@ -9762,7 +10673,7 @@ def rules.spawn_at
         near n 0#u64
 
 /-- [ai_town_kernel::rules::dispatch_join]:
-    Source: 'kernel/src/rules.rs', lines 1505:0-1545:1 -/
+    Source: 'kernel/src/rules.rs', lines 1514:0-1554:1 -/
 def rules.dispatch_join
   (s : Snapshot) (owner : Std.U64) («name» : alloc.vec.Vec Std.U8)
   (character : Std.U32) (now : Std.U64) :
@@ -9832,7 +10743,7 @@ def rules.dispatch_join
   | core.result.Result.Err e => ok (core.result.Result.Err e, s)
 
 /-- [ai_town_kernel::rules::dispatch_agent]:
-    Source: 'kernel/src/rules.rs', lines 1443:0-1491:1 -/
+    Source: 'kernel/src/rules.rs', lines 1452:0-1500:1 -/
 def rules.dispatch_agent
   (s : Snapshot) («name» : alloc.vec.Vec Std.U8) (character : Std.U32)
   (identity : alloc.vec.Vec Std.U8) (plan : alloc.vec.Vec Std.U8)
@@ -9920,7 +10831,7 @@ def rules.dispatch_agent
   | core.result.Result.Err e => ok (core.result.Result.Err e, s)
 
 /-- [ai_town_kernel::rules::dispatch_init]:
-    Source: 'kernel/src/rules.rs', lines 1424:0-1441:1 -/
+    Source: 'kernel/src/rules.rs', lines 1433:0-1450:1 -/
 def rules.dispatch_init
   (s : Snapshot) (width : Std.U32) (height : Std.U32)
   (mask : alloc.vec.Vec Std.U8) (now : Std.U64) :
@@ -10283,7 +11194,7 @@ structure rules.TickScratch where
   prop_on : alloc.vec.Vec Std.U32
 
 /-- [ai_town_kernel::rules::path_pose_at]:
-    Source: 'kernel/src/rules.rs', lines 1320:0-1337:1 -/
+    Source: 'kernel/src/rules.rs', lines 1329:0-1346:1 -/
 def rules.path_pose_at
   (s : Snapshot) (i : Std.Usize) (now : Std.U64) (scratch : rules.TickScratch)
   :
@@ -10332,7 +11243,7 @@ def rules.path_pose_at
     geom.path_pose s1 now
 
 /-- [ai_town_kernel::rules::drop_path_ids]: loop body 1:
-    Source: 'kernel/src/rules.rs', lines 1294:8-1299:9 -/
+    Source: 'kernel/src/rules.rs', lines 1303:8-1308:9 -/
 @[rust_loop_body]
 def rules.drop_path_ids_loop0_loop0.body
   (paths : alloc.vec.Vec PathNode) (ids : Slice Std.U64) (i : Std.Usize)
@@ -10354,7 +11265,7 @@ def rules.drop_path_ids_loop0_loop0.body
   else ok (done drop)
 
 /-- [ai_town_kernel::rules::drop_path_ids]: loop 1:
-    Source: 'kernel/src/rules.rs', lines 1294:8-1299:9 -/
+    Source: 'kernel/src/rules.rs', lines 1303:8-1308:9 -/
 @[rust_loop]
 def rules.drop_path_ids_loop0_loop0
   (paths : alloc.vec.Vec PathNode) (ids : Slice Std.U64) (i : Std.Usize)
@@ -10367,7 +11278,7 @@ def rules.drop_path_ids_loop0_loop0
     (drop, j)
 
 /-- [ai_town_kernel::rules::drop_path_ids]: loop body 0:
-    Source: 'kernel/src/rules.rs', lines 1291:4-1304:5 -/
+    Source: 'kernel/src/rules.rs', lines 1300:4-1313:5 -/
 @[rust_loop_body]
 def rules.drop_path_ids_loop0.body
   (paths : alloc.vec.Vec PathNode) (ids : Slice Std.U64)
@@ -10394,7 +11305,7 @@ def rules.drop_path_ids_loop0.body
   else ok (done out)
 
 /-- [ai_town_kernel::rules::drop_path_ids]: loop 0:
-    Source: 'kernel/src/rules.rs', lines 1291:4-1304:5 -/
+    Source: 'kernel/src/rules.rs', lines 1300:4-1313:5 -/
 @[rust_loop]
 def rules.drop_path_ids_loop0
   (paths : alloc.vec.Vec PathNode) (ids : Slice Std.U64)
@@ -10406,7 +11317,7 @@ def rules.drop_path_ids_loop0
     (out, i)
 
 /-- [ai_town_kernel::rules::drop_path_ids]:
-    Source: 'kernel/src/rules.rs', lines 1288:0-1306:1 -/
+    Source: 'kernel/src/rules.rs', lines 1297:0-1315:1 -/
 @[reducible]
 def rules.drop_path_ids
   (paths : alloc.vec.Vec PathNode) (ids : Slice Std.U64) :
@@ -10415,7 +11326,7 @@ def rules.drop_path_ids
   rules.drop_path_ids_loop0 paths ids (alloc.vec.Vec.new PathNode) 0#usize
 
 /-- [ai_town_kernel::rules::id_limit_one]:
-    Source: 'kernel/src/rules.rs', lines 1226:0-1233:1 -/
+    Source: 'kernel/src/rules.rs', lines 1235:0-1242:1 -/
 def rules.id_limit_one (s : Snapshot) : Result (Option Std.Usize) := do
   if s.meta.next_id = 0#u64
   then ok none
@@ -10426,7 +11337,7 @@ def rules.id_limit_one (s : Snapshot) : Result (Option Std.Usize) := do
          ok (some i)
 
 /-- [ai_town_kernel::rules::grow_u64]: loop body 0:
-    Source: 'kernel/src/rules.rs', lines 1117:4-1119:5 -/
+    Source: 'kernel/src/rules.rs', lines 1126:4-1128:5 -/
 @[rust_loop_body]
 def rules.grow_u64_loop.body
   (n : Std.Usize) (v : alloc.vec.Vec Std.U64) :
@@ -10439,7 +11350,7 @@ def rules.grow_u64_loop.body
   else ok (done v)
 
 /-- [ai_town_kernel::rules::grow_u64]: loop 0:
-    Source: 'kernel/src/rules.rs', lines 1117:4-1119:5 -/
+    Source: 'kernel/src/rules.rs', lines 1126:4-1128:5 -/
 @[rust_loop]
 def rules.grow_u64_loop
   (v : alloc.vec.Vec Std.U64) (n : Std.Usize) :
@@ -10450,7 +11361,7 @@ def rules.grow_u64_loop
     v
 
 /-- [ai_town_kernel::rules::grow_u64]:
-    Source: 'kernel/src/rules.rs', lines 1116:0-1120:1 -/
+    Source: 'kernel/src/rules.rs', lines 1125:0-1129:1 -/
 @[reducible]
 def rules.grow_u64
   (v : alloc.vec.Vec Std.U64) (n : Std.Usize) :
@@ -10459,7 +11370,7 @@ def rules.grow_u64
   rules.grow_u64_loop v n
 
 /-- [ai_town_kernel::rules::grow_u32]: loop body 0:
-    Source: 'kernel/src/rules.rs', lines 1111:4-1113:5 -/
+    Source: 'kernel/src/rules.rs', lines 1120:4-1122:5 -/
 @[rust_loop_body]
 def rules.grow_u32_loop.body
   (n : Std.Usize) (v : alloc.vec.Vec Std.U32) :
@@ -10472,7 +11383,7 @@ def rules.grow_u32_loop.body
   else ok (done v)
 
 /-- [ai_town_kernel::rules::grow_u32]: loop 0:
-    Source: 'kernel/src/rules.rs', lines 1111:4-1113:5 -/
+    Source: 'kernel/src/rules.rs', lines 1120:4-1122:5 -/
 @[rust_loop]
 def rules.grow_u32_loop
   (v : alloc.vec.Vec Std.U32) (n : Std.Usize) :
@@ -10483,7 +11394,7 @@ def rules.grow_u32_loop
     v
 
 /-- [ai_town_kernel::rules::grow_u32]:
-    Source: 'kernel/src/rules.rs', lines 1110:0-1114:1 -/
+    Source: 'kernel/src/rules.rs', lines 1119:0-1123:1 -/
 @[reducible]
 def rules.grow_u32
   (v : alloc.vec.Vec Std.U32) (n : Std.Usize) :
@@ -10492,7 +11403,7 @@ def rules.grow_u32
   rules.grow_u32_loop v n
 
 /-- [ai_town_kernel::rules::positions_round]: loop body 0:
-    Source: 'kernel/src/rules.rs', lines 1143:4-1145:5 -/
+    Source: 'kernel/src/rules.rs', lines 1152:4-1154:5 -/
 @[rust_loop_body]
 def rules.positions_round_loop0.body
   (cells : Std.Usize) (ni : geom.NearIndex) :
@@ -10507,7 +11418,7 @@ def rules.positions_round_loop0.body
   else ok (done (ni.width, ni.height, ni.head, ni.next))
 
 /-- [ai_town_kernel::rules::positions_round]: loop 0:
-    Source: 'kernel/src/rules.rs', lines 1143:4-1145:5 -/
+    Source: 'kernel/src/rules.rs', lines 1152:4-1154:5 -/
 @[rust_loop]
 def rules.positions_round_loop0
   (ni : geom.NearIndex) (cells : Std.Usize) :
@@ -10519,7 +11430,7 @@ def rules.positions_round_loop0
     ni
 
 /-- [ai_town_kernel::rules::positions_round]: loop body 1:
-    Source: 'kernel/src/rules.rs', lines 1146:4-1148:5 -/
+    Source: 'kernel/src/rules.rs', lines 1155:4-1157:5 -/
 @[rust_loop_body]
 def rules.positions_round_loop1.body
   (n : Std.Usize) (v : alloc.vec.Vec Std.U32) :
@@ -10532,7 +11443,7 @@ def rules.positions_round_loop1.body
   else ok (done v)
 
 /-- [ai_town_kernel::rules::positions_round]: loop 1:
-    Source: 'kernel/src/rules.rs', lines 1146:4-1148:5 -/
+    Source: 'kernel/src/rules.rs', lines 1155:4-1157:5 -/
 @[rust_loop]
 def rules.positions_round_loop1
   (v : alloc.vec.Vec Std.U32) (n : Std.Usize) :
@@ -10543,11 +11454,11 @@ def rules.positions_round_loop1
     v
 
 /-- [ai_town_kernel::rules::positions_round]: loop body 2:
-    Source: 'kernel/src/rules.rs', lines 1150:4-1171:5 -/
+    Source: 'kernel/src/rules.rs', lines 1159:4-1180:5 -/
 @[rust_loop_body]
 def rules.positions_round_loop2.body
   (i : Std.U64) (i1 : Std.U64) (i2 : Std.U32) (i3 : Std.U32) (b : Bool)
-  (i4 : Std.U32) (t : Terrain) (v : alloc.vec.Vec Player)
+  (i4 : Std.U32) (t : Terrain) (mh : MotionHistory) (v : alloc.vec.Vec Player)
   (v1 : alloc.vec.Vec PathNode) (v2 : alloc.vec.Vec Conversation)
   (v3 : alloc.vec.Vec Member) (v4 : alloc.vec.Vec Agent)
   (v5 : alloc.vec.Vec Memory) (v6 : alloc.vec.Vec Message) (now : Std.U64)
@@ -10627,6 +11538,7 @@ def rules.positions_round_loop2.body
                   pathfinds := i4
                 },
               terrain := t,
+              motion_history := mh,
               players := v,
               paths := v1,
               conversations := v2,
@@ -10702,11 +11614,11 @@ def rules.positions_round_loop2.body
   else ok (done (v15, v16, v17, v18, v19, v20, v21, v22, v23))
 
 /-- [ai_town_kernel::rules::positions_round]: loop 2:
-    Source: 'kernel/src/rules.rs', lines 1150:4-1171:5 -/
+    Source: 'kernel/src/rules.rs', lines 1159:4-1180:5 -/
 @[rust_loop]
 def rules.positions_round_loop2
   (i : Std.U64) (i1 : Std.U64) (i2 : Std.U32) (i3 : Std.U32) (b : Bool)
-  (i4 : Std.U32) (t : Terrain) (v : alloc.vec.Vec Player)
+  (i4 : Std.U32) (t : Terrain) (mh : MotionHistory) (v : alloc.vec.Vec Player)
   (v1 : alloc.vec.Vec PathNode) (v2 : alloc.vec.Vec Conversation)
   (v3 : alloc.vec.Vec Member) (v4 : alloc.vec.Vec Agent)
   (v5 : alloc.vec.Vec Memory) (v6 : alloc.vec.Vec Message) (now : Std.U64)
@@ -10727,13 +11639,13 @@ def rules.positions_round_loop2
   := do
   loop
     (fun (v24, v25, v26, v27, v28, v29, v30, v31, v32, i9) =>
-      rules.positions_round_loop2.body i i1 i2 i3 b i4 t v v1 v2 v3 v4 v5 v6
+      rules.positions_round_loop2.body i i1 i2 i3 b i4 t mh v v1 v2 v3 v4 v5 v6
       now v9 v10 b1 i5 i6 v11 v12 v13 i7 v21 v22 v23 n v24 v25 v26 v27 v28 v29
       v30 v31 v32 i9)
     (v7, v8, v14, v15, v16, v17, v18, v19, v20, i8)
 
 /-- [ai_town_kernel::rules::positions_round]: loop body 3:
-    Source: 'kernel/src/rules.rs', lines 1193:4-1219:5 -/
+    Source: 'kernel/src/rules.rs', lines 1202:4-1228:5 -/
 @[rust_loop_body]
 def rules.positions_round_loop3.body
   (now : Std.U64) (v : alloc.vec.Vec Std.U32) (v1 : alloc.vec.Vec Std.U32)
@@ -10858,7 +11770,7 @@ def rules.positions_round_loop3.body
   else ok (done (v7, v8, i))
 
 /-- [ai_town_kernel::rules::positions_round]: loop 3:
-    Source: 'kernel/src/rules.rs', lines 1193:4-1219:5 -/
+    Source: 'kernel/src/rules.rs', lines 1202:4-1228:5 -/
 @[rust_loop]
 def rules.positions_round_loop3
   (v : alloc.vec.Vec Player) (now : Std.U64) (v1 : alloc.vec.Vec Std.U32)
@@ -10874,7 +11786,7 @@ def rules.positions_round_loop3
     (v, v3, i, i1)
 
 /-- [ai_town_kernel::rules::positions_round]:
-    Source: 'kernel/src/rules.rs', lines 1123:0-1224:1 -/
+    Source: 'kernel/src/rules.rs', lines 1132:0-1233:1 -/
 def rules.positions_round
   (s : Snapshot) (now : Std.U64) (scratch : rules.TickScratch) :
   Result (Snapshot × rules.TickScratch)
@@ -10911,10 +11823,11 @@ def rules.positions_round
   let v14 ← rules.positions_round_loop1 v13 n
   let (v15, v16, v17, v18, v19, v20, v21, v22, v23) ←
     rules.positions_round_loop2 s1.meta.next_id s1.meta.now_ms s1.meta.width
-      s1.meta.height s1.meta.frozen s1.meta.pathfinds s1.terrain s1.players
-      s1.paths s1.conversations s1.members s1.agents s1.memories s1.messages
-      now v v1 scratch1.start scratch1.end b i2 i3 v12 v14 scratch1.clear
-      scratch1.nclear v2 v3 v4 v5 v6 v7 v8 v9 v10 v11 n 0#usize
+      s1.meta.height s1.meta.frozen s1.meta.pathfinds s1.terrain
+      s1.motion_history s1.players s1.paths s1.conversations s1.members
+      s1.agents s1.memories s1.messages now v v1 scratch1.start scratch1.end b
+      i2 i3 v12 v14 scratch1.clear scratch1.nclear v2 v3 v4 v5 v6 v7 v8 v9 v10
+      v11 n 0#usize
   let (s2, index_mut_back) ←
     alloc.vec.Vec.index_mut (core.slice.index.SliceIndexRangeToUsizeSlice
       Std.U32) v15 { «end» := n }
@@ -11075,7 +11988,7 @@ def step.agent_step
   else ok { x, y, face_dx, face_dy, speed := 0#u32, moved := false }
 
 /-- [ai_town_kernel::rules::move_one]:
-    Source: 'kernel/src/rules.rs', lines 1339:0-1406:1 -/
+    Source: 'kernel/src/rules.rs', lines 1348:0-1415:1 -/
 def rules.move_one
   (s : Snapshot) (i : Std.Usize) (now : Std.U64) (scratch : rules.TickScratch)
   :
@@ -11215,7 +12128,7 @@ def rules.move_one
           ok ({ s with players := v2 }, scratch)
 
 /-- [ai_town_kernel::rules::positions_seq]: loop body 0:
-    Source: 'kernel/src/rules.rs', lines 1085:4-1087:5 -/
+    Source: 'kernel/src/rules.rs', lines 1094:4-1096:5 -/
 @[rust_loop_body]
 def rules.positions_seq_loop0.body
   (n : Std.Usize) (v : alloc.vec.Vec Std.U32) :
@@ -11228,7 +12141,7 @@ def rules.positions_seq_loop0.body
   else ok (done v)
 
 /-- [ai_town_kernel::rules::positions_seq]: loop 0:
-    Source: 'kernel/src/rules.rs', lines 1085:4-1087:5 -/
+    Source: 'kernel/src/rules.rs', lines 1094:4-1096:5 -/
 @[rust_loop]
 def rules.positions_seq_loop0
   (v : alloc.vec.Vec Std.U32) (n : Std.Usize) :
@@ -11239,7 +12152,7 @@ def rules.positions_seq_loop0
     v
 
 /-- [ai_town_kernel::rules::positions_seq]: loop body 1:
-    Source: 'kernel/src/rules.rs', lines 1088:4-1090:5 -/
+    Source: 'kernel/src/rules.rs', lines 1097:4-1099:5 -/
 @[rust_loop_body]
 def rules.positions_seq_loop1.body
   (n : Std.Usize) (v : alloc.vec.Vec Std.U32) :
@@ -11252,7 +12165,7 @@ def rules.positions_seq_loop1.body
   else ok (done v)
 
 /-- [ai_town_kernel::rules::positions_seq]: loop 1:
-    Source: 'kernel/src/rules.rs', lines 1088:4-1090:5 -/
+    Source: 'kernel/src/rules.rs', lines 1097:4-1099:5 -/
 @[rust_loop]
 def rules.positions_seq_loop1
   (v : alloc.vec.Vec Std.U32) (n : Std.Usize) :
@@ -11263,7 +12176,7 @@ def rules.positions_seq_loop1
     v
 
 /-- [ai_town_kernel::rules::positions_seq]: loop body 2:
-    Source: 'kernel/src/rules.rs', lines 1092:4-1096:5 -/
+    Source: 'kernel/src/rules.rs', lines 1101:4-1105:5 -/
 @[rust_loop_body]
 def rules.positions_seq_loop2.body
   (v : alloc.vec.Vec Player) (n : Std.Usize) (v1 : alloc.vec.Vec Std.U32)
@@ -11288,7 +12201,7 @@ def rules.positions_seq_loop2.body
   else ok (done (v1, v2))
 
 /-- [ai_town_kernel::rules::positions_seq]: loop 2:
-    Source: 'kernel/src/rules.rs', lines 1092:4-1096:5 -/
+    Source: 'kernel/src/rules.rs', lines 1101:4-1105:5 -/
 @[rust_loop]
 def rules.positions_seq_loop2
   (v : alloc.vec.Vec Player) (v1 : alloc.vec.Vec Std.U32)
@@ -11300,16 +12213,16 @@ def rules.positions_seq_loop2
     (v1, v2, i)
 
 /-- [ai_town_kernel::rules::positions_seq]: loop body 3:
-    Source: 'kernel/src/rules.rs', lines 1100:4-1103:5 -/
+    Source: 'kernel/src/rules.rs', lines 1109:4-1112:5 -/
 @[rust_loop_body]
 def rules.positions_seq_loop3.body
   (now : Std.U64) (s : Snapshot) (scratch : rules.TickScratch) (i : Std.Usize)
   :
   Result (ControlFlow (Snapshot × rules.TickScratch × Std.Usize) (Meta ×
-    Terrain × (alloc.vec.Vec Player) × (alloc.vec.Vec PathNode) ×
-    (alloc.vec.Vec Conversation) × (alloc.vec.Vec Member) × (alloc.vec.Vec
-    Agent) × (alloc.vec.Vec Memory) × (alloc.vec.Vec Message) ×
-    rules.TickScratch))
+    Terrain × MotionHistory × (alloc.vec.Vec Player) × (alloc.vec.Vec
+    PathNode) × (alloc.vec.Vec Conversation) × (alloc.vec.Vec Member) ×
+    (alloc.vec.Vec Agent) × (alloc.vec.Vec Memory) × (alloc.vec.Vec Message)
+    × rules.TickScratch))
   := do
   let i1 := alloc.vec.Vec.len s.players
   if i < i1
@@ -11318,19 +12231,19 @@ def rules.positions_seq_loop3.body
     let i2 ← i + 1#usize
     ok (cont (s1, scratch1, i2))
   else
-    ok (done (s.meta, s.terrain, s.players, s.paths, s.conversations,
-      s.members, s.agents, s.memories, s.messages, scratch))
+    ok (done (s.meta, s.terrain, s.motion_history, s.players, s.paths,
+      s.conversations, s.members, s.agents, s.memories, s.messages, scratch))
 
 /-- [ai_town_kernel::rules::positions_seq]: loop 3:
-    Source: 'kernel/src/rules.rs', lines 1100:4-1103:5 -/
+    Source: 'kernel/src/rules.rs', lines 1109:4-1112:5 -/
 @[rust_loop]
 def rules.positions_seq_loop3
   (s : Snapshot) (now : Std.U64) (scratch : rules.TickScratch) (i : Std.Usize)
   :
-  Result (Meta × Terrain × (alloc.vec.Vec Player) × (alloc.vec.Vec PathNode)
-    × (alloc.vec.Vec Conversation) × (alloc.vec.Vec Member) × (alloc.vec.Vec
-    Agent) × (alloc.vec.Vec Memory) × (alloc.vec.Vec Message) ×
-    rules.TickScratch)
+  Result (Meta × Terrain × MotionHistory × (alloc.vec.Vec Player) ×
+    (alloc.vec.Vec PathNode) × (alloc.vec.Vec Conversation) × (alloc.vec.Vec
+    Member) × (alloc.vec.Vec Agent) × (alloc.vec.Vec Memory) ×
+    (alloc.vec.Vec Message) × rules.TickScratch)
   := do
   loop
     (fun (s1, scratch1, i1) => rules.positions_seq_loop3.body now s1 scratch1
@@ -11338,7 +12251,7 @@ def rules.positions_seq_loop3
     (s, scratch, i)
 
 /-- [ai_town_kernel::rules::positions_seq]:
-    Source: 'kernel/src/rules.rs', lines 1078:0-1108:1 -/
+    Source: 'kernel/src/rules.rs', lines 1087:0-1117:1 -/
 def rules.positions_seq
   (s : Snapshot) (now : Std.U64) (scratch : rules.TickScratch) :
   Result (Snapshot × rules.TickScratch)
@@ -11366,7 +12279,7 @@ def rules.positions_seq
     alloc.vec.Vec.index (core.slice.index.SliceIndexRangeToUsizeSlice Std.U32)
       v3 { «end» := n }
   let ni ← geom.near_fill scratch1.near s1.meta.width s1.meta.height s2 s3
-  let (m, t, v4, v5, v6, v7, v8, v9, v10, scratch2) ←
+  let (m, t, mh, v4, v5, v6, v7, v8, v9, v10, scratch2) ←
     rules.positions_seq_loop3 s1 now
       {
         scratch1
@@ -11383,6 +12296,7 @@ def rules.positions_seq
       ({
          «meta» := m,
          terrain := t,
+         motion_history := mh,
          players := v4,
          paths := v11,
          conversations := v6,
@@ -11396,6 +12310,7 @@ def rules.positions_seq
       ({
          «meta» := m,
          terrain := t,
+         motion_history := mh,
          players := v4,
          paths := v5,
          conversations := v6,
@@ -11406,7 +12321,7 @@ def rules.positions_seq
        }, scratch2)
 
 /-- [ai_town_kernel::rules::milli_saturating]:
-    Source: 'kernel/src/rules.rs', lines 1768:0-1770:1 -/
+    Source: 'kernel/src/rules.rs', lines 1778:0-1780:1 -/
 def rules.milli_saturating (value : Std.U32) : Result Std.U32 := do
   let i ← core.num.U32.MAX / MILLI
   if value > i
@@ -11414,7 +12329,7 @@ def rules.milli_saturating (value : Std.U32) : Result Std.U32 := do
   else value * MILLI
 
 /-- [ai_town_kernel::rules::pathfind_one]:
-    Source: 'kernel/src/rules.rs', lines 1041:0-1076:1 -/
+    Source: 'kernel/src/rules.rs', lines 1050:0-1085:1 -/
 def rules.pathfind_one
   (s : Snapshot) (i : Std.Usize) (now : Std.U64) : Result Snapshot := do
   let i1 := alloc.vec.Vec.len s.players
@@ -12012,12 +12927,12 @@ def rules.pathfind_one
           else ok { s with players := v }
 
 /-- [ai_town_kernel::rules::pathfind]: loop body 0:
-    Source: 'kernel/src/rules.rs', lines 1035:4-1038:5 -/
+    Source: 'kernel/src/rules.rs', lines 1044:4-1047:5 -/
 @[rust_loop_body]
 def rules.pathfind_loop.body
   (now : Std.U64) (s : Snapshot) (i : Std.Usize) :
-  Result (ControlFlow (Snapshot × Std.Usize) (Meta × Terrain ×
-    (alloc.vec.Vec Player) × (alloc.vec.Vec PathNode) × (alloc.vec.Vec
+  Result (ControlFlow (Snapshot × Std.Usize) (Meta × Terrain × MotionHistory
+    × (alloc.vec.Vec Player) × (alloc.vec.Vec PathNode) × (alloc.vec.Vec
     Conversation) × (alloc.vec.Vec Member) × (alloc.vec.Vec Agent) ×
     (alloc.vec.Vec Memory) × (alloc.vec.Vec Message)))
   := do
@@ -12028,30 +12943,33 @@ def rules.pathfind_loop.body
     let i2 ← i + 1#usize
     ok (cont (s1, i2))
   else
-    ok (done (s.meta, s.terrain, s.players, s.paths, s.conversations,
-      s.members, s.agents, s.memories, s.messages))
+    ok (done (s.meta, s.terrain, s.motion_history, s.players, s.paths,
+      s.conversations, s.members, s.agents, s.memories, s.messages))
 
 /-- [ai_town_kernel::rules::pathfind]: loop 0:
-    Source: 'kernel/src/rules.rs', lines 1035:4-1038:5 -/
+    Source: 'kernel/src/rules.rs', lines 1044:4-1047:5 -/
 @[rust_loop]
 def rules.pathfind_loop
   (s : Snapshot) (now : Std.U64) (i : Std.Usize) :
-  Result (Meta × Terrain × (alloc.vec.Vec Player) × (alloc.vec.Vec PathNode)
-    × (alloc.vec.Vec Conversation) × (alloc.vec.Vec Member) × (alloc.vec.Vec
-    Agent) × (alloc.vec.Vec Memory) × (alloc.vec.Vec Message))
+  Result (Meta × Terrain × MotionHistory × (alloc.vec.Vec Player) ×
+    (alloc.vec.Vec PathNode) × (alloc.vec.Vec Conversation) × (alloc.vec.Vec
+    Member) × (alloc.vec.Vec Agent) × (alloc.vec.Vec Memory) ×
+    (alloc.vec.Vec Message))
   := do
   loop
     (fun (s1, i1) => rules.pathfind_loop.body now s1 i1)
     (s, i)
 
 /-- [ai_town_kernel::rules::pathfind]:
-    Source: 'kernel/src/rules.rs', lines 1033:0-1039:1 -/
+    Source: 'kernel/src/rules.rs', lines 1042:0-1048:1 -/
 def rules.pathfind (s : Snapshot) (now : Std.U64) : Result Snapshot := do
-  let (m, t, v, v1, v2, v3, v4, v5, v6) ← rules.pathfind_loop s now 0#usize
+  let (m, t, mh, v, v1, v2, v3, v4, v5, v6) ←
+    rules.pathfind_loop s now 0#usize
   ok
     {
       «meta» := m,
       terrain := t,
+      motion_history := mh,
       players := v,
       paths := v1,
       conversations := v2,
@@ -12118,7 +13036,7 @@ def rules.player_at
   else rules.player_index players id
 
 /-- [ai_town_kernel::rules::face_pair]:
-    Source: 'kernel/src/rules.rs', lines 1021:0-1031:1 -/
+    Source: 'kernel/src/rules.rs', lines 1030:0-1040:1 -/
 def rules.face_pair
   (s : Snapshot) (a : Std.U64) (b : Std.U64) : Result Snapshot := do
   let o ← rules.player_at s.players a
@@ -12162,7 +13080,7 @@ def rules.face_pair
       ok { s with players := v3 }
 
 /-- [ai_town_kernel::rules::SocialIndex]
-    Source: 'kernel/src/rules.rs', lines 672:0-678:1 -/
+    Source: 'kernel/src/rules.rs', lines 681:0-687:1 -/
 structure rules.SocialIndex where
   member : alloc.vec.Vec Std.U32
   conversation : alloc.vec.Vec Std.U32
@@ -12171,7 +13089,7 @@ structure rules.SocialIndex where
   count : alloc.vec.Vec Std.U32
 
 /-- [ai_town_kernel::rules::social_conv]:
-    Source: 'kernel/src/rules.rs', lines 718:0-723:1 -/
+    Source: 'kernel/src/rules.rs', lines 727:0-732:1 -/
 def rules.social_conv
   (index : rules.SocialIndex) (s : Snapshot) (conv : Std.U64) :
   Result (Option Std.Usize)
@@ -12191,7 +13109,7 @@ def rules.social_conv
   else rules.conv_index s.conversations conv
 
 /-- [ai_town_kernel::rules::social_member]:
-    Source: 'kernel/src/rules.rs', lines 711:0-716:1 -/
+    Source: 'kernel/src/rules.rs', lines 720:0-725:1 -/
 def rules.social_member
   (index : rules.SocialIndex) (s : Snapshot) (player : Std.U64) :
   Result (Option Std.Usize)
@@ -12211,7 +13129,7 @@ def rules.social_member
   else rules.member_index s.members player
 
 /-- [ai_town_kernel::rules::tick_conv]: loop body 0:
-    Source: 'kernel/src/rules.rs', lines 975:8-982:9 -/
+    Source: 'kernel/src/rules.rs', lines 984:8-991:9 -/
 @[rust_loop_body]
 def rules.tick_conv_loop.body
   (v : alloc.vec.Vec Member) (conv : Std.U64) (a : Std.U64) (b : Std.U64)
@@ -12242,7 +13160,7 @@ def rules.tick_conv_loop.body
   else ok (done (a, b, n))
 
 /-- [ai_town_kernel::rules::tick_conv]: loop 0:
-    Source: 'kernel/src/rules.rs', lines 975:8-982:9 -/
+    Source: 'kernel/src/rules.rs', lines 984:8-991:9 -/
 @[rust_loop]
 def rules.tick_conv_loop
   (v : alloc.vec.Vec Member) (conv : Std.U64) (a : Std.U64) (b : Std.U64)
@@ -12254,7 +13172,7 @@ def rules.tick_conv_loop
     (a, b, n, i)
 
 /-- [ai_town_kernel::rules::tick_conv]:
-    Source: 'kernel/src/rules.rs', lines 957:0-1019:1 -/
+    Source: 'kernel/src/rules.rs', lines 966:0-1028:1 -/
 def rules.tick_conv
   (s : Snapshot) (conv : Std.U64) (now : Std.U64) (index : rules.SocialIndex) :
   Result Snapshot
@@ -12657,7 +13575,7 @@ def rules.tick_conv
                   else ok { s with conversations := v }
 
 /-- [ai_town_kernel::rules::social_index]: loop body 0:
-    Source: 'kernel/src/rules.rs', lines 687:4-699:5 -/
+    Source: 'kernel/src/rules.rs', lines 696:4-708:5 -/
 @[rust_loop_body]
 def rules.social_index_loop0.body
   (s : Snapshot) (limit : Std.Usize) (v : alloc.vec.Vec Std.U32)
@@ -12734,7 +13652,7 @@ def rules.social_index_loop0.body
   else ok (done (s.conversations, v, v1, v2, v3))
 
 /-- [ai_town_kernel::rules::social_index]: loop 0:
-    Source: 'kernel/src/rules.rs', lines 687:4-699:5 -/
+    Source: 'kernel/src/rules.rs', lines 696:4-708:5 -/
 @[rust_loop]
 def rules.social_index_loop0
   (s : Snapshot) (limit : Std.Usize) (v : alloc.vec.Vec Std.U32)
@@ -12750,7 +13668,7 @@ def rules.social_index_loop0
     (v, v1, v2, v3, i)
 
 /-- [ai_town_kernel::rules::social_index]: loop body 1:
-    Source: 'kernel/src/rules.rs', lines 701:4-707:5 -/
+    Source: 'kernel/src/rules.rs', lines 710:4-716:5 -/
 @[rust_loop_body]
 def rules.social_index_loop1.body
   (v : alloc.vec.Vec Conversation) (limit : Std.Usize)
@@ -12788,7 +13706,7 @@ def rules.social_index_loop1.body
   else ok (done v1)
 
 /-- [ai_town_kernel::rules::social_index]: loop 1:
-    Source: 'kernel/src/rules.rs', lines 701:4-707:5 -/
+    Source: 'kernel/src/rules.rs', lines 710:4-716:5 -/
 @[rust_loop]
 def rules.social_index_loop1
   (v : alloc.vec.Vec Conversation) (limit : Std.Usize)
@@ -12800,7 +13718,7 @@ def rules.social_index_loop1
     (v1, i)
 
 /-- [ai_town_kernel::rules::social_index]:
-    Source: 'kernel/src/rules.rs', lines 680:0-709:1 -/
+    Source: 'kernel/src/rules.rs', lines 689:0-718:1 -/
 def rules.social_index (s : Snapshot) : Result rules.SocialIndex := do
   let o ← rules.id_limit_one s
   let limit ← match o with
@@ -12816,15 +13734,15 @@ def rules.social_index (s : Snapshot) : Result rules.SocialIndex := do
     }
 
 /-- [ai_town_kernel::rules::conversations]: loop body 0:
-    Source: 'kernel/src/rules.rs', lines 946:4-949:5 -/
+    Source: 'kernel/src/rules.rs', lines 955:4-958:5 -/
 @[rust_loop_body]
 def rules.conversations_loop0.body
   (s : Snapshot) (ids : alloc.vec.Vec Std.U64) (i : Std.Usize) :
   Result (ControlFlow ((alloc.vec.Vec Std.U64) × Std.Usize) (Meta × Terrain
-    × (alloc.vec.Vec Player) × (alloc.vec.Vec PathNode) × (alloc.vec.Vec
-    Conversation) × (alloc.vec.Vec Member) × (alloc.vec.Vec Agent) ×
-    (alloc.vec.Vec Memory) × (alloc.vec.Vec Message) × (alloc.vec.Vec
-    Std.U64)))
+    × MotionHistory × (alloc.vec.Vec Player) × (alloc.vec.Vec PathNode) ×
+    (alloc.vec.Vec Conversation) × (alloc.vec.Vec Member) × (alloc.vec.Vec
+    Agent) × (alloc.vec.Vec Memory) × (alloc.vec.Vec Message) ×
+    (alloc.vec.Vec Std.U64)))
   := do
   let i1 := alloc.vec.Vec.len s.conversations
   if i < i1
@@ -12836,25 +13754,25 @@ def rules.conversations_loop0.body
     let i2 ← i + 1#usize
     ok (cont (ids1, i2))
   else
-    ok (done (s.meta, s.terrain, s.players, s.paths, s.conversations,
-      s.members, s.agents, s.memories, s.messages, ids))
+    ok (done (s.meta, s.terrain, s.motion_history, s.players, s.paths,
+      s.conversations, s.members, s.agents, s.memories, s.messages, ids))
 
 /-- [ai_town_kernel::rules::conversations]: loop 0:
-    Source: 'kernel/src/rules.rs', lines 946:4-949:5 -/
+    Source: 'kernel/src/rules.rs', lines 955:4-958:5 -/
 @[rust_loop]
 def rules.conversations_loop0
   (s : Snapshot) (ids : alloc.vec.Vec Std.U64) (i : Std.Usize) :
-  Result (Meta × Terrain × (alloc.vec.Vec Player) × (alloc.vec.Vec PathNode)
-    × (alloc.vec.Vec Conversation) × (alloc.vec.Vec Member) × (alloc.vec.Vec
-    Agent) × (alloc.vec.Vec Memory) × (alloc.vec.Vec Message) ×
-    (alloc.vec.Vec Std.U64))
+  Result (Meta × Terrain × MotionHistory × (alloc.vec.Vec Player) ×
+    (alloc.vec.Vec PathNode) × (alloc.vec.Vec Conversation) × (alloc.vec.Vec
+    Member) × (alloc.vec.Vec Agent) × (alloc.vec.Vec Memory) ×
+    (alloc.vec.Vec Message) × (alloc.vec.Vec Std.U64))
   := do
   loop
     (fun (ids1, i1) => rules.conversations_loop0.body s ids1 i1)
     (ids, i)
 
 /-- [ai_town_kernel::rules::conversations]: loop body 1:
-    Source: 'kernel/src/rules.rs', lines 951:4-954:5 -/
+    Source: 'kernel/src/rules.rs', lines 960:4-963:5 -/
 @[rust_loop_body]
 def rules.conversations_loop1.body
   (now : Std.U64) (index : rules.SocialIndex) (ids : alloc.vec.Vec Std.U64)
@@ -12872,7 +13790,7 @@ def rules.conversations_loop1.body
   else ok (done s)
 
 /-- [ai_town_kernel::rules::conversations]: loop 1:
-    Source: 'kernel/src/rules.rs', lines 951:4-954:5 -/
+    Source: 'kernel/src/rules.rs', lines 960:4-963:5 -/
 @[rust_loop]
 def rules.conversations_loop1
   (s : Snapshot) (now : Std.U64) (index : rules.SocialIndex)
@@ -12884,15 +13802,16 @@ def rules.conversations_loop1
     (s, i)
 
 /-- [ai_town_kernel::rules::conversations]:
-    Source: 'kernel/src/rules.rs', lines 942:0-955:1 -/
+    Source: 'kernel/src/rules.rs', lines 951:0-964:1 -/
 def rules.conversations (s : Snapshot) (now : Std.U64) : Result Snapshot := do
   let index ← rules.social_index s
-  let (m, t, v, v1, v2, v3, v4, v5, v6, ids) ←
+  let (m, t, mh, v, v1, v2, v3, v4, v5, v6, ids) ←
     rules.conversations_loop0 s (alloc.vec.Vec.new Std.U64) 0#usize
   rules.conversations_loop1
     {
       «meta» := m,
       terrain := t,
+      motion_history := mh,
       players := v,
       paths := v1,
       conversations := v2,
@@ -12903,7 +13822,7 @@ def rules.conversations (s : Snapshot) (now : Std.U64) : Result Snapshot := do
     } now index ids 0#usize
 
 /-- [ai_town_kernel::rules::walk_target]:
-    Source: 'kernel/src/rules.rs', lines 931:0-940:1 -/
+    Source: 'kernel/src/rules.rs', lines 940:0-949:1 -/
 def rules.walk_target
   (ax : Std.U32) (ay : Std.U32) (bx : Std.U32) («by» : Std.U32) :
   Result (Std.U32 × Std.U32)
@@ -12926,7 +13845,7 @@ def rules.walk_target
        ok (i2, i3)
 
 /-- [ai_town_kernel::rules::agent_index]: loop body 0:
-    Source: 'kernel/src/rules.rs', lines 898:4-901:5 -/
+    Source: 'kernel/src/rules.rs', lines 907:4-910:5 -/
 @[rust_loop_body]
 def rules.agent_index_loop0.body
   (v : alloc.vec.Vec Agent) (id : Std.U64) (lo : Std.Usize) (hi : Std.Usize) :
@@ -12946,7 +13865,7 @@ def rules.agent_index_loop0.body
   else ok (done lo)
 
 /-- [ai_town_kernel::rules::agent_index]: loop 0:
-    Source: 'kernel/src/rules.rs', lines 898:4-901:5 -/
+    Source: 'kernel/src/rules.rs', lines 907:4-910:5 -/
 @[rust_loop]
 def rules.agent_index_loop0
   (v : alloc.vec.Vec Agent) (id : Std.U64) (lo : Std.Usize) (hi : Std.Usize) :
@@ -12957,7 +13876,7 @@ def rules.agent_index_loop0
     (lo, hi)
 
 /-- [ai_town_kernel::rules::agent_index]: loop body 1:
-    Source: 'kernel/src/rules.rs', lines 904:4-911:1 -/
+    Source: 'kernel/src/rules.rs', lines 913:4-920:1 -/
 @[rust_loop_body]
 def rules.agent_index_loop1.body
   (v : alloc.vec.Vec Agent) (id : Std.U64) (i : Std.Usize) :
@@ -12975,7 +13894,7 @@ def rules.agent_index_loop1.body
   else ok (done none)
 
 /-- [ai_town_kernel::rules::agent_index]: loop 1:
-    Source: 'kernel/src/rules.rs', lines 904:4-911:1 -/
+    Source: 'kernel/src/rules.rs', lines 913:4-920:1 -/
 @[rust_loop]
 def rules.agent_index_loop1
   (v : alloc.vec.Vec Agent) (id : Std.U64) (i : Std.Usize) :
@@ -12986,7 +13905,7 @@ def rules.agent_index_loop1
     i
 
 /-- [ai_town_kernel::rules::agent_index]: loop body 2:
-    Source: 'kernel/src/rules.rs', lines 904:4-911:1 -/
+    Source: 'kernel/src/rules.rs', lines 913:4-920:1 -/
 @[rust_loop_body]
 def rules.agent_index_loop2.body
   (v : alloc.vec.Vec Agent) (id : Std.U64) (i : Std.Usize) :
@@ -13004,7 +13923,7 @@ def rules.agent_index_loop2.body
   else ok (done none)
 
 /-- [ai_town_kernel::rules::agent_index]: loop 2:
-    Source: 'kernel/src/rules.rs', lines 904:4-911:1 -/
+    Source: 'kernel/src/rules.rs', lines 913:4-920:1 -/
 @[rust_loop]
 def rules.agent_index_loop2
   (v : alloc.vec.Vec Agent) (id : Std.U64) (i : Std.Usize) :
@@ -13015,7 +13934,7 @@ def rules.agent_index_loop2
     i
 
 /-- [ai_town_kernel::rules::agent_index]:
-    Source: 'kernel/src/rules.rs', lines 895:0-911:1 -/
+    Source: 'kernel/src/rules.rs', lines 904:0-920:1 -/
 def rules.agent_index
   (s : Snapshot) (id : Std.U64) : Result (Option Std.Usize) := do
   let hi := alloc.vec.Vec.len s.agents
@@ -13032,7 +13951,7 @@ def rules.agent_index
   else rules.agent_index_loop2 s.agents id 0#usize
 
 /-- [ai_town_kernel::rules::agent_op]:
-    Source: 'kernel/src/rules.rs', lines 913:0-918:1 -/
+    Source: 'kernel/src/rules.rs', lines 922:0-927:1 -/
 def rules.agent_op (s : Snapshot) (id : Std.U64) : Result Std.U32 := do
   let o ← rules.agent_index s id
   match o with
@@ -13044,7 +13963,7 @@ def rules.agent_op (s : Snapshot) (id : Std.U64) : Result Std.U32 := do
     ok a.op
 
 /-- [ai_town_kernel::rules::queue_speak]:
-    Source: 'kernel/src/rules.rs', lines 883:0-893:1 -/
+    Source: 'kernel/src/rules.rs', lines 892:0-902:1 -/
 def rules.queue_speak
   (s : Snapshot) (agent_id : Std.U64) (conv : Std.U64) (now : Std.U64) :
   Result Snapshot
@@ -13072,7 +13991,7 @@ def rules.queue_speak
       ok { s with agents := v2 }
 
 /-- [ai_town_kernel::rules::social_other]:
-    Source: 'kernel/src/rules.rs', lines 725:0-737:1 -/
+    Source: 'kernel/src/rules.rs', lines 734:0-746:1 -/
 def rules.social_other
   (index : rules.SocialIndex) (s : Snapshot) (conv : Std.U64)
   (player : Std.U64) :
@@ -13113,7 +14032,7 @@ def rules.social_other
   else rules.other_member s conv player
 
 /-- [ai_town_kernel::rules::tick_agent]:
-    Source: 'kernel/src/rules.rs', lines 755:0-881:1 -/
+    Source: 'kernel/src/rules.rs', lines 764:0-890:1 -/
 def rules.tick_agent
   (s : Snapshot) (i : Std.Usize) (now : Std.U64) (index : rules.SocialIndex) :
   Result Snapshot
@@ -15191,23 +16110,23 @@ def rules.tick_agent
               else ok s
 
 /-- [ai_town_kernel::rules::agents]: loop body 0:
-    Source: 'kernel/src/rules.rs', lines 744:4-752:5 -/
+    Source: 'kernel/src/rules.rs', lines 753:4-761:5 -/
 @[rust_loop_body]
 def rules.agents_loop.body
-  (now : Std.U64) (m : Meta) (t : Terrain) (v : alloc.vec.Vec Player)
-  (v1 : alloc.vec.Vec PathNode) (v2 : alloc.vec.Vec Conversation)
-  (v3 : alloc.vec.Vec Member) (v4 : alloc.vec.Vec Agent)
-  (v5 : alloc.vec.Vec Memory) (v6 : alloc.vec.Vec Message)
-  (index : rules.SocialIndex) (members : Std.Usize) (convs : Std.Usize)
-  (i : Std.Usize) :
-  Result (ControlFlow (Meta × Terrain × (alloc.vec.Vec Player) ×
-    (alloc.vec.Vec PathNode) × (alloc.vec.Vec Conversation) × (alloc.vec.Vec
-    Member) × (alloc.vec.Vec Agent) × (alloc.vec.Vec Memory) ×
-    (alloc.vec.Vec Message) × rules.SocialIndex × Std.Usize × Std.Usize ×
-    Std.Usize) (Meta × Terrain × (alloc.vec.Vec Player) × (alloc.vec.Vec
-    PathNode) × (alloc.vec.Vec Conversation) × (alloc.vec.Vec Member) ×
-    (alloc.vec.Vec Agent) × (alloc.vec.Vec Memory) × (alloc.vec.Vec
-    Message)))
+  (now : Std.U64) (m : Meta) (t : Terrain) (mh : MotionHistory)
+  (v : alloc.vec.Vec Player) (v1 : alloc.vec.Vec PathNode)
+  (v2 : alloc.vec.Vec Conversation) (v3 : alloc.vec.Vec Member)
+  (v4 : alloc.vec.Vec Agent) (v5 : alloc.vec.Vec Memory)
+  (v6 : alloc.vec.Vec Message) (index : rules.SocialIndex)
+  (members : Std.Usize) (convs : Std.Usize) (i : Std.Usize) :
+  Result (ControlFlow (Meta × Terrain × MotionHistory × (alloc.vec.Vec
+    Player) × (alloc.vec.Vec PathNode) × (alloc.vec.Vec Conversation) ×
+    (alloc.vec.Vec Member) × (alloc.vec.Vec Agent) × (alloc.vec.Vec Memory)
+    × (alloc.vec.Vec Message) × rules.SocialIndex × Std.Usize × Std.Usize
+    × Std.Usize) (Meta × Terrain × MotionHistory × (alloc.vec.Vec Player)
+    × (alloc.vec.Vec PathNode) × (alloc.vec.Vec Conversation) ×
+    (alloc.vec.Vec Member) × (alloc.vec.Vec Agent) × (alloc.vec.Vec Memory)
+    × (alloc.vec.Vec Message)))
   := do
   let i1 := alloc.vec.Vec.len v4
   if i < i1
@@ -15217,6 +16136,7 @@ def rules.agents_loop.body
         {
           «meta» := m,
           terrain := t,
+          motion_history := mh,
           players := v,
           paths := v1,
           conversations := v2,
@@ -15245,44 +16165,47 @@ def rules.agents_loop.body
           ok (index2, members2, convs2)
         else ok (index, members, convs)
     let i3 ← i + 1#usize
-    ok (cont (s.meta, s.terrain, s.players, s.paths, s.conversations,
-      s.members, s.agents, s.memories, s.messages, index1, members1, convs1,
-      i3))
-  else ok (done (m, t, v, v1, v2, v3, v4, v5, v6))
+    ok (cont (s.meta, s.terrain, s.motion_history, s.players, s.paths,
+      s.conversations, s.members, s.agents, s.memories, s.messages, index1,
+      members1, convs1, i3))
+  else ok (done (m, t, mh, v, v1, v2, v3, v4, v5, v6))
 
 /-- [ai_town_kernel::rules::agents]: loop 0:
-    Source: 'kernel/src/rules.rs', lines 744:4-752:5 -/
+    Source: 'kernel/src/rules.rs', lines 753:4-761:5 -/
 @[rust_loop]
 def rules.agents_loop
-  (m : Meta) (t : Terrain) (v : alloc.vec.Vec Player)
+  (m : Meta) (t : Terrain) (mh : MotionHistory) (v : alloc.vec.Vec Player)
   (v1 : alloc.vec.Vec PathNode) (v2 : alloc.vec.Vec Conversation)
   (v3 : alloc.vec.Vec Member) (v4 : alloc.vec.Vec Agent)
   (v5 : alloc.vec.Vec Memory) (v6 : alloc.vec.Vec Message) (now : Std.U64)
   (index : rules.SocialIndex) (members : Std.Usize) (convs : Std.Usize)
   (i : Std.Usize) :
-  Result (Meta × Terrain × (alloc.vec.Vec Player) × (alloc.vec.Vec PathNode)
-    × (alloc.vec.Vec Conversation) × (alloc.vec.Vec Member) × (alloc.vec.Vec
-    Agent) × (alloc.vec.Vec Memory) × (alloc.vec.Vec Message))
+  Result (Meta × Terrain × MotionHistory × (alloc.vec.Vec Player) ×
+    (alloc.vec.Vec PathNode) × (alloc.vec.Vec Conversation) × (alloc.vec.Vec
+    Member) × (alloc.vec.Vec Agent) × (alloc.vec.Vec Memory) ×
+    (alloc.vec.Vec Message))
   := do
   loop
-    (fun (m1, t1, v7, v8, v9, v10, v11, v12, v13, index1, members1, convs1, i1)
-      => rules.agents_loop.body now m1 t1 v7 v8 v9 v10 v11 v12 v13 index1
-      members1 convs1 i1)
-    (m, t, v, v1, v2, v3, v4, v5, v6, index, members, convs, i)
+    (fun (m1, t1, mh1, v7, v8, v9, v10, v11, v12, v13, index1, members1,
+      convs1, i1) => rules.agents_loop.body now m1 t1 mh1 v7 v8 v9 v10 v11 v12
+      v13 index1 members1 convs1 i1)
+    (m, t, mh, v, v1, v2, v3, v4, v5, v6, index, members, convs, i)
 
 /-- [ai_town_kernel::rules::agents]:
-    Source: 'kernel/src/rules.rs', lines 739:0-753:1 -/
+    Source: 'kernel/src/rules.rs', lines 748:0-762:1 -/
 def rules.agents (s : Snapshot) (now : Std.U64) : Result Snapshot := do
   let index ← rules.social_index s
   let members := alloc.vec.Vec.len s.members
   let convs := alloc.vec.Vec.len s.conversations
-  let (m, t, v, v1, v2, v3, v4, v5, v6) ←
-    rules.agents_loop s.meta s.terrain s.players s.paths s.conversations
-      s.members s.agents s.memories s.messages now index members convs 0#usize
+  let (m, t, mh, v, v1, v2, v3, v4, v5, v6) ←
+    rules.agents_loop s.meta s.terrain s.motion_history s.players s.paths
+      s.conversations s.members s.agents s.memories s.messages now index
+      members convs 0#usize
   ok
     {
       «meta» := m,
       terrain := t,
+      motion_history := mh,
       players := v,
       paths := v1,
       conversations := v2,
@@ -15293,16 +16216,16 @@ def rules.agents (s : Snapshot) (now : Std.U64) : Result Snapshot := do
     }
 
 /-- [ai_town_kernel::rules::idle]: loop body 0:
-    Source: 'kernel/src/rules.rs', lines 656:4-662:5 -/
+    Source: 'kernel/src/rules.rs', lines 665:4-671:5 -/
 @[rust_loop_body]
 def rules.idle_loop0.body
   (s : Snapshot) (now : Std.U64) (doomed : alloc.vec.Vec Std.U64)
   (i : Std.Usize) :
   Result (ControlFlow ((alloc.vec.Vec Std.U64) × Std.Usize) (Meta × Terrain
-    × (alloc.vec.Vec Player) × (alloc.vec.Vec PathNode) × (alloc.vec.Vec
-    Conversation) × (alloc.vec.Vec Member) × (alloc.vec.Vec Agent) ×
-    (alloc.vec.Vec Memory) × (alloc.vec.Vec Message) × (alloc.vec.Vec
-    Std.U64)))
+    × MotionHistory × (alloc.vec.Vec Player) × (alloc.vec.Vec PathNode) ×
+    (alloc.vec.Vec Conversation) × (alloc.vec.Vec Member) × (alloc.vec.Vec
+    Agent) × (alloc.vec.Vec Memory) × (alloc.vec.Vec Message) ×
+    (alloc.vec.Vec Std.U64)))
   := do
   let i1 := alloc.vec.Vec.len s.players
   if i < i1
@@ -15326,26 +16249,26 @@ def rules.idle_loop0.body
     let i2 ← i + 1#usize
     ok (cont (doomed1, i2))
   else
-    ok (done (s.meta, s.terrain, s.players, s.paths, s.conversations,
-      s.members, s.agents, s.memories, s.messages, doomed))
+    ok (done (s.meta, s.terrain, s.motion_history, s.players, s.paths,
+      s.conversations, s.members, s.agents, s.memories, s.messages, doomed))
 
 /-- [ai_town_kernel::rules::idle]: loop 0:
-    Source: 'kernel/src/rules.rs', lines 656:4-662:5 -/
+    Source: 'kernel/src/rules.rs', lines 665:4-671:5 -/
 @[rust_loop]
 def rules.idle_loop0
   (s : Snapshot) (now : Std.U64) (doomed : alloc.vec.Vec Std.U64)
   (i : Std.Usize) :
-  Result (Meta × Terrain × (alloc.vec.Vec Player) × (alloc.vec.Vec PathNode)
-    × (alloc.vec.Vec Conversation) × (alloc.vec.Vec Member) × (alloc.vec.Vec
-    Agent) × (alloc.vec.Vec Memory) × (alloc.vec.Vec Message) ×
-    (alloc.vec.Vec Std.U64))
+  Result (Meta × Terrain × MotionHistory × (alloc.vec.Vec Player) ×
+    (alloc.vec.Vec PathNode) × (alloc.vec.Vec Conversation) × (alloc.vec.Vec
+    Member) × (alloc.vec.Vec Agent) × (alloc.vec.Vec Memory) ×
+    (alloc.vec.Vec Message) × (alloc.vec.Vec Std.U64))
   := do
   loop
     (fun (doomed1, i1) => rules.idle_loop0.body s now doomed1 i1)
     (doomed, i)
 
 /-- [ai_town_kernel::rules::idle]: loop body 1:
-    Source: 'kernel/src/rules.rs', lines 664:4-667:5 -/
+    Source: 'kernel/src/rules.rs', lines 673:4-676:5 -/
 @[rust_loop_body]
 def rules.idle_loop1.body
   (now : Std.U64) (doomed : alloc.vec.Vec Std.U64) (s : Snapshot)
@@ -15364,7 +16287,7 @@ def rules.idle_loop1.body
   else ok (done s)
 
 /-- [ai_town_kernel::rules::idle]: loop 1:
-    Source: 'kernel/src/rules.rs', lines 664:4-667:5 -/
+    Source: 'kernel/src/rules.rs', lines 673:4-676:5 -/
 @[rust_loop]
 def rules.idle_loop1
   (s : Snapshot) (now : Std.U64) (doomed : alloc.vec.Vec Std.U64)
@@ -15376,14 +16299,15 @@ def rules.idle_loop1
     (s, i)
 
 /-- [ai_town_kernel::rules::idle]:
-    Source: 'kernel/src/rules.rs', lines 653:0-668:1 -/
+    Source: 'kernel/src/rules.rs', lines 662:0-677:1 -/
 def rules.idle (s : Snapshot) (now : Std.U64) : Result Snapshot := do
-  let (m, t, v, v1, v2, v3, v4, v5, v6, doomed) ←
+  let (m, t, mh, v, v1, v2, v3, v4, v5, v6, doomed) ←
     rules.idle_loop0 s now (alloc.vec.Vec.new Std.U64) 0#usize
   rules.idle_loop1
     {
       «meta» := m,
       terrain := t,
+      motion_history := mh,
       players := v,
       paths := v1,
       conversations := v2,
@@ -15722,7 +16646,7 @@ def rules.placement_ok (s : Snapshot) : Result Bool := do
   | some slots => rules.all_clear s slots
 
 /-- [ai_town_kernel::rules::settle]: loop body 0:
-    Source: 'kernel/src/rules.rs', lines 643:8-648:9
+    Source: 'kernel/src/rules.rs', lines 652:8-657:9
     Visibility: public -/
 @[rust_loop_body]
 def rules.settle_loop.body
@@ -15754,7 +16678,7 @@ def rules.settle_loop.body
   else ok (done v)
 
 /-- [ai_town_kernel::rules::settle]: loop 0:
-    Source: 'kernel/src/rules.rs', lines 643:8-648:9
+    Source: 'kernel/src/rules.rs', lines 652:8-657:9
     Visibility: public -/
 @[rust_loop]
 def rules.settle_loop
@@ -15767,7 +16691,7 @@ def rules.settle_loop
     (v, i)
 
 /-- [ai_town_kernel::rules::settle]:
-    Source: 'kernel/src/rules.rs', lines 636:0-651:1
+    Source: 'kernel/src/rules.rs', lines 645:0-660:1
     Visibility: public -/
 def rules.settle
   (s : Snapshot) (xs : alloc.vec.Vec Std.U32) (ys : alloc.vec.Vec Std.U32) :
@@ -15790,16 +16714,17 @@ def rules.settle
     else ok (true, s)
 
 /-- [ai_town_kernel::rules::tick]: loop body 0:
-    Source: 'kernel/src/rules.rs', lines 617:4-621:5 -/
+    Source: 'kernel/src/rules.rs', lines 626:4-630:5 -/
 @[rust_loop_body]
 def rules.tick_loop.body
   (s : Snapshot) (xs : alloc.vec.Vec Std.U32) (ys : alloc.vec.Vec Std.U32)
   (i : Std.Usize) :
   Result (ControlFlow ((alloc.vec.Vec Std.U32) × (alloc.vec.Vec Std.U32) ×
-    Std.Usize) (Meta × Terrain × (alloc.vec.Vec Player) × (alloc.vec.Vec
-    PathNode) × (alloc.vec.Vec Conversation) × (alloc.vec.Vec Member) ×
-    (alloc.vec.Vec Agent) × (alloc.vec.Vec Memory) × (alloc.vec.Vec Message)
-    × (alloc.vec.Vec Std.U32) × (alloc.vec.Vec Std.U32)))
+    Std.Usize) (Meta × Terrain × MotionHistory × (alloc.vec.Vec Player) ×
+    (alloc.vec.Vec PathNode) × (alloc.vec.Vec Conversation) × (alloc.vec.Vec
+    Member) × (alloc.vec.Vec Agent) × (alloc.vec.Vec Memory) ×
+    (alloc.vec.Vec Message) × (alloc.vec.Vec Std.U32) × (alloc.vec.Vec
+    Std.U32)))
   := do
   let i1 := alloc.vec.Vec.len s.players
   if i < i1
@@ -15812,26 +16737,27 @@ def rules.tick_loop.body
     let i2 ← i + 1#usize
     ok (cont (xs1, ys1, i2))
   else
-    ok (done (s.meta, s.terrain, s.players, s.paths, s.conversations,
-      s.members, s.agents, s.memories, s.messages, xs, ys))
+    ok (done (s.meta, s.terrain, s.motion_history, s.players, s.paths,
+      s.conversations, s.members, s.agents, s.memories, s.messages, xs, ys))
 
 /-- [ai_town_kernel::rules::tick]: loop 0:
-    Source: 'kernel/src/rules.rs', lines 617:4-621:5 -/
+    Source: 'kernel/src/rules.rs', lines 626:4-630:5 -/
 @[rust_loop]
 def rules.tick_loop
   (s : Snapshot) (xs : alloc.vec.Vec Std.U32) (ys : alloc.vec.Vec Std.U32)
   (i : Std.Usize) :
-  Result (Meta × Terrain × (alloc.vec.Vec Player) × (alloc.vec.Vec PathNode)
-    × (alloc.vec.Vec Conversation) × (alloc.vec.Vec Member) × (alloc.vec.Vec
-    Agent) × (alloc.vec.Vec Memory) × (alloc.vec.Vec Message) ×
-    (alloc.vec.Vec Std.U32) × (alloc.vec.Vec Std.U32))
+  Result (Meta × Terrain × MotionHistory × (alloc.vec.Vec Player) ×
+    (alloc.vec.Vec PathNode) × (alloc.vec.Vec Conversation) × (alloc.vec.Vec
+    Member) × (alloc.vec.Vec Agent) × (alloc.vec.Vec Memory) ×
+    (alloc.vec.Vec Message) × (alloc.vec.Vec Std.U32) × (alloc.vec.Vec
+    Std.U32))
   := do
   loop
     (fun (xs1, ys1, i1) => rules.tick_loop.body s xs1 ys1 i1)
     (xs, ys, i)
 
 /-- [ai_town_kernel::rules::tick]:
-    Source: 'kernel/src/rules.rs', lines 607:0-628:1 -/
+    Source: 'kernel/src/rules.rs', lines 616:0-637:1 -/
 def rules.tick
   (s : Snapshot) (now : Std.U64) (scratch : rules.TickScratch)
   (sequential : Bool) :
@@ -15841,7 +16767,7 @@ def rules.tick
   let s2 ← rules.agents s1 now
   let s3 ← rules.conversations s2 now
   let s4 ← rules.pathfind s3 now
-  let (m, t, v, v1, v2, v3, v4, v5, v6, xs, ys) ←
+  let (m, t, mh, v, v1, v2, v3, v4, v5, v6, xs, ys) ←
     rules.tick_loop s4 (alloc.vec.Vec.new Std.U32) (alloc.vec.Vec.new Std.U32)
       0#usize
   let (s5, scratch1) ←
@@ -15851,6 +16777,7 @@ def rules.tick
         {
           «meta» := m,
           terrain := t,
+          motion_history := mh,
           players := v,
           paths := v1,
           conversations := v2,
@@ -15864,6 +16791,7 @@ def rules.tick
         {
           «meta» := m,
           terrain := t,
+          motion_history := mh,
           players := v,
           paths := v1,
           conversations := v2,
@@ -15906,14 +16834,16 @@ def rules.fresh_scratch : Result rules.TickScratch := do
       prop_on := (alloc.vec.Vec.new Std.U32)
     }
 
-/-- [ai_town_kernel::rules::run_ticks_mode]: loop body 0:
-    Source: 'kernel/src/rules.rs', lines 596:4-602:5 -/
+/-- [ai_town_kernel::rules::run_ticks_captured]: loop body 0:
+    Source: 'kernel/src/rules.rs', lines 604:4-611:5
+    Visibility: public -/
 @[rust_loop_body]
-def rules.run_ticks_mode_loop.body
-  (end_ms : Std.U64) (sequential : Bool) (s : Snapshot) (ticks : Std.U32)
-  (reverted : Std.U32) (scratch : rules.TickScratch) :
-  Result (ControlFlow (Snapshot × Std.U32 × Std.U32 × rules.TickScratch)
-    (Snapshot × Std.U32 × Std.U32))
+def rules.run_ticks_captured_loop.body
+  (end_ms : Std.U64) (sequential : Bool) (s : Snapshot)
+  (capture : history.Capture) (ticks : Std.U32) (reverted : Std.U32)
+  (scratch : rules.TickScratch) :
+  Result (ControlFlow (Snapshot × history.Capture × Std.U32 × Std.U32 ×
+    rules.TickScratch) (Snapshot × history.Capture × Std.U32 × Std.U32))
   := do
   if ticks < MAX_TICKS
   then
@@ -15927,42 +16857,62 @@ def rules.run_ticks_mode_loop.body
       let reverted1 ← if b
                         then reverted + 1#u32
                         else ok reverted
+      let capture1 ← history.Capture.record capture s1
       let ticks1 ← ticks + 1#u32
-      ok (cont (s1, ticks1, reverted1, scratch1))
-    else ok (done (s, ticks, reverted))
-  else ok (done (s, ticks, reverted))
+      ok (cont (s1, capture1, ticks1, reverted1, scratch1))
+    else ok (done (s, capture, ticks, reverted))
+  else ok (done (s, capture, ticks, reverted))
 
-/-- [ai_town_kernel::rules::run_ticks_mode]: loop 0:
-    Source: 'kernel/src/rules.rs', lines 596:4-602:5 -/
+/-- [ai_town_kernel::rules::run_ticks_captured]: loop 0:
+    Source: 'kernel/src/rules.rs', lines 604:4-611:5
+    Visibility: public -/
 @[rust_loop]
-def rules.run_ticks_mode_loop
-  (s : Snapshot) (end_ms : Std.U64) (sequential : Bool) (ticks : Std.U32)
-  (reverted : Std.U32) (scratch : rules.TickScratch) :
-  Result (Snapshot × Std.U32 × Std.U32)
+def rules.run_ticks_captured_loop
+  (s : Snapshot) (end_ms : Std.U64) (sequential : Bool)
+  (capture : history.Capture) (ticks : Std.U32) (reverted : Std.U32)
+  (scratch : rules.TickScratch) :
+  Result (Snapshot × history.Capture × Std.U32 × Std.U32)
   := do
   loop
-    (fun (s1, ticks1, reverted1, scratch1) => rules.run_ticks_mode_loop.body
-      end_ms sequential s1 ticks1 reverted1 scratch1)
-    (s, ticks, reverted, scratch)
+    (fun (s1, capture1, ticks1, reverted1, scratch1) =>
+      rules.run_ticks_captured_loop.body end_ms sequential s1 capture1 ticks1
+      reverted1 scratch1)
+    (s, capture, ticks, reverted, scratch)
+
+/-- [ai_town_kernel::rules::run_ticks_captured]:
+    Source: 'kernel/src/rules.rs', lines 595:0-613:1
+    Visibility: public -/
+def rules.run_ticks_captured
+  (s : Snapshot) (end_ms : Std.U64) (sequential : Bool) :
+  Result ((Std.U32 × Std.U32 × history.Capture) × Snapshot)
+  := do
+  let capture ← history.Capture.new s
+  if s.meta.frozen
+  then ok ((0#u32, 0#u32, capture), s)
+  else
+    if s.meta.width = 0#u32
+    then ok ((0#u32, 0#u32, capture), s)
+    else
+      let scratch ← rules.fresh_scratch
+      let (s1, capture1, ticks, reverted) ←
+        rules.run_ticks_captured_loop
+          { s with «meta» := { s.meta with pathfinds := 0#u32 } } end_ms
+          sequential capture 0#u32 0#u32 scratch
+      ok ((ticks, reverted, capture1), s1)
 
 /-- [ai_town_kernel::rules::run_ticks_mode]:
-    Source: 'kernel/src/rules.rs', lines 588:0-604:1 -/
+    Source: 'kernel/src/rules.rs', lines 588:0-592:1 -/
 def rules.run_ticks_mode
   (s : Snapshot) (end_ms : Std.U64) (sequential : Bool) :
   Result ((Std.U32 × Std.U32) × Snapshot)
   := do
-  if s.meta.frozen
-  then ok ((0#u32, 0#u32), s)
-  else
-    if s.meta.width = 0#u32
-    then ok ((0#u32, 0#u32), s)
-    else
-      let scratch ← rules.fresh_scratch
-      let (s1, ticks, reverted) ←
-        rules.run_ticks_mode_loop
-          { s with «meta» := { s.meta with pathfinds := 0#u32 } } end_ms
-          sequential 0#u32 0#u32 scratch
-      ok ((ticks, reverted), s1)
+  let ((ticks, reverted, capture), s1) ←
+    rules.run_ticks_captured s end_ms sequential
+  if ticks > 0#u32
+  then
+    let mh ← history.Capture.finish capture s1.meta.now_ms
+    ok ((ticks, reverted), { s1 with motion_history := mh })
+  else ok ((ticks, reverted), s1)
 
 /-- [ai_town_kernel::rules::relocate]: loop body 0:
     Source: 'kernel/src/rules.rs', lines 287:4-292:5
@@ -16034,7 +16984,7 @@ def rules.relocate
       else ok (core.result.Result.Err Error.Occupied)
 
 /-- [ai_town_kernel::rules::command_full]:
-    Source: 'kernel/src/rules.rs', lines 1932:0-2000:1
+    Source: 'kernel/src/rules.rs', lines 1942:0-2011:1
     Visibility: public -/
 def rules.command_full
   (actor_user : Std.U64) (now : Std.U64) (s : Snapshot) (cmd : Command) :
@@ -16189,7 +17139,18 @@ def rules.command_full
         let r1 ← rules.relocate next x y
         match r1 with
         | core.result.Result.Ok v =>
-          let v1 ← rules.diff s v
+          let v1 ←
+            rules.diff s
+              {
+                v
+                  with
+                  motion_history :=
+                    {
+                      start_ms := 0#u64,
+                      end_ms := 0#u64,
+                      data := (alloc.vec.Vec.new Std.U8)
+                    }
+              }
           ok (core.result.Result.Ok (v1, Reply.Ok))
         | core.result.Result.Err e => ok (core.result.Result.Err e)
       | core.result.Result.Err e => ok (core.result.Result.Err e)
@@ -16211,7 +17172,7 @@ def rules.command_full
       ok (core.result.Result.Ok (v, Reply.Ok))
 
 /-- [ai_town_kernel::rules::remember_member_rows]: loop body 0:
-    Source: 'kernel/src/rules.rs', lines 1877:4-1881:5 -/
+    Source: 'kernel/src/rules.rs', lines 1887:4-1891:5 -/
 @[rust_loop_body]
 def rules.remember_member_rows_loop.body
   (v : alloc.vec.Vec Member) (conv : Std.U64) (player : Std.U64)
@@ -16241,7 +17202,7 @@ def rules.remember_member_rows_loop.body
   else ok (done rows)
 
 /-- [ai_town_kernel::rules::remember_member_rows]: loop 0:
-    Source: 'kernel/src/rules.rs', lines 1877:4-1881:5 -/
+    Source: 'kernel/src/rules.rs', lines 1887:4-1891:5 -/
 @[rust_loop]
 def rules.remember_member_rows_loop
   (v : alloc.vec.Vec Member) (conv : Std.U64) (player : Std.U64)
@@ -16254,7 +17215,7 @@ def rules.remember_member_rows_loop
     (rows, i)
 
 /-- [ai_town_kernel::rules::remember_member_rows]:
-    Source: 'kernel/src/rules.rs', lines 1871:0-1883:1 -/
+    Source: 'kernel/src/rules.rs', lines 1881:0-1893:1 -/
 def rules.remember_member_rows
   (s : Snapshot) (owner : Std.U64) : Result (alloc.vec.Vec Member) := do
   let r ← rules.own_agent s owner
@@ -16268,7 +17229,7 @@ def rules.remember_member_rows
   | core.result.Result.Err _ => ok (alloc.vec.Vec.new Member)
 
 /-- [ai_town_kernel::rules::owned_agent_rows]:
-    Source: 'kernel/src/rules.rs', lines 1864:0-1869:1 -/
+    Source: 'kernel/src/rules.rs', lines 1874:0-1879:1 -/
 def rules.owned_agent_rows
   (s : Snapshot) (owner : Std.U64) : Result (alloc.vec.Vec Agent) := do
   let r ← rules.own_agent s owner
@@ -16282,7 +17243,7 @@ def rules.owned_agent_rows
   | core.result.Result.Err _ => ok (alloc.vec.Vec.new Agent)
 
 /-- [ai_town_kernel::rules::pair_members]: loop body 0:
-    Source: 'kernel/src/rules.rs', lines 1775:4-1781:5 -/
+    Source: 'kernel/src/rules.rs', lines 1785:4-1791:5 -/
 @[rust_loop_body]
 def rules.pair_members_loop.body
   (rows : alloc.vec.Vec Member) (first : Std.U64) (second : Std.U64)
@@ -16307,7 +17268,7 @@ def rules.pair_members_loop.body
   else ok (done out)
 
 /-- [ai_town_kernel::rules::pair_members]: loop 0:
-    Source: 'kernel/src/rules.rs', lines 1775:4-1781:5 -/
+    Source: 'kernel/src/rules.rs', lines 1785:4-1791:5 -/
 @[rust_loop]
 def rules.pair_members_loop
   (rows : alloc.vec.Vec Member) (first : Std.U64) (second : Std.U64)
@@ -16319,7 +17280,7 @@ def rules.pair_members_loop
     (out, i)
 
 /-- [ai_town_kernel::rules::pair_members]:
-    Source: 'kernel/src/rules.rs', lines 1772:0-1783:1 -/
+    Source: 'kernel/src/rules.rs', lines 1782:0-1793:1 -/
 @[reducible]
 def rules.pair_members
   (rows : alloc.vec.Vec Member) (first : Std.U64) (second : Std.U64) :
@@ -16381,7 +17342,7 @@ def rules.player_owner_at
   else rules.player_by_owner players owner
 
 /-- [ai_town_kernel::rules::invite_member_rows]:
-    Source: 'kernel/src/rules.rs', lines 1859:0-1862:1 -/
+    Source: 'kernel/src/rules.rs', lines 1869:0-1872:1 -/
 def rules.invite_member_rows
   (s : Snapshot) (owner : Std.U64) (target : Std.U64) :
   Result (alloc.vec.Vec Member)
@@ -16396,7 +17357,7 @@ def rules.invite_member_rows
     rules.pair_members s.members p.id target
 
 /-- [ai_town_kernel::rules::invite_player_rows]: loop body 0:
-    Source: 'kernel/src/rules.rs', lines 1851:4-1855:5 -/
+    Source: 'kernel/src/rules.rs', lines 1861:4-1865:5 -/
 @[rust_loop_body]
 def rules.invite_player_rows_loop.body
   (v : alloc.vec.Vec Player) (target : Std.U64) (id : Std.U64)
@@ -16427,7 +17388,7 @@ def rules.invite_player_rows_loop.body
   else ok (done rows)
 
 /-- [ai_town_kernel::rules::invite_player_rows]: loop 0:
-    Source: 'kernel/src/rules.rs', lines 1851:4-1855:5 -/
+    Source: 'kernel/src/rules.rs', lines 1861:4-1865:5 -/
 @[rust_loop]
 def rules.invite_player_rows_loop
   (v : alloc.vec.Vec Player) (target : Std.U64) (id : Std.U64)
@@ -16440,7 +17401,7 @@ def rules.invite_player_rows_loop
     (rows, i)
 
 /-- [ai_town_kernel::rules::invite_player_rows]:
-    Source: 'kernel/src/rules.rs', lines 1846:0-1857:1 -/
+    Source: 'kernel/src/rules.rs', lines 1856:0-1867:1 -/
 def rules.invite_player_rows
   (s : Snapshot) (owner : Std.U64) (target : Std.U64) :
   Result (alloc.vec.Vec Player)
@@ -16456,7 +17417,7 @@ def rules.invite_player_rows
       Player) 0#usize
 
 /-- [ai_town_kernel::rules::owned_path_rows]: loop body 0:
-    Source: 'kernel/src/rules.rs', lines 1838:4-1842:5 -/
+    Source: 'kernel/src/rules.rs', lines 1848:4-1852:5 -/
 @[rust_loop_body]
 def rules.owned_path_rows_loop.body
   (v : alloc.vec.Vec PathNode) (id : Std.U64) (rows : alloc.vec.Vec PathNode)
@@ -16479,7 +17440,7 @@ def rules.owned_path_rows_loop.body
   else ok (done rows)
 
 /-- [ai_town_kernel::rules::owned_path_rows]: loop 0:
-    Source: 'kernel/src/rules.rs', lines 1838:4-1842:5 -/
+    Source: 'kernel/src/rules.rs', lines 1848:4-1852:5 -/
 @[rust_loop]
 def rules.owned_path_rows_loop
   (v : alloc.vec.Vec PathNode) (id : Std.U64) (rows : alloc.vec.Vec PathNode)
@@ -16491,7 +17452,7 @@ def rules.owned_path_rows_loop
     (rows, i)
 
 /-- [ai_town_kernel::rules::owned_path_rows]:
-    Source: 'kernel/src/rules.rs', lines 1833:0-1844:1 -/
+    Source: 'kernel/src/rules.rs', lines 1843:0-1854:1 -/
 def rules.owned_path_rows
   (s : Snapshot) (owner : Std.U64) : Result (alloc.vec.Vec PathNode) := do
   let o ← rules.player_owner_at s.players owner
@@ -16505,7 +17466,7 @@ def rules.owned_path_rows
       0#usize
 
 /-- [ai_town_kernel::rules::movement_player_rows]: loop body 0:
-    Source: 'kernel/src/rules.rs', lines 1817:4-1829:5 -/
+    Source: 'kernel/src/rules.rs', lines 1827:4-1839:5 -/
 @[rust_loop_body]
 def rules.movement_player_rows_loop.body
   (v : alloc.vec.Vec Player) (own : Option Std.Usize)
@@ -16551,7 +17512,7 @@ def rules.movement_player_rows_loop.body
   else ok (done rows)
 
 /-- [ai_town_kernel::rules::movement_player_rows]: loop 0:
-    Source: 'kernel/src/rules.rs', lines 1817:4-1829:5 -/
+    Source: 'kernel/src/rules.rs', lines 1827:4-1839:5 -/
 @[rust_loop]
 def rules.movement_player_rows_loop
   (v : alloc.vec.Vec Player) (own : Option Std.Usize)
@@ -16563,7 +17524,7 @@ def rules.movement_player_rows_loop
     (rows, i)
 
 /-- [ai_town_kernel::rules::movement_player_rows]:
-    Source: 'kernel/src/rules.rs', lines 1813:0-1831:1 -/
+    Source: 'kernel/src/rules.rs', lines 1823:0-1841:1 -/
 def rules.movement_player_rows
   (s : Snapshot) (owner : Std.U64) : Result (alloc.vec.Vec Player) := do
   let own ← rules.player_owner_at s.players owner
@@ -16571,7 +17532,7 @@ def rules.movement_player_rows
     0#usize
 
 /-- [ai_town_kernel::rules::selected_conversation]:
-    Source: 'kernel/src/rules.rs', lines 1785:0-1790:1 -/
+    Source: 'kernel/src/rules.rs', lines 1795:0-1800:1 -/
 def rules.selected_conversation
   (rows : alloc.vec.Vec Conversation) (id : Std.U64) :
   Result (alloc.vec.Vec Conversation)
@@ -16587,7 +17548,7 @@ def rules.selected_conversation
     alloc.vec.Vec.push (alloc.vec.Vec.new Conversation) c1
 
 /-- [ai_town_kernel::rules::owned_conversation_rows]:
-    Source: 'kernel/src/rules.rs', lines 1807:0-1811:1 -/
+    Source: 'kernel/src/rules.rs', lines 1817:0-1821:1 -/
 def rules.owned_conversation_rows
   (s : Snapshot) (owner : Std.U64) : Result (alloc.vec.Vec Conversation) := do
   let o ← rules.player_owner_at s.players owner
@@ -16607,7 +17568,7 @@ def rules.owned_conversation_rows
       rules.selected_conversation s.conversations m.conversation
 
 /-- [ai_town_kernel::rules::owned_member_rows]:
-    Source: 'kernel/src/rules.rs', lines 1799:0-1805:1 -/
+    Source: 'kernel/src/rules.rs', lines 1809:0-1815:1 -/
 def rules.owned_member_rows
   (s : Snapshot) (owner : Std.U64) : Result (alloc.vec.Vec Member) := do
   let o ← rules.player_owner_at s.players owner
@@ -16628,7 +17589,7 @@ def rules.owned_member_rows
       alloc.vec.Vec.push (alloc.vec.Vec.new Member) m1
 
 /-- [ai_town_kernel::rules::owned_player_rows]:
-    Source: 'kernel/src/rules.rs', lines 1792:0-1797:1 -/
+    Source: 'kernel/src/rules.rs', lines 1802:0-1807:1 -/
 def rules.owned_player_rows
   (s : Snapshot) (owner : Std.U64) : Result (alloc.vec.Vec Player) := do
   let o ← rules.player_owner_at s.players owner
@@ -16642,7 +17603,7 @@ def rules.owned_player_rows
     alloc.vec.Vec.push (alloc.vec.Vec.new Player) p1
 
 /-- [ai_town_kernel::rules::empty_command_snapshot]:
-    Source: 'kernel/src/rules.rs', lines 1759:0-1766:1 -/
+    Source: 'kernel/src/rules.rs', lines 1768:0-1776:1 -/
 def rules.empty_command_snapshot : Result Snapshot := do
   ok
     {
@@ -16656,6 +17617,12 @@ def rules.empty_command_snapshot : Result Snapshot := do
           pathfinds := 0#u32
         },
       terrain := { mask := (alloc.vec.Vec.new Std.U8) },
+      motion_history :=
+        {
+          start_ms := 0#u64,
+          end_ms := 0#u64,
+          data := (alloc.vec.Vec.new Std.U8)
+        },
       players := (alloc.vec.Vec.new Player),
       paths := (alloc.vec.Vec.new PathNode),
       conversations := (alloc.vec.Vec.new Conversation),
@@ -16666,7 +17633,7 @@ def rules.empty_command_snapshot : Result Snapshot := do
     }
 
 /-- [ai_town_kernel::rules::command]:
-    Source: 'kernel/src/rules.rs', lines 1886:0-1930:1
+    Source: 'kernel/src/rules.rs', lines 1896:0-1940:1
     Visibility: public -/
 def rules.command
   (actor_user : Std.U64) (now : Std.U64) (s : Snapshot) (cmd : Command) :
@@ -16750,7 +17717,7 @@ def rules.command
   | Command.Resume => rules.command_full actor_user now s Command.Resume
 
 /-- [ai_town_kernel::transition]:
-    Source: 'kernel/src/lib.rs', lines 255:0-257:1
+    Source: 'kernel/src/lib.rs', lines 266:0-268:1
     Visibility: public -/
 def transition
   (actor : Principal) (snap : Snapshot) (cmd : Command) :
@@ -16804,7 +17771,7 @@ def Player.put
   Player.put_loop v x 0#usize
 
 /-- [ai_town_kernel::put_player]: loop body 0:
-    Source: 'kernel/src/lib.rs', lines 283:4-290:5 -/
+    Source: 'kernel/src/lib.rs', lines 294:4-301:5 -/
 @[rust_loop_body]
 def put_player_loop.body
   (v : alloc.vec.Vec Player) (x : Player) (lo : Std.Usize) (hi : Std.Usize) :
@@ -16824,7 +17791,7 @@ def put_player_loop.body
   else ok (done (x, lo))
 
 /-- [ai_town_kernel::put_player]: loop 0:
-    Source: 'kernel/src/lib.rs', lines 283:4-290:5 -/
+    Source: 'kernel/src/lib.rs', lines 294:4-301:5 -/
 @[rust_loop]
 def put_player_loop
   (v : alloc.vec.Vec Player) (x : Player) (lo : Std.Usize) (hi : Std.Usize) :
@@ -16835,7 +17802,7 @@ def put_player_loop
     (lo, hi)
 
 /-- [ai_town_kernel::put_player]:
-    Source: 'kernel/src/lib.rs', lines 280:0-296:1 -/
+    Source: 'kernel/src/lib.rs', lines 291:0-307:1 -/
 def put_player
   (v : alloc.vec.Vec Player) (x : Player) : Result (alloc.vec.Vec Player) := do
   let hi := alloc.vec.Vec.len v
@@ -16900,7 +17867,7 @@ def Agent.put
   Agent.put_loop v x 0#usize
 
 /-- [ai_town_kernel::put_agent]: loop body 0:
-    Source: 'kernel/src/lib.rs', lines 301:4-308:5 -/
+    Source: 'kernel/src/lib.rs', lines 312:4-319:5 -/
 @[rust_loop_body]
 def put_agent_loop.body
   (v : alloc.vec.Vec Agent) (x : Agent) (lo : Std.Usize) (hi : Std.Usize) :
@@ -16920,7 +17887,7 @@ def put_agent_loop.body
   else ok (done (x, lo))
 
 /-- [ai_town_kernel::put_agent]: loop 0:
-    Source: 'kernel/src/lib.rs', lines 301:4-308:5 -/
+    Source: 'kernel/src/lib.rs', lines 312:4-319:5 -/
 @[rust_loop]
 def put_agent_loop
   (v : alloc.vec.Vec Agent) (x : Agent) (lo : Std.Usize) (hi : Std.Usize) :
@@ -16931,7 +17898,7 @@ def put_agent_loop
     (lo, hi)
 
 /-- [ai_town_kernel::put_agent]:
-    Source: 'kernel/src/lib.rs', lines 298:0-314:1 -/
+    Source: 'kernel/src/lib.rs', lines 309:0-325:1 -/
 def put_agent
   (v : alloc.vec.Vec Agent) (x : Agent) : Result (alloc.vec.Vec Agent) := do
   let hi := alloc.vec.Vec.len v
@@ -17468,11 +18435,12 @@ def PathNode.put
 @[global_simps, irreducible] def town_tables.PathNode.player : Std.U32 := 0#u32
 
 /-- [ai_town_kernel::apply_write]:
-    Source: 'kernel/src/lib.rs', lines 316:0-335:1 -/
+    Source: 'kernel/src/lib.rs', lines 327:0-347:1 -/
 def apply_write (s : Snapshot) (w : Write) : Result Snapshot := do
   match w with
   | Write.PutMeta m => ok { s with «meta» := m }
   | Write.PutTerrain t => ok { s with terrain := t }
+  | Write.PutMotionHistory h => ok { s with motion_history := h }
   | Write.PutPlayer p =>
     let v ← put_player s.players p
     ok { s with players := v }
@@ -17514,7 +18482,7 @@ def apply_write (s : Snapshot) (w : Write) : Result Snapshot := do
 /-- [ai_town_kernel::{ai_town_kernel::PathNode}::TABLE]
     Source: '/cargo/registry/src/index.crates.io-1949cf8c6b5b557f/h5i-app-schema-0.1.2/src/lib.rs', lines 135:12-135:60
     Visibility: public -/
-@[global_simps, irreducible] def PathNode.TABLE : Std.U32 := 3#u32
+@[global_simps, irreducible] def PathNode.TABLE : Std.U32 := 4#u32
 
 /-- [ai_town_kernel::{ai_town_kernel::PathNode}::sql_del_where]:
     Source: '/cargo/registry/src/index.crates.io-1949cf8c6b5b557f/h5i-app-schema-0.1.2/src/lib.rs', lines 264:12-266:13
@@ -17526,7 +18494,7 @@ def PathNode.sql_del_where
 /-- [ai_town_kernel::{ai_town_kernel::Agent}::TABLE]
     Source: '/cargo/registry/src/index.crates.io-1949cf8c6b5b557f/h5i-app-schema-0.1.2/src/lib.rs', lines 135:12-135:60
     Visibility: public -/
-@[global_simps, irreducible] def Agent.TABLE : Std.U32 := 6#u32
+@[global_simps, irreducible] def Agent.TABLE : Std.U32 := 7#u32
 
 /-- [ai_town_kernel::{ai_town_kernel::Agent}::sql_del]:
     Source: '/cargo/registry/src/index.crates.io-1949cf8c6b5b557f/h5i-app-schema-0.1.2/src/lib.rs', lines 257:12-261:13
@@ -17539,7 +18507,7 @@ def Agent.sql_del (id : Std.U64) : Result h5i_app_sql.Write := do
 /-- [ai_town_kernel::{ai_town_kernel::Member}::TABLE]
     Source: '/cargo/registry/src/index.crates.io-1949cf8c6b5b557f/h5i-app-schema-0.1.2/src/lib.rs', lines 135:12-135:60
     Visibility: public -/
-@[global_simps, irreducible] def Member.TABLE : Std.U32 := 5#u32
+@[global_simps, irreducible] def Member.TABLE : Std.U32 := 6#u32
 
 /-- [ai_town_kernel::{ai_town_kernel::Member}::sql_del]:
     Source: '/cargo/registry/src/index.crates.io-1949cf8c6b5b557f/h5i-app-schema-0.1.2/src/lib.rs', lines 257:12-261:13
@@ -17555,7 +18523,7 @@ def Member.sql_del
 /-- [ai_town_kernel::{ai_town_kernel::Conversation}::TABLE]
     Source: '/cargo/registry/src/index.crates.io-1949cf8c6b5b557f/h5i-app-schema-0.1.2/src/lib.rs', lines 135:12-135:60
     Visibility: public -/
-@[global_simps, irreducible] def Conversation.TABLE : Std.U32 := 4#u32
+@[global_simps, irreducible] def Conversation.TABLE : Std.U32 := 5#u32
 
 /-- [ai_town_kernel::{ai_town_kernel::Conversation}::sql_del]:
     Source: '/cargo/registry/src/index.crates.io-1949cf8c6b5b557f/h5i-app-schema-0.1.2/src/lib.rs', lines 257:12-261:13
@@ -17568,7 +18536,7 @@ def Conversation.sql_del (id : Std.U64) : Result h5i_app_sql.Write := do
 /-- [ai_town_kernel::{ai_town_kernel::Player}::TABLE]
     Source: '/cargo/registry/src/index.crates.io-1949cf8c6b5b557f/h5i-app-schema-0.1.2/src/lib.rs', lines 135:12-135:60
     Visibility: public -/
-@[global_simps, irreducible] def Player.TABLE : Std.U32 := 2#u32
+@[global_simps, irreducible] def Player.TABLE : Std.U32 := 3#u32
 
 /-- [ai_town_kernel::{ai_town_kernel::Player}::sql_del]:
     Source: '/cargo/registry/src/index.crates.io-1949cf8c6b5b557f/h5i-app-schema-0.1.2/src/lib.rs', lines 257:12-261:13
@@ -17602,7 +18570,7 @@ def Message.to_row
 /-- [ai_town_kernel::{ai_town_kernel::Message}::TABLE]
     Source: '/cargo/registry/src/index.crates.io-1949cf8c6b5b557f/h5i-app-schema-0.1.2/src/lib.rs', lines 135:12-135:60
     Visibility: public -/
-@[global_simps, irreducible] def Message.TABLE : Std.U32 := 8#u32
+@[global_simps, irreducible] def Message.TABLE : Std.U32 := 9#u32
 
 /-- [ai_town_kernel::{ai_town_kernel::Message}::sql_put]:
     Source: '/cargo/registry/src/index.crates.io-1949cf8c6b5b557f/h5i-app-schema-0.1.2/src/lib.rs', lines 189:12-191:13
@@ -17635,7 +18603,7 @@ def Memory.to_row
 /-- [ai_town_kernel::{ai_town_kernel::Memory}::TABLE]
     Source: '/cargo/registry/src/index.crates.io-1949cf8c6b5b557f/h5i-app-schema-0.1.2/src/lib.rs', lines 135:12-135:60
     Visibility: public -/
-@[global_simps, irreducible] def Memory.TABLE : Std.U32 := 7#u32
+@[global_simps, irreducible] def Memory.TABLE : Std.U32 := 8#u32
 
 /-- [ai_town_kernel::{ai_town_kernel::Memory}::sql_put]:
     Source: '/cargo/registry/src/index.crates.io-1949cf8c6b5b557f/h5i-app-schema-0.1.2/src/lib.rs', lines 189:12-191:13
@@ -17815,6 +18783,36 @@ def Player.sql_put (self : Player) : Result h5i_app_sql.Write := do
   let v ← Player.to_row self
   ok (h5i_app_sql.Write.Put Player.TABLE Player.KEY_LEN v)
 
+/-- [ai_town_kernel::{ai_town_kernel::MotionHistory}::to_row]:
+    Source: '/cargo/registry/src/index.crates.io-1949cf8c6b5b557f/h5i-app-schema-0.1.2/src/lib.rs', lines 138:12-143:13
+    Visibility: public -/
+def MotionHistory.to_row
+  (self : MotionHistory) : Result (alloc.vec.Vec h5i_app_sql.Val) := do
+  let v ← U64.Insts.H5i_app_sqlColumn.to_val self.start_ms
+  let out ← alloc.vec.Vec.push (alloc.vec.Vec.new h5i_app_sql.Val) v
+  let v1 ← U64.Insts.H5i_app_sqlColumn.to_val self.end_ms
+  let out1 ← alloc.vec.Vec.push out v1
+  let v2 ← alloc.vec.VecU8.Insts.H5i_app_sqlColumn.to_val self.data
+  alloc.vec.Vec.push out1 v2
+
+/-- [ai_town_kernel::{ai_town_kernel::MotionHistory}::KEY_LEN]
+    Source: '/cargo/registry/src/index.crates.io-1949cf8c6b5b557f/h5i-app-schema-0.1.2/src/lib.rs', lines 136:12-136:62
+    Visibility: public -/
+@[global_simps, irreducible] def MotionHistory.KEY_LEN : Std.U32 := 0#u32
+
+/-- [ai_town_kernel::{ai_town_kernel::MotionHistory}::TABLE]
+    Source: '/cargo/registry/src/index.crates.io-1949cf8c6b5b557f/h5i-app-schema-0.1.2/src/lib.rs', lines 135:12-135:60
+    Visibility: public -/
+@[global_simps, irreducible] def MotionHistory.TABLE : Std.U32 := 2#u32
+
+/-- [ai_town_kernel::{ai_town_kernel::MotionHistory}::sql_put]:
+    Source: '/cargo/registry/src/index.crates.io-1949cf8c6b5b557f/h5i-app-schema-0.1.2/src/lib.rs', lines 189:12-191:13
+    Visibility: public -/
+def MotionHistory.sql_put
+  (self : MotionHistory) : Result h5i_app_sql.Write := do
+  let v ← MotionHistory.to_row self
+  ok (h5i_app_sql.Write.Put MotionHistory.TABLE MotionHistory.KEY_LEN v)
+
 /-- [ai_town_kernel::{ai_town_kernel::Terrain}::to_row]:
     Source: '/cargo/registry/src/index.crates.io-1949cf8c6b5b557f/h5i-app-schema-0.1.2/src/lib.rs', lines 138:12-143:13
     Visibility: public -/
@@ -17875,7 +18873,7 @@ def Meta.sql_put (self : Meta) : Result h5i_app_sql.Write := do
   ok (h5i_app_sql.Write.Put Meta.TABLE Meta.KEY_LEN v)
 
 /-- [ai_town_kernel::sql_write]:
-    Source: 'kernel/src/lib.rs', lines 337:0-356:1 -/
+    Source: 'kernel/src/lib.rs', lines 349:0-369:1 -/
 def sql_write
   (w : Write) (out : alloc.vec.Vec h5i_app_sql.Write) :
   Result (alloc.vec.Vec h5i_app_sql.Write)
@@ -17885,6 +18883,9 @@ def sql_write
                        alloc.vec.Vec.push out w1
   | Write.PutTerrain t =>
     let w1 ← Terrain.sql_put t
+    alloc.vec.Vec.push out w1
+  | Write.PutMotionHistory h =>
+    let w1 ← MotionHistory.sql_put h
     alloc.vec.Vec.push out w1
   | Write.PutPlayer p => let w1 ← Player.sql_put p
                          alloc.vec.Vec.push out w1
@@ -17971,7 +18972,7 @@ def rules.occupied
   else rules.occupied_loop s.players x y ignore 0#usize
 
 /-- [ai_town_kernel::rules::same_motion]:
-    Source: 'kernel/src/rules.rs', lines 2341:0-2353:1
+    Source: 'kernel/src/rules.rs', lines 2355:0-2367:1
     Visibility: public -/
 def rules.same_motion (a : Player) (b : Player) : Result Bool := do
   if a.owner = b.owner
@@ -18006,7 +19007,7 @@ def rules.same_motion (a : Player) (b : Player) : Result Bool := do
   else ok false
 
 /-- [ai_town_kernel::rules::motion_isolated]: loop body 0:
-    Source: 'kernel/src/rules.rs', lines 2366:4-2379:5
+    Source: 'kernel/src/rules.rs', lines 2380:4-2393:5
     Visibility: public -/
 @[rust_loop_body]
 def rules.motion_isolated_loop0.body
@@ -18045,7 +19046,7 @@ def rules.motion_isolated_loop0.body
   else ok (done (before.players, after, ok1))
 
 /-- [ai_town_kernel::rules::motion_isolated]: loop 0:
-    Source: 'kernel/src/rules.rs', lines 2366:4-2379:5
+    Source: 'kernel/src/rules.rs', lines 2380:4-2393:5
     Visibility: public -/
 @[rust_loop]
 def rules.motion_isolated_loop0
@@ -18059,7 +19060,7 @@ def rules.motion_isolated_loop0
     (after, ok1, i)
 
 /-- [ai_town_kernel::rules::motion_isolated]: loop body 1:
-    Source: 'kernel/src/rules.rs', lines 2381:4-2387:5
+    Source: 'kernel/src/rules.rs', lines 2395:4-2401:5
     Visibility: public -/
 @[rust_loop_body]
 def rules.motion_isolated_loop1.body
@@ -18088,7 +19089,7 @@ def rules.motion_isolated_loop1.body
   else ok (done ok1)
 
 /-- [ai_town_kernel::rules::motion_isolated]: loop 1:
-    Source: 'kernel/src/rules.rs', lines 2381:4-2387:5
+    Source: 'kernel/src/rules.rs', lines 2395:4-2401:5
     Visibility: public -/
 @[rust_loop]
 def rules.motion_isolated_loop1
@@ -18101,7 +19102,7 @@ def rules.motion_isolated_loop1
     (ok1, i)
 
 /-- [ai_town_kernel::rules::motion_isolated]:
-    Source: 'kernel/src/rules.rs', lines 2360:0-2389:1
+    Source: 'kernel/src/rules.rs', lines 2374:0-2403:1
     Visibility: public -/
 def rules.motion_isolated
   (actor : Std.U64) (before : Snapshot) (after : Snapshot) : Result Bool := do
@@ -18113,7 +19114,7 @@ def rules.motion_isolated
     rules.motion_isolated_loop1 actor v after1 ok1 0#usize
 
 /-- [ai_town_kernel::rules::paths_isolated]: loop body 0:
-    Source: 'kernel/src/rules.rs', lines 2396:4-2404:1
+    Source: 'kernel/src/rules.rs', lines 2410:4-2418:1
     Visibility: public -/
 @[rust_loop_body]
 def rules.paths_isolated_loop.body
@@ -18142,7 +19143,7 @@ def rules.paths_isolated_loop.body
   else ok (done true)
 
 /-- [ai_town_kernel::rules::paths_isolated]: loop 0:
-    Source: 'kernel/src/rules.rs', lines 2396:4-2404:1
+    Source: 'kernel/src/rules.rs', lines 2410:4-2418:1
     Visibility: public -/
 @[rust_loop]
 def rules.paths_isolated_loop
@@ -18154,7 +19155,7 @@ def rules.paths_isolated_loop
     i
 
 /-- [ai_town_kernel::rules::paths_isolated]:
-    Source: 'kernel/src/rules.rs', lines 2391:0-2404:1
+    Source: 'kernel/src/rules.rs', lines 2405:0-2418:1
     Visibility: public -/
 def rules.paths_isolated
   (actor : Std.U64) (before : Snapshot) (after : Snapshot) : Result Bool := do
@@ -18163,7 +19164,7 @@ def rules.paths_isolated
   else rules.paths_isolated_loop actor before after 0#usize
 
 /-- [ai_town_kernel::rules::exclusive]: loop body 1:
-    Source: 'kernel/src/rules.rs', lines 2411:8-2416:9
+    Source: 'kernel/src/rules.rs', lines 2425:8-2430:9
     Visibility: public -/
 @[rust_loop_body]
 def rules.exclusive_loop0_loop0.body
@@ -18185,7 +19186,7 @@ def rules.exclusive_loop0_loop0.body
   else ok (done ok1)
 
 /-- [ai_town_kernel::rules::exclusive]: loop 1:
-    Source: 'kernel/src/rules.rs', lines 2411:8-2416:9
+    Source: 'kernel/src/rules.rs', lines 2425:8-2430:9
     Visibility: public -/
 @[rust_loop]
 def rules.exclusive_loop0_loop0
@@ -18197,7 +19198,7 @@ def rules.exclusive_loop0_loop0
     (ok1, j)
 
 /-- [ai_town_kernel::rules::exclusive]: loop body 0:
-    Source: 'kernel/src/rules.rs', lines 2409:4-2418:5
+    Source: 'kernel/src/rules.rs', lines 2423:4-2432:5
     Visibility: public -/
 @[rust_loop_body]
 def rules.exclusive_loop0.body
@@ -18214,7 +19215,7 @@ def rules.exclusive_loop0.body
   else ok (done ok1)
 
 /-- [ai_town_kernel::rules::exclusive]: loop 0:
-    Source: 'kernel/src/rules.rs', lines 2409:4-2418:5
+    Source: 'kernel/src/rules.rs', lines 2423:4-2432:5
     Visibility: public -/
 @[rust_loop]
 def rules.exclusive_loop0
@@ -18224,14 +19225,14 @@ def rules.exclusive_loop0
     (ok1, i)
 
 /-- [ai_town_kernel::rules::exclusive]:
-    Source: 'kernel/src/rules.rs', lines 2406:0-2420:1
+    Source: 'kernel/src/rules.rs', lines 2420:0-2434:1
     Visibility: public -/
 @[reducible]
 def rules.exclusive (s : Snapshot) : Result Bool := do
   rules.exclusive_loop0 s true 0#usize
 
 /-- [ai_town_kernel::rules::status_pair_ok]:
-    Source: 'kernel/src/rules.rs', lines 2422:0-2424:1 -/
+    Source: 'kernel/src/rules.rs', lines 2436:0-2438:1 -/
 def rules.status_pair_ok (a : Std.U32) (b : Std.U32) : Result Bool := do
   if a = ST_WALKING
   then
@@ -18293,7 +19294,7 @@ def rules.status_pair_ok (a : Std.U32) (b : Std.U32) : Result Bool := do
            else ok false
 
 /-- [ai_town_kernel::rules::members_consistent]: loop body 1:
-    Source: 'kernel/src/rules.rs', lines 2437:8-2449:9
+    Source: 'kernel/src/rules.rs', lines 2451:8-2463:9
     Visibility: public -/
 @[rust_loop_body]
 def rules.members_consistent_loop0_loop0.body
@@ -18329,7 +19330,7 @@ def rules.members_consistent_loop0_loop0.body
   else ok (done (n, a, b, pa, pb))
 
 /-- [ai_town_kernel::rules::members_consistent]: loop 1:
-    Source: 'kernel/src/rules.rs', lines 2437:8-2449:9
+    Source: 'kernel/src/rules.rs', lines 2451:8-2463:9
     Visibility: public -/
 @[rust_loop]
 def rules.members_consistent_loop0_loop0
@@ -18343,7 +19344,7 @@ def rules.members_consistent_loop0_loop0
     (n, a, b, pa, pb, j)
 
 /-- [ai_town_kernel::rules::members_consistent]: loop body 0:
-    Source: 'kernel/src/rules.rs', lines 2429:4-2461:5
+    Source: 'kernel/src/rules.rs', lines 2443:4-2475:5
     Visibility: public -/
 @[rust_loop_body]
 def rules.members_consistent_loop0.body
@@ -18395,7 +19396,7 @@ def rules.members_consistent_loop0.body
   else ok (done (s.conversations, s.members, ok1))
 
 /-- [ai_town_kernel::rules::members_consistent]: loop 0:
-    Source: 'kernel/src/rules.rs', lines 2429:4-2461:5
+    Source: 'kernel/src/rules.rs', lines 2443:4-2475:5
     Visibility: public -/
 @[rust_loop]
 def rules.members_consistent_loop0
@@ -18407,7 +19408,7 @@ def rules.members_consistent_loop0
     (ok1, i)
 
 /-- [ai_town_kernel::rules::members_consistent]: loop body 2:
-    Source: 'kernel/src/rules.rs', lines 2463:4-2471:5
+    Source: 'kernel/src/rules.rs', lines 2477:4-2485:5
     Visibility: public -/
 @[rust_loop_body]
 def rules.members_consistent_loop1.body
@@ -18439,7 +19440,7 @@ def rules.members_consistent_loop1.body
   else ok (done ok1)
 
 /-- [ai_town_kernel::rules::members_consistent]: loop 2:
-    Source: 'kernel/src/rules.rs', lines 2463:4-2471:5
+    Source: 'kernel/src/rules.rs', lines 2477:4-2485:5
     Visibility: public -/
 @[rust_loop]
 def rules.members_consistent_loop1
@@ -18452,14 +19453,14 @@ def rules.members_consistent_loop1
     (ok1, i)
 
 /-- [ai_town_kernel::rules::members_consistent]:
-    Source: 'kernel/src/rules.rs', lines 2426:0-2473:1
+    Source: 'kernel/src/rules.rs', lines 2440:0-2487:1
     Visibility: public -/
 def rules.members_consistent (s : Snapshot) : Result Bool := do
   let (v, v1, ok1) ← rules.members_consistent_loop0 s true 0#usize
   rules.members_consistent_loop1 v v1 ok1 0#usize
 
 /-- [ai_town_kernel::rules::terrain_clear]: loop body 0:
-    Source: 'kernel/src/rules.rs', lines 2479:4-2488:1 -/
+    Source: 'kernel/src/rules.rs', lines 2493:4-2502:1 -/
 @[rust_loop_body]
 def rules.terrain_clear_loop.body
   (s : Snapshot) (t : Terrain) (v : alloc.vec.Vec Player) (i : Std.Usize) :
@@ -18479,7 +19480,7 @@ def rules.terrain_clear_loop.body
   else ok (done true)
 
 /-- [ai_town_kernel::rules::terrain_clear]: loop 0:
-    Source: 'kernel/src/rules.rs', lines 2479:4-2488:1 -/
+    Source: 'kernel/src/rules.rs', lines 2493:4-2502:1 -/
 @[rust_loop]
 def rules.terrain_clear_loop
   (s : Snapshot) (t : Terrain) (v : alloc.vec.Vec Player) (i : Std.Usize) :
@@ -18490,13 +19491,13 @@ def rules.terrain_clear_loop
     i
 
 /-- [ai_town_kernel::rules::terrain_clear]:
-    Source: 'kernel/src/rules.rs', lines 2475:0-2488:1 -/
+    Source: 'kernel/src/rules.rs', lines 2489:0-2502:1 -/
 @[reducible]
 def rules.terrain_clear (s : Snapshot) : Result Bool := do
   rules.terrain_clear_loop s s.terrain s.players 0#usize
 
 /-- [ai_town_kernel::rules::pairs_apart]: loop body 1:
-    Source: 'kernel/src/rules.rs', lines 2497:8-2504:9 -/
+    Source: 'kernel/src/rules.rs', lines 2511:8-2518:9 -/
 @[rust_loop_body]
 def rules.pairs_apart_loop0_loop0.body
   (v : alloc.vec.Vec Player) (x : Std.U32) (y : Std.U32) (ok1 : Bool)
@@ -18518,7 +19519,7 @@ def rules.pairs_apart_loop0_loop0.body
   else ok (done ok1)
 
 /-- [ai_town_kernel::rules::pairs_apart]: loop 1:
-    Source: 'kernel/src/rules.rs', lines 2497:8-2504:9 -/
+    Source: 'kernel/src/rules.rs', lines 2511:8-2518:9 -/
 @[rust_loop]
 def rules.pairs_apart_loop0_loop0
   (v : alloc.vec.Vec Player) (ok1 : Bool) (x : Std.U32) (y : Std.U32)
@@ -18530,7 +19531,7 @@ def rules.pairs_apart_loop0_loop0
     (ok1, j)
 
 /-- [ai_town_kernel::rules::pairs_apart]: loop body 0:
-    Source: 'kernel/src/rules.rs', lines 2493:4-2506:5 -/
+    Source: 'kernel/src/rules.rs', lines 2507:4-2520:5 -/
 @[rust_loop_body]
 def rules.pairs_apart_loop0.body
   (s : Snapshot) (ok1 : Bool) (i : Std.Usize) :
@@ -18549,7 +19550,7 @@ def rules.pairs_apart_loop0.body
   else ok (done ok1)
 
 /-- [ai_town_kernel::rules::pairs_apart]: loop 0:
-    Source: 'kernel/src/rules.rs', lines 2493:4-2506:5 -/
+    Source: 'kernel/src/rules.rs', lines 2507:4-2520:5 -/
 @[rust_loop]
 def rules.pairs_apart_loop0
   (s : Snapshot) (ok1 : Bool) (i : Std.Usize) : Result Bool := do
@@ -18558,13 +19559,13 @@ def rules.pairs_apart_loop0
     (ok1, i)
 
 /-- [ai_town_kernel::rules::pairs_apart]:
-    Source: 'kernel/src/rules.rs', lines 2490:0-2508:1 -/
+    Source: 'kernel/src/rules.rs', lines 2504:0-2522:1 -/
 @[reducible]
 def rules.pairs_apart (s : Snapshot) : Result Bool := do
   rules.pairs_apart_loop0 s true 0#usize
 
 /-- [ai_town_kernel::rules::collision_safe]:
-    Source: 'kernel/src/rules.rs', lines 2510:0-2512:1
+    Source: 'kernel/src/rules.rs', lines 2524:0-2526:1
     Visibility: public -/
 def rules.collision_safe (s : Snapshot) : Result Bool := do
   let b ← rules.terrain_clear s
@@ -19157,6 +20158,43 @@ def Terrain.from_row
     match o with
     | none => ok none
     | some x => ok (some { mask := x })
+
+/-- [ai_town_kernel::{ai_town_kernel::MotionHistory}::from_row]:
+    Source: '/cargo/registry/src/index.crates.io-1949cf8c6b5b557f/h5i-app-schema-0.1.2/src/lib.rs', lines 146:12-167:13
+    Visibility: public -/
+def MotionHistory.from_row
+  (row : alloc.vec.Vec h5i_app_sql.Val) : Result (Option MotionHistory) := do
+  let i := alloc.vec.Vec.len row
+  let i1 ← 0#usize + 1#usize
+  let i2 ← i1 + 1#usize
+  let i3 ← i2 + 1#usize
+  if i != i3
+  then ok none
+  else
+    let v ←
+      alloc.vec.Vec.index (core.slice.index.SliceIndexUsizeSlice
+        h5i_app_sql.Val) row 0#usize
+    let o ← U64.Insts.H5i_app_sqlColumn.from_val v
+    match o with
+    | none => ok none
+    | some x =>
+      let v1 ←
+        alloc.vec.Vec.index (core.slice.index.SliceIndexUsizeSlice
+          h5i_app_sql.Val) row i1
+      let o1 ← U64.Insts.H5i_app_sqlColumn.from_val v1
+      match o1 with
+      | none => ok none
+      | some x1 =>
+        let i4 ← i1 + 1#usize
+        let v2 ←
+          alloc.vec.Vec.index (core.slice.index.SliceIndexUsizeSlice
+            h5i_app_sql.Val) row i4
+        let o2 ← alloc.vec.VecU8.Insts.H5i_app_sqlColumn.from_val v2
+        match o2 with
+        | none => ok none
+        | some x2 =>
+          let _ ← i4 + 1#usize
+          ok (some { start_ms := x, end_ms := x1, data := x2 })
 
 /-- [ai_town_kernel::{ai_town_kernel::Player}::from_row]:
     Source: '/cargo/registry/src/index.crates.io-1949cf8c6b5b557f/h5i-app-schema-0.1.2/src/lib.rs', lines 146:12-167:13
@@ -19985,6 +21023,60 @@ def Terrain.from_rows
   then ok (some out)
   else ok none
 
+/-- [ai_town_kernel::{ai_town_kernel::MotionHistory}::from_rows]: loop body 0:
+    Source: '/cargo/registry/src/index.crates.io-1949cf8c6b5b557f/h5i-app-schema-0.1.2/src/lib.rs', lines 174:16-180:17
+    Visibility: public -/
+@[rust_loop_body]
+def MotionHistory.from_rows_loop.body
+  (rows : alloc.vec.Vec (alloc.vec.Vec h5i_app_sql.Val))
+  (out : alloc.vec.Vec MotionHistory) (ok1 : Bool) (i : Std.Usize) :
+  Result (ControlFlow ((alloc.vec.Vec MotionHistory) × Bool × Std.Usize)
+    ((alloc.vec.Vec MotionHistory) × Bool))
+  := do
+  let i1 := alloc.vec.Vec.len rows
+  if i < i1
+  then
+    let v ←
+      alloc.vec.Vec.index (core.slice.index.SliceIndexUsizeSlice (alloc.vec.Vec
+        h5i_app_sql.Val)) rows i
+    let o ← MotionHistory.from_row v
+    let (out1, ok2) ←
+      match o with
+      | none => ok (out, false)
+      | some x => do
+                  let out2 ← alloc.vec.Vec.push out x
+                  ok (out2, ok1)
+    let i2 ← i + 1#usize
+    ok (cont (out1, ok2, i2))
+  else ok (done (out, ok1))
+
+/-- [ai_town_kernel::{ai_town_kernel::MotionHistory}::from_rows]: loop 0:
+    Source: '/cargo/registry/src/index.crates.io-1949cf8c6b5b557f/h5i-app-schema-0.1.2/src/lib.rs', lines 174:16-180:17
+    Visibility: public -/
+@[rust_loop]
+def MotionHistory.from_rows_loop
+  (rows : alloc.vec.Vec (alloc.vec.Vec h5i_app_sql.Val))
+  (out : alloc.vec.Vec MotionHistory) (ok1 : Bool) (i : Std.Usize) :
+  Result ((alloc.vec.Vec MotionHistory) × Bool)
+  := do
+  loop
+    (fun (out1, ok2, i1) => MotionHistory.from_rows_loop.body rows out1 ok2 i1)
+    (out, ok1, i)
+
+/-- [ai_town_kernel::{ai_town_kernel::MotionHistory}::from_rows]:
+    Source: '/cargo/registry/src/index.crates.io-1949cf8c6b5b557f/h5i-app-schema-0.1.2/src/lib.rs', lines 170:12-186:13
+    Visibility: public -/
+def MotionHistory.from_rows
+  (rows : alloc.vec.Vec (alloc.vec.Vec h5i_app_sql.Val)) :
+  Result (Option (alloc.vec.Vec MotionHistory))
+  := do
+  let (out, ok1) ←
+    MotionHistory.from_rows_loop rows (alloc.vec.Vec.new MotionHistory) true
+      0#usize
+  if ok1
+  then ok (some out)
+  else ok none
+
 /-- [ai_town_kernel::{ai_town_kernel::Player}::from_rows]: loop body 0:
     Source: '/cargo/registry/src/index.crates.io-1949cf8c6b5b557f/h5i-app-schema-0.1.2/src/lib.rs', lines 174:16-180:17
     Visibility: public -/
@@ -20409,6 +21501,29 @@ def Terrain.from_one
         alloc.vec.Vec.index (core.slice.index.SliceIndexUsizeSlice
           (alloc.vec.Vec h5i_app_sql.Val)) rows 0#usize
       Terrain.from_row v
+    else ok none
+
+/-- [ai_town_kernel::{ai_town_kernel::MotionHistory}::from_one]:
+    Source: '/cargo/registry/src/index.crates.io-1949cf8c6b5b557f/h5i-app-schema-0.1.2/src/lib.rs', lines 204:12-212:13
+    Visibility: public -/
+def MotionHistory.from_one
+  (rows : alloc.vec.Vec (alloc.vec.Vec h5i_app_sql.Val)) :
+  Result (Option MotionHistory)
+  := do
+  let i := alloc.vec.Vec.len rows
+  if i = 0#usize
+  then
+    let i1 ← U64.Insts.H5i_app_sqlZero.zero
+    let v ← alloc.vec.VecU8.Insts.H5i_app_sqlZero.zero
+    ok (some { start_ms := i1, end_ms := i1, data := v })
+  else
+    let i1 := alloc.vec.Vec.len rows
+    if i1 = 1#usize
+    then
+      let v ←
+        alloc.vec.Vec.index (core.slice.index.SliceIndexUsizeSlice
+          (alloc.vec.Vec h5i_app_sql.Val)) rows 0#usize
+      MotionHistory.from_row v
     else ok none
 
 /-- [ai_town_kernel::{ai_town_kernel::PathNode}::del]: loop body 0:
@@ -20947,6 +22062,7 @@ def Message.sql_del_where
 structure Rows where
   «meta» : alloc.vec.Vec (alloc.vec.Vec h5i_app_sql.Val)
   terrain : alloc.vec.Vec (alloc.vec.Vec h5i_app_sql.Val)
+  motion_history : alloc.vec.Vec (alloc.vec.Vec h5i_app_sql.Val)
   players : alloc.vec.Vec (alloc.vec.Vec h5i_app_sql.Val)
   paths : alloc.vec.Vec (alloc.vec.Vec h5i_app_sql.Val)
   conversations : alloc.vec.Vec (alloc.vec.Vec h5i_app_sql.Val)
@@ -20967,46 +22083,51 @@ def decode (r : Rows) : Result (Option Snapshot) := do
     match o1 with
     | none => ok none
     | some x1 =>
-      let o2 ← Player.from_rows r.players
+      let o2 ← MotionHistory.from_one r.motion_history
       match o2 with
       | none => ok none
       | some x2 =>
-        let o3 ← PathNode.from_rows r.paths
+        let o3 ← Player.from_rows r.players
         match o3 with
         | none => ok none
         | some x3 =>
-          let o4 ← Conversation.from_rows r.conversations
+          let o4 ← PathNode.from_rows r.paths
           match o4 with
           | none => ok none
           | some x4 =>
-            let o5 ← Member.from_rows r.members
+            let o5 ← Conversation.from_rows r.conversations
             match o5 with
             | none => ok none
             | some x5 =>
-              let o6 ← Agent.from_rows r.agents
+              let o6 ← Member.from_rows r.members
               match o6 with
               | none => ok none
               | some x6 =>
-                let o7 ← Memory.from_rows r.memories
+                let o7 ← Agent.from_rows r.agents
                 match o7 with
                 | none => ok none
                 | some x7 =>
-                  let o8 ← Message.from_rows r.messages
+                  let o8 ← Memory.from_rows r.memories
                   match o8 with
                   | none => ok none
                   | some x8 =>
-                    ok (some
-                      {
-                        «meta» := x,
-                        terrain := x1,
-                        players := x2,
-                        paths := x3,
-                        conversations := x4,
-                        members := x5,
-                        agents := x6,
-                        memories := x7,
-                        messages := x8
-                      })
+                    let o9 ← Message.from_rows r.messages
+                    match o9 with
+                    | none => ok none
+                    | some x9 =>
+                      ok (some
+                        {
+                          «meta» := x,
+                          terrain := x1,
+                          motion_history := x2,
+                          players := x3,
+                          paths := x4,
+                          conversations := x5,
+                          members := x6,
+                          agents := x7,
+                          memories := x8,
+                          messages := x9
+                        })
 
 /-- [ai_town_kernel::apply]: loop body 0:
     Source: '/cargo/registry/src/index.crates.io-1949cf8c6b5b557f/h5i-app-schema-0.1.2/src/lib.rs', lines 306:12-309:13

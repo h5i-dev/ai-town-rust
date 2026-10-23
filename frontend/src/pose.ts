@@ -1,3 +1,4 @@
+import { historicalValue } from './history';
 import type { Player } from './types';
 
 const MILLI = 1000;
@@ -17,6 +18,13 @@ export function orientation(faceDx: number, faceDy: number): number {
 
 /** Tile position along the path at server time `now`, matching geometry.ts. */
 export function poseAt(player: Player, now: number): Pose {
+  if (player.motion) {
+    const h = player.motion;
+    return {x:historicalValue(h[0],now,player.x/1000), y:historicalValue(h[1],now,player.y/1000),
+      faceDx:1000+1000*historicalValue(h[2],now,(player.faceDx-1000)/1000),
+      faceDy:1000+1000*historicalValue(h[3],now,(player.faceDy-1000)/1000),
+      speed:historicalValue(h[4],now,player.speed/1000)};
+  }
   const path = player.path;
   const still = (x: number, y: number, faceDx: number, faceDy: number): Pose => ({
     x: x / MILLI,

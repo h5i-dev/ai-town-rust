@@ -5,7 +5,7 @@ const [fixture,output,s='3',t='60',stepsArg='1']=process.argv.slice(2);
 const samples=Number(s), ticks=Number(t), steps=Number(stepsArg);
 assert(Number.isInteger(samples)&&samples>0&&Number.isInteger(ticks)&&ticks>0&&ticks<=60&&Number.isInteger(steps)&&steps>0);
 console.log=console.debug=console.warn=()=>{};
-writeFileSync(output,'engine,players,sample,ticks,simulated_ms,loop_ms,history_pack_ms,snapshot_ms,moved,decisions,destinations,activities,invitations,messages,memories,pathfinds\n');
+writeFileSync(output,'engine,players,sample,ticks,simulated_ms,loop_ms,history_pack_ms,snapshot_ms,moved,decisions,destinations,activities,invitations,messages,memories,pathfinds,history_bytes\n');
 for(let sample=-1;sample<samples;sample++) {
   const town=new Town(fixture), before=[...town.game.world.players.values()].map(p=>({...p.position}));
   let loopMs=0, packMs=0, now=town.fixture.now;
@@ -32,6 +32,6 @@ for(let sample=-1;sample<samples;sample++) {
   const clock=performance.now();const frame=JSON.stringify(town.snapshot(now,loopMs,ticks*steps*16));
   assert(frame.length>0);const snapshotMs=performance.now()-clock;
   const m=town.metrics;
-  const row=`original,${i},${sample},${ticks*steps},${ticks*steps*16},${loopMs.toFixed(3)},${packMs.toFixed(3)},${snapshotMs.toFixed(3)},${moved},${m.decisions},${m.destinations},${m.activities},${m.invitations},${m.messages},${m.memories},${m.pathfinds}\n`;
+  const row=`original,${i},${sample},${ticks*steps},${ticks*steps*16},${loopMs.toFixed(3)},${packMs.toFixed(3)},${snapshotMs.toFixed(3)},${moved},${m.decisions},${m.destinations},${m.activities},${m.invitations},${m.messages},${m.memories},${m.pathfinds},${town.historyBytes}\n`;
   process.stderr.write(row);if(sample>=0)appendFileSync(output,row);
 }

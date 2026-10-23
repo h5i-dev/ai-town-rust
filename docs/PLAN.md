@@ -34,7 +34,7 @@ through `Kernel::stamp`, never through a client field.
 | `aiTown/agent.ts` operations, `agentInputs.ts`, `agentOperations.ts` | `server` agent worker | They wait on the network, then submit ordinary commands |
 | `agent/conversation.ts`, `memory.ts`, `embeddingsCache.ts`, `util/llm.ts` | `server` provider (`OpenAiCompatible` or `Stub`) and `kernel` `Memory` rows | The prompt and the HTTP call are not decisions about who may move. The stored summary is a row the kernel accepts |
 | `engine/abstractGame.ts` | `server` sim loop | One `Step` command per second runs 60 ticks of 16 ms. The engine user is the only caller. Postgres commits the write set once |
-| `engine/historicalObject.ts` | client interpolation along `PathNode` timestamps | The path already carries arrival times, so the client can replay the last second without a packed history buffer |
+| `engine/historicalObject.ts` | `kernel::history`, `MotionHistory`, and `frontend/src/history.ts` | Record confirmed tick positions, facing and speed; compress and persist the latest batch; replay completed ticks in the browser |
 | `engine/schema.ts` inputs and generation numbers | shell idempotency keys and a single sim task | h5i-app already serializes one tenant. A second step cannot overlap |
 | `messages.ts` | `kernel` `Message` | Posting checks membership. Text is not a game-rule by itself, but the check is |
 | `music.ts`, `world.ts` queries, `init.ts` | shell routes and startup | Map JSON, session tokens, seeding agents |
@@ -183,7 +183,11 @@ holds the kernel tables. The sim loop and the agent worker call
 
 `frontend/` is the PixiJS town. `useTown` and `rpc` in `frontend/src/api.ts`
 replace the Convex hooks. Positions in a snapshot are milli-tiles; the canvas
-divides by 1000 and interpolates `PathNode` timestamps. The map file is the
+replays the latest compressed `MotionHistory` batch. Packets match upstream
+`HistoricalObject`: position/facing use 8 fractional bits and speed uses 16.
+The bounded playback clock holds at the last computed tick; it does not predict
+future route positions. Planned `PathNode` interpolation remains a fallback for
+older snapshots without motion history. The map file is the
 original gentle tileset, converted to JSON so both the shell (collision mask)
 and the canvas (tiles) share it.
 

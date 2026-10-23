@@ -85,17 +85,22 @@ Native scheduling and acceptance rules differ, so their trajectories differ too.
 The original engine runs in a worker so HTTP and camera controls remain responsive
 during slow ticks. Both engines display computed positions and simulated time;
 at 10,000 residents the original can advance far below real time. Original mode
-also packs its position history; Rust does not produce those buffers. The demo
-adapts batch sizes for responsiveness; use the fixed-step
+and Rust both record and compress each tick’s confirmed position, facing and
+speed, and replay completed movement in the browser. The demo adapts batch sizes
+for responsiveness; use the fixed-step
 [town benchmark](docs/TOWN_BENCHMARKS.md) for timing comparisons.
 
 The recorded Rust town benchmark processes 0.96 simulated seconds for 10,000
-residents in 0.389 seconds (previously 43.626 seconds). A longer 76.8-second
-simulation takes 23.60 seconds, with new activities, invitations and memories.
+residents in 0.385 seconds including tick history recording and compression;
+the original takes 214.88 seconds under the same fixture and time window.
+A longer Rust run covers 76.8 simulated seconds in 22.44 seconds, with new
+activities, invitations and memories. Native completed work differs between
+engines; these timings are not feature-equivalent speedup ratios.
 A separate movement-only GPU benchmark takes 16.78 ms for 60 rounds including
 preparation and checked relocation (previously 70.95 ms).
-These are in-memory CPU measurements; snapshot serialization, database and LLM
-costs have separate scope. See [results and profiling](docs/TOWN_BENCHMARKS.md).
+The town results are in-memory CPU measurements. Final snapshot serialization
+adds 0.129 seconds for the short 10,000-resident Rust case; database, transport
+and LLM costs are excluded. See [results and profiling](docs/TOWN_BENCHMARKS.md).
 
 `./bench/demo.sh --scenario crowd` retains the old synchronized, open-field
 movement demo for either engine. It has no autonomous agents or conversations.

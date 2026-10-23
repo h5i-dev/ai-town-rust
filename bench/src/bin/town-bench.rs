@@ -11,15 +11,12 @@ fn main() {
     let ticks: u64 = args.get(4).map(|s| s.parse().unwrap()).unwrap_or(60);
     let steps: u64 = args.get(5).map(|s| s.parse().unwrap()).unwrap_or(1);
     assert!(samples > 0 && ticks > 0 && ticks <= 60 && steps > 0);
-    fs::write(output,"engine,players,sample,ticks,simulated_ms,loop_ms,history_pack_ms,snapshot_ms,moved,decisions,destinations,activities,invitations,messages,memories,pathfinds\n").unwrap();
+    fs::write(output,"engine,players,sample,ticks,simulated_ms,loop_ms,history_pack_ms,snapshot_ms,moved,decisions,destinations,activities,invitations,messages,memories,pathfinds,history_bytes\n").unwrap();
     for sample in -1..samples as i32 {
         let mut town = Town::load(fixture);
         let before = town.state.players.clone();
-        let clock = Instant::now();
-        for _ in 0..steps {
-            town.step(ticks);
-        }
-        let elapsed = clock.elapsed().as_secs_f64() * 1000.0;
+        let mut elapsed = 0.0;
+        for _ in 0..steps { elapsed += town.step(ticks); }
         assert!(placement_ok(&town.state));
         assert!(members_consistent(&town.state));
         let moved = town
@@ -35,17 +32,19 @@ fn main() {
         let snapshot_ms = clock.elapsed().as_secs_f64() * 1000.0;
         let m = &town.metrics;
         let row = format!(
-            "rust,{},{sample},{},{},{elapsed:.3},0,{snapshot_ms:.3},{moved},{},{},{},{},{},{},{}\n",
+            "rust,{},{sample},{},{},{elapsed:.3},{:.3},{snapshot_ms:.3},{moved},{},{},{},{},{},{},{},{}\n",
             before.len(),
             ticks * steps,
             ticks * steps * 16,
+            town.history_pack_ms,
             m.decisions,
             m.destinations,
             m.activities,
             m.invitations,
             m.messages,
             m.memories,
-            m.pathfinds
+            m.pathfinds,
+            town.history_bytes
         );
         eprint!("{row}");
         if sample >= 0 {

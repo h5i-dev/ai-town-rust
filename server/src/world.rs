@@ -1,5 +1,6 @@
 //! JSON the browser renders. Positions stay in milli-tiles.
 
+use base64::Engine;
 use ai_town_kernel::{Conversation, Member, Message, PathNode, Snapshot};
 
 pub fn to_json(snap: &Snapshot) -> String {
@@ -73,6 +74,7 @@ pub fn to_value_with_options(snap: &Snapshot, include_paths: bool, message_limit
         .collect();
     serde_json::json!({
         "nowMs": snap.meta.now_ms,
+        "motionHistory": motion_history_json(snap),
         "width": snap.meta.width,
         "height": snap.meta.height,
         "frozen": snap.meta.frozen,
@@ -143,6 +145,26 @@ mod tests {
     use super::*;
 
     #[test]
+    fn compressed_tick_history_is_delivered_and_stale_or_truncated_data_is_omitted() {
+        let mut s = Snapshot::default();
+        s.meta.now_ms = 32;
+        let packet = vec![187,242,5,8];
+        let mut data = 9u64.to_le_bytes().to_vec();
+        data.extend_from_slice(&(packet.len() as u32).to_le_bytes());
+        data.extend_from_slice(&packet);
+        s.motion_history = ai_town_kernel::MotionHistory { start_ms:0,end_ms:32,data };
+        let json = to_value(&s);
+        let h = &json["motionHistory"];
+        assert_eq!(h["startMs"],0); assert_eq!(h["endMs"],32);
+        assert_eq!(h["locations"][0]["playerId"],9);
+        assert_eq!(base64::engine::general_purpose::STANDARD.decode(h["locations"][0]["buffer"].as_str().unwrap()).unwrap(),packet);
+        s.meta.now_ms=48;
+        assert!(to_value(&s)["motionHistory"].is_null());
+        s.meta.now_ms=32; s.motion_history.data.pop();
+        assert!(to_value(&s)["motionHistory"].is_null());
+    }
+
+    #[test]
     fn paths_are_grouped_by_player_and_sorted_by_sequence() {
         let mut s = Snapshot::default();
         let p = ai_town_kernel::Player {
@@ -196,4 +218,26 @@ mod tests {
         assert_eq!(ids, vec![2, 3]);
         assert_eq!(to_value(&s)["messages"].as_array().unwrap().len(), 3);
     }
+}
+
+/// Each location packet uses the upstream HistoricalObject wire format.
+fn motion_history_json(snap: &Snapshot) -> serde_json::Value {
+    let h = &snap.motion_history;
+    // GPU relocation and old snapshots have no tick history for this interval.
+    if h.end_ms != snap.meta.now_ms || h.end_ms <= h.start_ms {
+        return serde_json::Value::Null;
+    }
+    let mut locations = Vec::new();
+    let mut data = h.data.as_slice();
+    while data.len() >= 12 {
+        let id = u64::from_le_bytes(data[..8].try_into().unwrap());
+        let len = u32::from_le_bytes(data[8..12].try_into().unwrap()) as usize;
+        data = &data[12..];
+        if len > data.len() { return serde_json::Value::Null; }
+        locations.push(serde_json::json!({"playerId":id,
+            "buffer":base64::engine::general_purpose::STANDARD.encode(&data[..len])}));
+        data = &data[len..];
+    }
+    if !data.is_empty() { return serde_json::Value::Null; }
+    serde_json::json!({"startMs":h.start_ms,"endMs":h.end_ms,"locations":locations})
 }

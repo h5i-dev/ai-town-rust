@@ -72,7 +72,12 @@ meta={'utc':subprocess.check_output(['date','-u','+%FT%TZ'],text=True).strip(),'
  'node':subprocess.check_output(['node','--version'],text=True).strip(),'players':counts,'samples':int(samples),'ticks_per_step':int(ticks),'steps':int(steps),'seed':int(seed),'engine':engine,
  'rust':subprocess.check_output(['rustc','--version'],text=True).strip() if engine!='original' else None,
  'cpu_threads':os.cpu_count(),'loadavg':os.getloadavg(),'original_path_guard':engine!='rust',
+ 'motion_history':{'recording':'every actual tick, x/y/dx/dy/speed','quantization_bits':[8,8,8,8,16],'loop_includes_recording':True,'history_pack_separate':True,'history_bytes':'sum of packets plus 12-byte player envelopes across all steps'},
  'sha256':{str(p.relative_to(root)):hashlib.sha256(p.read_bytes()).hexdigest() for p in paths if p.is_file()}}
+if engine!='rust':
+ upstream=pathlib.Path(os.environ.get('AI_TOWN_UPSTREAM',os.path.expanduser('~/Ref/ai-town')))
+ meta['upstream_dirty']=bool(git('-C',str(upstream),'status','--porcelain'))
+ meta['upstream_sha256']={str(p.relative_to(upstream)):hashlib.sha256(p.read_bytes()).hexdigest() for p in [upstream/'convex/engine/historicalObject.ts',upstream/'convex/aiTown/game.ts',upstream/'convex/util/compression.ts',upstream/'convex/util/FastIntegerCompression.ts']}
 pathlib.Path(out,'metadata.json').write_text(json.dumps(meta,indent=2)+'\n')
 PY
 IFS=',' read -r -a sizes <<< "$counts"

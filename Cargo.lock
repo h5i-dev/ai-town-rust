@@ -49,6 +49,7 @@ dependencies = [
  "ai-town-gpu",
  "ai-town-kernel",
  "axum",
+ "base64 0.22.1",
  "h5i-app",
  "h5i-app-core",
  "h5i-app-pg",

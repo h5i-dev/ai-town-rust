@@ -72,7 +72,7 @@ export default function App() {
         </div>
         <aside className="box flex flex-col gap-3 bg-brown-800 p-4 text-brown-200">
           {error && <p className="text-red-300">{error}</p>}
-          {world?.demo && <p>{world.demo.engine === 'original' ? 'Original' : 'Rust'} engine: {world.demo.stepMs} ms simulated in {Math.round(world.demo.tickMs).toLocaleString()} ms. Positions update as computation finishes.</p>}
+          {world?.demo && <p>{world.demo.engine === 'original' ? 'Original' : 'Rust'} engine: {world.demo.stepMs} ms simulated in {Math.round(world.demo.tickMs).toLocaleString()} ms. {world.motionHistory ? 'Replaying recorded movement.' : 'Positions update as computation finishes.'}</p>}
           {demo && <p>Drag to pan, scroll to zoom. Select a character to inspect it. {map?.demoScenario === 'town' ? 'Residents walk independently, enjoy activities, and talk with neighbors. Dialogue and memory responses are offline fixtures.' : 'Players walk back and forth using the selected movement engine.'}</p>}
           {world?.demo?.scenario === 'town' && <div className="text-sm" data-testid="town-stats">
             <p>{world.players.filter(p => p.pf !== 0).length.toLocaleString()} routing · {world.players.filter(p => p.activityUntil > world.nowMs).length.toLocaleString()} doing activities · {world.conversations.length.toLocaleString()} conversations</p>

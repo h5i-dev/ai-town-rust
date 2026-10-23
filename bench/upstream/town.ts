@@ -8,6 +8,8 @@ const emojis = ['', '📖', '🌱', '✨'];
 export class Town {
   fixture: any;
   game: Game;
+  history: any = null;
+  historyBytes = 0;
   messages: any[] = [];
   memories: any[] = [];
   metrics = { decisions: 0, destinations: 0, activities: 0, invitations: 0, messages: 0, memories: 0, pathfinds: 0 };
@@ -92,12 +94,20 @@ export class Town {
     this.metrics.pathfinds+=this.game.numPathfinds;
     this.drain(now+ticks*16);
     const tickMs=performance.now()-started;
-    const packStarted=performance.now(); this.game.takeDiff();
-    return {tickMs,packMs:performance.now()-packStarted};
+    const packStarted=performance.now();
+    const diff = this.game.takeDiff();
+    const locations = diff.world.historicalLocations;
+    // Retain the native packets for delivery; base64 encoding is snapshot work.
+    this.history = {startMs:now,endMs:now+ticks*16,locations};
+    const packMs=performance.now()-packStarted;
+    for (const location of locations) this.historyBytes += location.location.byteLength + 12;
+    return {tickMs,packMs};
   }
   snapshot(now: number, tickMs=0, stepMs=0) {
     const game=this.game;
-    return {nowMs:now,width:game.worldMap.width,height:game.worldMap.height,frozen:false,
+    return {motionHistory:this.history && {startMs:this.history.startMs,endMs:this.history.endMs,
+        locations:this.history.locations.map((l:any)=>({playerId:number(l.playerId),buffer:Buffer.from(l.location).toString('base64')}))},
+      nowMs:now,width:game.worldMap.width,height:game.worldMap.height,frozen:false,
       demo:{engine:'original',scenario:'town',tickMs,stepMs,metrics:this.metrics,districts:this.fixture.districts,density:this.fixture.density},
       players:[...game.world.players.values()].map(p=>({id:number(p.id),owner:0,human:false,name:`Resident ${number(p.id)}`,character:(number(p.id)-1)%8,
         x:Math.round(p.position.x*1000),y:Math.round(p.position.y*1000),faceDx:Math.round((p.facing.dx+1)*1000),faceDy:Math.round((p.facing.dy+1)*1000),

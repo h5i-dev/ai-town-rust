@@ -1,0 +1,45 @@
+   Compiling ai-town-gpu v0.1.0 (/home/ht2673/Dev/ai-town-rust/gpu)
+   Compiling ai-town-kernel v0.1.0 (/home/ht2673/Dev/ai-town-rust/kernel)
+    Finished `test` profile [unoptimized + debuginfo] target(s) in 1.32s
+     Running unittests src/lib.rs (/tmp/ai-town-rust-gpu-target/debug/deps/ai_town_gpu-7fa387673f4fa7b4)
+
+running 2 tests
+test arena::tests::capacity_roundtrip_and_input_order ... ok
+test arena::tests::separated_agents_match_a_joint_scan ... ok
+
+test result: ok. 2 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+     Running unittests src/bin/fair-bench.rs (/tmp/ai-town-rust-gpu-target/debug/deps/fair_bench-cc56872e1d061c21)
+
+running 0 tests
+
+test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+     Running unittests src/bin/seek-bench.rs (/tmp/ai-town-rust-gpu-target/debug/deps/seek_bench-9759a2f06ddc6ebb)
+
+running 0 tests
+
+test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+     Running tests/equiv.rs (/tmp/ai-town-rust-gpu-target/debug/deps/equiv-d64de9d9731accfe)
+
+running 2 tests
+test empty_seek_is_empty ... ok
+test matches_scalar_on_open_ground_blocked_tiles_and_crowding ... ok
+
+test result: ok. 2 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 2.20s
+
+     Running tests/rust_equiv.rs (/tmp/ai-town-rust-gpu-target/debug/deps/rust_equiv-ac64a731752dd3c4)
+
+running 2 tests
+test ptx_matches_tick_round ... ok
+test ptx_matches_tick_round_in_a_crowd_with_checked_grids ... ok
+
+test result: ok. 2 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 1.30s
+
+   Doc-tests ai_town_gpu
+
+running 0 tests
+
+test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+

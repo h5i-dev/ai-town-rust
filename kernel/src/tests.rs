@@ -924,6 +924,7 @@ fn projected_commands_match_full_snapshot_writes_and_errors() {
         Command::Activity { kind: 0 }, Command::Activity { kind: 2 }, Command::Activity { kind: 4 }];
     for case in 0..12 {
         let mut snapshot = s.clone();
+        snapshot.motion_history = MotionHistory {start_ms:1,end_ms:1000,data:vec![1,2,3]};
         for m in &mut snapshot.members { m.status = 1 + case % 3; }
         for a in &mut snapshot.agents {
             a.op = OP_SPEAK;
@@ -1034,4 +1035,30 @@ fn integer_sqrt_is_exact_at_squares_and_full_width_inputs() {
         assert!(root * root <= n as u128, "sqrt({n}) too large");
         assert!((root + 1) * (root + 1) > n as u128, "sqrt({n}) too small");
     }
+}
+
+#[test]
+fn checked_ticks_record_committed_locations_and_persist_the_batch() {
+    let (s, _) = run(&world(1000), 1, 1000, Command::Join {name:b"Ada".to_vec(),character:0});
+    let (mut s, _) = run(&s, 1, 1000, Command::MoveTo {x:4,y:4});
+    let initial=s.clone();
+    let mut capture=history::Capture::new(&s);
+    // This single resident never reaches the per-batch pathfinding limit.
+    for tick in 1..=60 { run_ticks(&mut s,1000+tick*16); capture.record(&s); }
+    let expected=capture.finish(s.meta.now_ms);
+    let (batch, reply)=run(&initial,ENGINE,1960,Command::Step);
+    assert!(matches!(reply,Ok(Reply::Stepped {ticks:60,..})));
+    assert_eq!(batch.players,s.players);
+    assert_eq!(batch.motion_history,expected);
+    assert!(!expected.data.is_empty());
+    assert!(diff(&initial,&batch).iter().any(|w|matches!(w,Write::PutMotionHistory(h) if h==&expected)));
+    assert_eq!(apply(&initial,&diff(&initial,&batch)),batch);
+    let old=batch.motion_history.clone();
+    let (same, _)=run(&batch,ENGINE,1960,Command::Step);
+    assert_eq!(same.motion_history,old); // no ticks: retain the latest completed batch
+    let xs=batch.players.iter().map(|p|p.x).collect();
+    let ys=batch.players.iter().map(|p|p.y).collect();
+    let (relocated, reply)=run(&batch,ENGINE,1960,Command::Relocate{x:xs,y:ys});
+    assert_eq!(reply,Ok(Reply::Ok));
+    assert!(relocated.motion_history.data.is_empty()); // relocation has no per-tick trace
 }

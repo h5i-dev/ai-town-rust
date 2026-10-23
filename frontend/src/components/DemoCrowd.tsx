@@ -81,7 +81,7 @@ class Crowd extends Container {
       if (!sprite.visible) { if (this.badges[i]) this.badges[i].visible = false; continue; }
       const direction = ['right', 'down', 'left', 'up'][Math.floor(orientation(pose.faceDx, pose.faceDy) / 90)];
       const frames = this.sheets[player.character].animations[direction];
-      const moving = pose.speed > 0.05 || (!!world.demo && player.speed > 50);
+      const moving = pose.speed > 0.05 || (!!world.demo && !player.motion && player.speed > 50);
       sprite.texture = frames[moving ? Math.floor(now / 150) % frames.length : 0];
       const closeEnough = (viewportRef.current?.scale.x ?? 1) >= 0.6;
       const badge = !closeEnough ? '' : conversations.get(player.id) ?? (thinking.has(player.id) ? '...'

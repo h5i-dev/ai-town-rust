@@ -586,8 +586,16 @@ pub fn run_ticks_seq(s: &mut Snapshot, end_ms: u64) -> u32 {
 
 /// Ticks run, and how many of them had their movement reverted by [`settle`].
 fn run_ticks_mode(s: &mut Snapshot, end_ms: u64, sequential: bool) -> (u32, u32) {
+    let (ticks, reverted, capture) = run_ticks_captured(s, end_ms, sequential);
+    if ticks > 0 { s.motion_history = capture.finish(s.meta.now_ms); }
+    (ticks, reverted)
+}
+
+/// Same checked ticks and batch pathfinding budget; expose packing separately for timing.
+pub fn run_ticks_captured(s: &mut Snapshot, end_ms: u64, sequential: bool) -> (u32, u32, crate::history::Capture) {
+    let mut capture = crate::history::Capture::new(s);
     if s.meta.frozen || s.meta.width == 0 {
-        return (0, 0);
+        return (0, 0, capture);
     }
     let mut ticks = 0u32;
     let mut reverted = 0u32;
@@ -598,9 +606,10 @@ fn run_ticks_mode(s: &mut Snapshot, end_ms: u64, sequential: bool) -> (u32, u32)
         if tick(s, s.meta.now_ms, &mut scratch, sequential) {
             reverted += 1;
         }
+        capture.record(s);
         ticks += 1;
     }
-    (ticks, reverted)
+    (ticks, reverted, capture)
 }
 
 /// One tick. True when [`settle`] reverted this tick's movement.
@@ -1759,6 +1768,7 @@ fn dispatch_activity(s: &mut Snapshot, owner: u64, kind: u32, now: u64) -> Resul
 fn empty_command_snapshot() -> Snapshot {
     Snapshot {
         meta: crate::Meta { next_id: 0, now_ms: 0, width: 0, height: 0, frozen: false, pathfinds: 0 },
+        motion_history: crate::MotionHistory { start_ms: 0, end_ms: 0, data: Vec::new() },
         terrain: crate::Terrain { mask: Vec::new() }, players: Vec::new(), paths: Vec::new(),
         conversations: Vec::new(), members: Vec::new(), agents: Vec::new(),
         memories: Vec::new(), messages: Vec::new(),
@@ -1979,6 +1989,7 @@ pub fn command_full(actor_user: u64, now: u64, s: &Snapshot, cmd: &Command) -> R
             }
             ok!(require_world(&next));
             next = ok!(relocate(next, x, y));
+            next.motion_history = crate::MotionHistory { start_ms: 0, end_ms: 0, data: Vec::new() };
             Reply::Ok
         }
         Command::Freeze => {
@@ -2006,6 +2017,9 @@ pub fn diff(before: &Snapshot, after: &Snapshot) -> Vec<Write> {
     }
     if before.terrain != after.terrain {
         ws.push(Write::PutTerrain(after.terrain.clone()));
+    }
+    if before.motion_history != after.motion_history {
+        ws.push(Write::PutMotionHistory(after.motion_history.clone()));
     }
     diff_player_rows(&before.players, &after.players, &mut ws);
     diff_paths(before, after, &mut ws);
