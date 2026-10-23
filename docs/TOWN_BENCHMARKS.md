@@ -91,6 +91,42 @@ consistency where available. Fixture tests cover unique walkable spawns, legal
 axis-aligned paths, all four directions, mixed conversation states and reproducible
 seeds.
 
+## Demo
+
+`./bench/demo.sh` starts the backend and UI and opens a browser. Requires
+Node.js 20+, npm, Python 3, and curl; Rust mode also needs Rust/Cargo. The first
+run builds the backend and installs frontend dependencies. Open
+<http://127.0.0.1:5174/ai-town/> if a browser is unavailable; drag to pan and
+scroll to zoom. Ctrl-C stops both servers. Use `--port` and `--api-port` to
+change ports. Logs and the reusable build cache live under the temporary directory.
+
+Residents walk independently around the original town terrain, read, garden,
+daydream, invite neighbors, converse, and complete conversation memories. Both
+engines use their real player, agent, conversation, pathfinding and collision
+rules. External dialogue and memory operations use fixed offline responses;
+this is a disposable simulation with no LLM, API key, PostgreSQL or Convex.
+Click **Neighborhood** to see activities and conversations up close, or
+**Overview** to see the population. Select a resident to inspect its activity
+and conversation.
+
+`--engine original` loads `Game` from `~/Ref/ai-town` (or `AI_TOWN_UPSTREAM`).
+Town mode adds a small zero-duration path interpolation guard to the bundle; the
+checkout stays intact. The original engine runs in a worker so HTTP and camera
+controls remain responsive during slow ticks; at 10,000 residents it can advance
+far below real time. Both engines record and compress each tick's confirmed
+position, facing and speed, and the browser replays completed movement.
+
+Large populations occupy repeated copies of the original map, all in one game
+instance. The copies have blocked edges and do not allow travel between districts.
+At 10,000 residents this uses a 256 × 192 map, beyond the production server's
+128 × 128 map limit. It demonstrates the in-memory engine, not deployed capacity.
+The seeded starting state mixes walking, activities, invitations and ongoing
+conversations; subsequent decisions use the same offline policy in both engines.
+Native scheduling and acceptance rules differ, so their trajectories differ too.
+
+`./bench/demo.sh --scenario crowd` retains the old synchronized, open-field
+movement demo for either engine. It has no autonomous agents or conversations.
+
 ## Reproduce
 
 ```bash
