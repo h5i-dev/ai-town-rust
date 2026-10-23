@@ -1,0 +1,1 @@
+{"engine":"rust","players":10000,"historyPackets":958,"changed":956,"start":1093264,"end":1094224,"clamped":1094224,"metrics":{"activities":5429,"decisions":21967,"destinations":10963,"invitations":5575,"memories":10974,"messages":6056,"pathfinds":12579},"received":3,"errors":[],"failed":[]}

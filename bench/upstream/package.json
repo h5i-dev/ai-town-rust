@@ -2,6 +2,13 @@
   "name": "ai-town-upstream-bench",
   "private": true,
   "type": "module",
-  "scripts": { "bench": "node run.mjs" },
-  "dependencies": { "convex": "1.41.0", "esbuild": "0.25.12" }
+  "scripts": {
+    "bench": "node run.mjs",
+    "demo": "node run-demo.mjs"
+  },
+  "dependencies": {
+    "convex": "1.41.0",
+    "esbuild": "0.25.12",
+    "ws": "8.20.1"
+  }
 }

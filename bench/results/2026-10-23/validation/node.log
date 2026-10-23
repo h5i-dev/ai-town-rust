@@ -1,0 +1,14 @@
+✔ town fixture: 1 residents (19.010763ms)
+✔ town fixture: 32 residents (12.067174ms)
+✔ town fixture: 1000 residents (20.52683ms)
+✔ town fixture: 10000 residents (158.981496ms)
+✔ seed reproduces fixture; changing it changes spawn locations (34.112201ms)
+✔ native path interpolation stays finite at equal timestamps (73.961561ms)
+ℹ tests 6
+ℹ suites 0
+ℹ pass 6
+ℹ fail 0
+ℹ cancelled 0
+ℹ skipped 0
+ℹ todo 0
+ℹ duration_ms 341.10385

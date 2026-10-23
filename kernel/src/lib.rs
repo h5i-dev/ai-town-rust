@@ -6,13 +6,14 @@
 
 mod batch;
 mod geom;
+pub mod history;
 mod movement;
 mod rules;
 mod step;
 
 pub use batch::{batch_seek, scalar_seek};
 pub use geom::{cell_index, cell_of, dist_sq, grid_build, grid_hit, grid_wellformed, grid_yield, isqrt, manhattan, mask_blocked, near_index, path_pose, set_blocked, MinHeap, NearIndex, Pose};
-pub use rules::{collision_safe, diff, exclusive, members_consistent, motion_isolated, paths_isolated, placement_ok, placement_ok_scan, relocate, settle, run_ticks, run_ticks_seq, same_motion};
+pub use rules::{collision_safe, diff, exclusive, members_consistent, motion_isolated, paths_isolated, placement_ok, placement_ok_scan, relocate, settle, run_ticks_captured, run_ticks, run_ticks_seq, same_motion};
 pub use step::{agent_step, propose_one, resolve_one, scan_hit, scan_yield, tick_moves, tick_players, tick_players_round, tick_round, Landing, Proposal};
 
 include!("consts.rs");
@@ -70,6 +71,7 @@ h5i_app_schema::schema! {
     pub struct Snapshot {
         meta: Meta,
         terrain: Terrain,
+        motion_history: MotionHistory,
         players: Vec<Player>,
         paths: Vec<PathNode>,
         conversations: Vec<Conversation>,
@@ -94,6 +96,14 @@ h5i_app_schema::schema! {
     pub struct Terrain in "terrain" {
         key {}
         mask: Vec<u8>,
+    }
+
+    #[derive(Clone, Debug, Default, PartialEq, Eq)]
+    pub struct MotionHistory in "motion_history" {
+        key {}
+        start_ms: u64,
+        end_ms: u64,
+        data: Vec<u8>,
     }
 
     #[derive(Clone, Debug, PartialEq, Eq)]
@@ -215,6 +225,7 @@ pub enum Command {
 pub enum Write {
     PutMeta(Meta),
     PutTerrain(Terrain),
+    PutMotionHistory(MotionHistory),
     PutPlayer(Player),
     DelPlayer(u64),
     PutPath(PathNode),
@@ -254,6 +265,27 @@ pub enum Error {
 
 pub fn transition(actor: &Principal, snap: &Snapshot, cmd: &Command) -> Result<(Vec<Write>, Reply), Error> {
     rules::command(actor.user, actor.now_ms, snap, cmd)
+}
+
+/// Commit an already accepted write set when the caller owns the snapshot.
+/// Uses the same write interpreter as `apply`, without copying unrelated rows.
+pub fn apply_mut(snap: &mut Snapshot, ws: Vec<Write>) {
+    let mut cleared = None;
+    let mut sequences = Vec::new();
+    for write in ws {
+        match write {
+            Write::ClearPath(player) => {
+                snap.paths.retain(|n| n.player != player);
+                cleared = Some(player);
+                sequences.clear();
+            }
+            Write::PutPath(node) if cleared == Some(node.player) && !sequences.contains(&node.seq) => {
+                sequences.push(node.seq);
+                snap.paths.push(node);
+            }
+            other => apply_write(snap, other),
+        }
+    }
 }
 
 fn put_player(v: &mut Vec<Player>, x: Player) {
@@ -296,6 +328,7 @@ fn apply_write(s: &mut Snapshot, w: Write) {
     match w {
         Write::PutMeta(m) => s.meta = m,
         Write::PutTerrain(t) => s.terrain = t,
+        Write::PutMotionHistory(h) => s.motion_history = h,
         Write::PutPlayer(p) => put_player(&mut s.players, p),
         Write::DelPlayer(id) => s.players = Player::del(&s.players, id),
         Write::PutPath(n) => PathNode::put(&mut s.paths, n),
@@ -317,6 +350,7 @@ fn sql_write(w: &Write, out: &mut Vec<h5i_app_sql::Write>) {
     match w {
         Write::PutMeta(m) => out.push(m.sql_put()),
         Write::PutTerrain(t) => out.push(t.sql_put()),
+        Write::PutMotionHistory(h) => out.push(h.sql_put()),
         Write::PutPlayer(p) => out.push(p.sql_put()),
         Write::DelPlayer(id) => out.push(Player::sql_del(*id)),
         Write::PutPath(n) => out.push(n.sql_put()),

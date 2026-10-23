@@ -1,0 +1,31 @@
+--- a/kernel/src/rules.rs
++++ b/kernel/src/rules.rs
+@@ -605,10 +605,15 @@
+
+ /// One tick. True when [`settle`] reverted this tick's movement.
+ fn tick(s: &mut Snapshot, now: u64, scratch: &mut TickScratch, sequential: bool) -> bool {
++    let clock = std::time::Instant::now();
+     idle(s, now);
++    let a = clock.elapsed().as_nanos();
+     agents(s, now);
++    let b = clock.elapsed().as_nanos();
+     conversations(s, now);
++    let c = clock.elapsed().as_nanos();
+     pathfind(s, now);
++    let d = clock.elapsed().as_nanos();
+     // Positions change only in the movement pass below, and the player list
+     // does not, so index i before and after is the same player.
+     let mut xs = Vec::new();
+@@ -624,7 +629,11 @@
+     } else {
+         positions_round(s, now, scratch);
+     }
+-    settle(s, &xs, &ys)
++    let e = clock.elapsed().as_nanos();
++    let reverted = settle(s, &xs, &ys);
++    let f = clock.elapsed().as_nanos();
++    eprintln!("PHASE {now} {a} {} {} {} {} {}", b-a, c-b, d-c, e-d, f-e);
++    reverted
+ }
+
+ /// Keep this tick's movement only when [`placement_ok`] accepts it. Otherwise

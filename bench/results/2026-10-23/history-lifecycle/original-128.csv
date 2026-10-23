@@ -1,0 +1,4 @@
+engine,players,sample,ticks,simulated_ms,loop_ms,history_pack_ms,snapshot_ms,moved,decisions,destinations,activities,invitations,messages,memories,pathfinds,history_bytes
+original,128,0,4800,76800,9556.861,142.846,0.770,121,1959,163,61,90,551,121,759,362057
+original,128,1,4800,76800,9488.721,136.596,0.730,121,1959,163,61,90,551,121,759,362057
+original,128,2,4800,76800,9225.736,127.833,0.647,121,1959,163,61,90,551,121,759,362057

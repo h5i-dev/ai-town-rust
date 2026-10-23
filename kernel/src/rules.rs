@@ -57,6 +57,17 @@ pub fn player_by_owner(players: &Vec<Player>, owner: u64) -> Option<usize> {
     None
 }
 
+fn player_owner_at(players: &Vec<Player>, owner: u64) -> Option<usize> {
+    let mut lo = 0usize;
+    let mut hi = players.len();
+    while lo < hi {
+        let mid = lo + (hi - lo) / 2;
+        if players[mid].owner < owner { lo = mid + 1; } else { hi = mid; }
+    }
+    if lo < players.len() && players[lo].owner == owner { return Some(lo); }
+    player_by_owner(players, owner)
+}
+
 fn member_index(members: &Vec<Member>, player: u64) -> Option<usize> {
     let mut i = 0;
     while i < members.len() {
@@ -69,6 +80,13 @@ fn member_index(members: &Vec<Member>, player: u64) -> Option<usize> {
 }
 
 fn conv_index(convs: &Vec<Conversation>, id: u64) -> Option<usize> {
+    let mut lo = 0usize;
+    let mut hi = convs.len();
+    while lo < hi {
+        let mid = lo + (hi - lo) / 2;
+        if convs[mid].id < id { lo = mid + 1; } else { hi = mid; }
+    }
+    if lo < convs.len() && convs[lo].id == id { return Some(lo); }
     let mut i = 0;
     while i < convs.len() {
         if convs[i].id == id {
@@ -568,8 +586,16 @@ pub fn run_ticks_seq(s: &mut Snapshot, end_ms: u64) -> u32 {
 
 /// Ticks run, and how many of them had their movement reverted by [`settle`].
 fn run_ticks_mode(s: &mut Snapshot, end_ms: u64, sequential: bool) -> (u32, u32) {
+    let (ticks, reverted, capture) = run_ticks_captured(s, end_ms, sequential);
+    if ticks > 0 { s.motion_history = capture.finish(s.meta.now_ms); }
+    (ticks, reverted)
+}
+
+/// Same checked ticks and batch pathfinding budget; expose packing separately for timing.
+pub fn run_ticks_captured(s: &mut Snapshot, end_ms: u64, sequential: bool) -> (u32, u32, crate::history::Capture) {
+    let mut capture = crate::history::Capture::new(s);
     if s.meta.frozen || s.meta.width == 0 {
-        return (0, 0);
+        return (0, 0, capture);
     }
     let mut ticks = 0u32;
     let mut reverted = 0u32;
@@ -580,9 +606,10 @@ fn run_ticks_mode(s: &mut Snapshot, end_ms: u64, sequential: bool) -> (u32, u32)
         if tick(s, s.meta.now_ms, &mut scratch, sequential) {
             reverted += 1;
         }
+        capture.record(s);
         ticks += 1;
     }
-    (ticks, reverted)
+    (ticks, reverted, capture)
 }
 
 /// One tick. True when [`settle`] reverted this tick's movement.
@@ -649,15 +676,92 @@ fn idle(s: &mut Snapshot, now: u64) {
     }
 }
 
+/// Transient indices rebuilt after membership removal. Never stored in a
+/// snapshot: dispatchers and the scan fallback retain their original semantics.
+struct SocialIndex {
+    member: Vec<u32>,
+    conversation: Vec<u32>,
+    first: Vec<u32>,
+    second: Vec<u32>,
+    count: Vec<u32>,
+}
+
+fn social_index(s: &Snapshot) -> SocialIndex {
+    let limit = match id_limit_one(s) { Some(n) => n, None => 0 };
+    let mut out = SocialIndex {
+        member: vec![u32::MAX; limit], conversation: vec![u32::MAX; limit],
+        first: vec![u32::MAX; limit], second: vec![u32::MAX; limit], count: vec![0; limit],
+    };
+    let mut i = 0;
+    while i < s.members.len() {
+        let m = &s.members[i];
+        if m.player < limit as u64 && out.member[m.player as usize] == u32::MAX {
+            out.member[m.player as usize] = i as u32;
+        }
+        if m.conversation < limit as u64 {
+            let c = m.conversation as usize;
+            if out.count[c] == 0 { out.first[c] = i as u32; }
+            if out.count[c] == 1 { out.second[c] = i as u32; }
+            out.count[c] += 1;
+        }
+        i += 1;
+    }
+    i = 0;
+    while i < s.conversations.len() {
+        let id = s.conversations[i].id;
+        if id < limit as u64 && out.conversation[id as usize] == u32::MAX {
+            out.conversation[id as usize] = i as u32;
+        }
+        i += 1;
+    }
+    out
+}
+
+fn social_member(index: &SocialIndex, s: &Snapshot, player: u64) -> Option<usize> {
+    if player < index.member.len() as u64 {
+        let i = index.member[player as usize];
+        if i == u32::MAX { None } else { Some(i as usize) }
+    } else { member_index(&s.members, player) }
+}
+
+fn social_conv(index: &SocialIndex, s: &Snapshot, conv: u64) -> Option<usize> {
+    if conv < index.conversation.len() as u64 {
+        let i = index.conversation[conv as usize];
+        if i == u32::MAX { None } else { Some(i as usize) }
+    } else { conv_index(&s.conversations, conv) }
+}
+
+fn social_other(index: &SocialIndex, s: &Snapshot, conv: u64, player: u64) -> Option<u64> {
+    if conv < index.first.len() as u64 {
+        let first = index.first[conv as usize];
+        if first == u32::MAX { return None; }
+        let a = s.members[first as usize].player;
+        if a != player { return Some(a); }
+        let second = index.second[conv as usize];
+        if second == u32::MAX { return None; }
+        let b = s.members[second as usize].player;
+        if b != player { return Some(b); }
+    }
+    other_member(s, conv, player)
+}
+
 fn agents(s: &mut Snapshot, now: u64) {
+    let mut index = social_index(s);
+    let mut members = s.members.len();
+    let mut convs = s.conversations.len();
     let mut i = 0;
     while i < s.agents.len() {
-        tick_agent(s, i, now);
+        tick_agent(s, i, now, &index);
+        if members != s.members.len() || convs != s.conversations.len() {
+            index = social_index(s);
+            members = s.members.len();
+            convs = s.conversations.len();
+        }
         i += 1;
     }
 }
 
-fn tick_agent(s: &mut Snapshot, i: usize, now: u64) {
+fn tick_agent(s: &mut Snapshot, i: usize, now: u64, index: &SocialIndex) {
     if i >= s.agents.len() {
         return;
     }
@@ -675,7 +779,7 @@ fn tick_agent(s: &mut Snapshot, i: usize, now: u64) {
         s.agents[i].op_since = now;
         return;
     }
-    let Some(mi) = member_index(&s.members, player_id) else {
+    let Some(mi) = social_member(index, s, player_id) else {
         let pi = player_at(&s.players, player_id);
         let busy = match pi {
             Some(p) => s.players[p].activity_until > now || s.players[p].pf != PF_NONE,
@@ -696,7 +800,7 @@ fn tick_agent(s: &mut Snapshot, i: usize, now: u64) {
     let conv = s.members[mi].conversation;
     let invited = s.members[mi].invited;
     let started = s.members[mi].started;
-    let other = other_member(s, conv, player_id);
+    let other = social_other(index, s, conv, player_id);
     if status == ST_INVITED {
         let other_human = match other {
             Some(id) => match player_at(&s.players, id) {
@@ -707,11 +811,11 @@ fn tick_agent(s: &mut Snapshot, i: usize, now: u64) {
         };
         let accept = other_human || (agent_id + player_id) % 5 != 0;
         if accept {
-            if let Some(mi) = member_index(&s.members, player_id) {
+            if let Some(mi) = social_member(index, s, player_id) {
                 s.members[mi].status = ST_WALKING;
             }
             halt(s, player_id);
-        } else if let Some(id) = conv_index(&s.conversations, conv) {
+        } else if let Some(id) = social_conv(index, s, conv) {
             let _ = id;
             stop_conv(s, conv, now);
         }
@@ -736,11 +840,21 @@ fn tick_agent(s: &mut Snapshot, i: usize, now: u64) {
             return;
         }
         let (dx, dy) = walk_target(s.players[pi].x, s.players[pi].y, s.players[oi].x, s.players[oi].y);
-        let _ = begin_move(s, player_id, dx, dy, now, true, false);
+        // Conversation approaches share the normal pathfinding budget. Calling
+        // begin_move here bypassed MAX_PATHFINDS, repeating failed searches for
+        // thousands of residents on every 16 ms tick.
+        s.players[pi].dest_x = milli_saturating(dx);
+        s.players[pi].dest_y = milli_saturating(dy);
+        s.players[pi].pf = PF_NEED;
+        s.players[pi].pf_started = now;
+        s.players[pi].speed = 0;
+        s.players[pi].wait_until = 0;
+        s.players[pi].activity = 0;
+        s.players[pi].activity_until = 0;
         return;
     }
     if status == ST_TALKING {
-        let msgs = match conv_index(&s.conversations, conv) {
+        let msgs = match social_conv(index, s, conv) {
             Some(c) => s.conversations[c].num_messages,
             None => 0,
         };
@@ -748,7 +862,7 @@ fn tick_agent(s: &mut Snapshot, i: usize, now: u64) {
             stop_conv(s, conv, now);
             return;
         }
-        let Some(c) = conv_index(&s.conversations, conv) else {
+        let Some(c) = social_conv(index, s, conv) else {
             return;
         };
         if s.conversations[c].typing_player != 0 && s.conversations[c].typing_player != player_id {
@@ -788,6 +902,13 @@ fn queue_speak(s: &mut Snapshot, agent_id: u64, conv: u64, now: u64) {
 }
 
 fn agent_index(s: &Snapshot, id: u64) -> Option<usize> {
+    let mut lo = 0usize;
+    let mut hi = s.agents.len();
+    while lo < hi {
+        let mid = lo + (hi - lo) / 2;
+        if s.agents[mid].id < id { lo = mid + 1; } else { hi = mid; }
+    }
+    if lo < s.agents.len() && s.agents[lo].id == id { return Some(lo); }
     let mut i = 0;
     while i < s.agents.len() {
         if s.agents[i].id == id {
@@ -828,6 +949,7 @@ fn walk_target(ax: u32, ay: u32, bx: u32, by: u32) -> (u32, u32) {
 }
 
 fn conversations(s: &mut Snapshot, now: u64) {
+    let index = social_index(s);
     let mut ids = Vec::new();
     let mut i = 0;
     while i < s.conversations.len() {
@@ -836,13 +958,13 @@ fn conversations(s: &mut Snapshot, now: u64) {
     }
     i = 0;
     while i < ids.len() {
-        tick_conv(s, ids[i], now);
+        tick_conv(s, ids[i], now, &index);
         i += 1;
     }
 }
 
-fn tick_conv(s: &mut Snapshot, conv: u64, now: u64) {
-    let Some(ci) = conv_index(&s.conversations, conv) else {
+fn tick_conv(s: &mut Snapshot, conv: u64, now: u64, index: &SocialIndex) {
+    let Some(ci) = social_conv(index, s, conv) else {
         return;
     };
     if s.conversations[ci].typing_player != 0 && now > s.conversations[ci].typing_since && now - s.conversations[ci].typing_since > TYPING_MS {
@@ -851,36 +973,41 @@ fn tick_conv(s: &mut Snapshot, conv: u64, now: u64) {
     let mut a = 0u64;
     let mut b = 0u64;
     let mut n = 0;
-    let mut i = 0;
-    while i < s.members.len() {
-        if s.members[i].conversation == conv {
-            if n == 0 {
-                a = s.members[i].player;
-            } else if n == 1 {
-                b = s.members[i].player;
-            }
-            n += 1;
+    if conv < index.count.len() as u64 {
+        n = index.count[conv as usize];
+        if n == 2 {
+            a = s.members[index.first[conv as usize] as usize].player;
+            b = s.members[index.second[conv as usize] as usize].player;
         }
-        i += 1;
+    } else {
+        let mut i = 0;
+        while i < s.members.len() {
+            if s.members[i].conversation == conv {
+                if n == 0 { a = s.members[i].player; }
+                if n == 1 { b = s.members[i].player; }
+                n += 1;
+            }
+            i += 1;
+        }
     }
     if n != 2 {
         return;
     }
-    let (Some(ia), Some(ib)) = (member_index(&s.members, a), member_index(&s.members, b)) else {
+    let (Some(ia), Some(ib)) = (social_member(index, s, a), social_member(index, s, b)) else {
         return;
     };
     let sa = s.members[ia].status;
     let sb = s.members[ib].status;
-    let (Some(pa), Some(pb)) = (player_index(&s.players, a), player_index(&s.players, b)) else {
+    let (Some(pa), Some(pb)) = (player_at(&s.players, a), player_at(&s.players, b)) else {
         return;
     };
     let d = geom::dist_sq(s.players[pa].x, s.players[pa].y, s.players[pb].x, s.players[pb].y);
     if sa == ST_WALKING && sb == ST_WALKING && d < TALK_SQ {
-        if let Some(ia) = member_index(&s.members, a) {
+        if let Some(ia) = social_member(index, s, a) {
             s.members[ia].status = ST_TALKING;
             s.members[ia].started = now;
         }
-        if let Some(ib) = member_index(&s.members, b) {
+        if let Some(ib) = social_member(index, s, b) {
             s.members[ib].status = ST_TALKING;
             s.members[ib].started = now;
         }
@@ -890,7 +1017,7 @@ fn tick_conv(s: &mut Snapshot, conv: u64, now: u64) {
         return;
     }
     if sa == ST_TALKING && sb == ST_TALKING {
-        let moving = match (player_index(&s.players, a), player_index(&s.players, b)) {
+        let moving = match (player_at(&s.players, a), player_at(&s.players, b)) {
             (Some(pa), Some(pb)) => s.players[pa].pf != PF_NONE || s.players[pb].pf != PF_NONE,
             _ => true,
         };
@@ -901,7 +1028,7 @@ fn tick_conv(s: &mut Snapshot, conv: u64, now: u64) {
 }
 
 fn face_pair(s: &mut Snapshot, a: u64, b: u64) {
-    let (Some(pa), Some(pb)) = (player_index(&s.players, a), player_index(&s.players, b)) else {
+    let (Some(pa), Some(pb)) = (player_at(&s.players, a), player_at(&s.players, b)) else {
         return;
     };
     let (fdx, fdy) = geom::face_toward(s.players[pa].x, s.players[pa].y, s.players[pb].x, s.players[pb].y);
@@ -944,6 +1071,16 @@ fn pathfind_one(s: &mut Snapshot, i: usize, now: u64) {
         let tx = s.players[i].dest_x / MILLI;
         let ty = s.players[i].dest_y / MILLI;
         let _ = begin_move(s, id, tx, ty, now, true, false);
+        let target_x = milli_saturating(tx);
+        let target_y = milli_saturating(ty);
+        if s.players[i].pf == PF_NONE && (s.players[i].x != target_x || s.players[i].y != target_y) {
+            // An unreachable approach waits before retrying, just as a
+            // collision does. Keep its target while waiting.
+            s.players[i].dest_x = target_x;
+            s.players[i].dest_y = target_y;
+            s.players[i].pf = PF_WAIT;
+            s.players[i].wait_until = now.saturating_add(crate::BACKOFF_MS).saturating_add(id % 1000);
+        }
     }
 }
 
@@ -1564,6 +1701,13 @@ fn dispatch_say(s: &mut Snapshot, owner: u64, text: &Vec<u8>, now: u64) -> Resul
 }
 
 fn own_agent(s: &Snapshot, owner: u64) -> Result<usize, Error> {
+    let mut lo = 0usize;
+    let mut hi = s.agents.len();
+    while lo < hi {
+        let mid = lo + (hi - lo) / 2;
+        if s.agents[mid].owner < owner { lo = mid + 1; } else { hi = mid; }
+    }
+    if lo < s.agents.len() && s.agents[lo].owner == owner { return Ok(lo); }
     let mut i = 0;
     while i < s.agents.len() {
         if s.agents[i].owner == owner {
@@ -1620,8 +1764,182 @@ fn dispatch_activity(s: &mut Snapshot, owner: u64, kind: u32, now: u64) -> Resul
     Ok(Reply::Ok)
 }
 
-/// Apply `cmd` to a copy of `s` and return the writes that store the result.
+// Explicit constructors keep standard-library opaque defaults out of extraction.
+fn empty_command_snapshot() -> Snapshot {
+    Snapshot {
+        meta: crate::Meta { next_id: 0, now_ms: 0, width: 0, height: 0, frozen: false, pathfinds: 0 },
+        motion_history: crate::MotionHistory { start_ms: 0, end_ms: 0, data: Vec::new() },
+        terrain: crate::Terrain { mask: Vec::new() }, players: Vec::new(), paths: Vec::new(),
+        conversations: Vec::new(), members: Vec::new(), agents: Vec::new(),
+        memories: Vec::new(), messages: Vec::new(),
+    }
+}
+
+fn milli_saturating(value: u32) -> u32 {
+    if value > u32::MAX / MILLI { u32::MAX } else { value * MILLI }
+}
+
+fn pair_members(rows: &Vec<Member>, first: u64, second: u64) -> Vec<Member> {
+    let mut out = Vec::new();
+    let mut i = 0;
+    while i < rows.len() {
+        let row = rows[i].clone();
+        if row.player == first || row.player == second {
+            out.push(row);
+        }
+        i += 1;
+    }
+    out
+}
+
+fn selected_conversation(rows: &Vec<Conversation>, id: u64) -> Vec<Conversation> {
+    match conv_index(rows, id) {
+        Some(i) => { let mut out = Vec::new(); out.push(rows[i].clone()); out },
+        None => Vec::new(),
+    }
+}
+
+fn owned_player_rows(s: &Snapshot, owner: u64) -> Vec<Player> {
+    match player_owner_at(&s.players, owner) {
+        Some(i) => { let mut out = Vec::new(); out.push(s.players[i].clone()); out },
+        None => Vec::new(),
+    }
+}
+
+fn owned_member_rows(s: &Snapshot, owner: u64) -> Vec<Member> {
+    let Some(pi) = player_owner_at(&s.players, owner) else { return Vec::new(); };
+    match member_index(&s.members, s.players[pi].id) {
+        Some(i) => { let mut out = Vec::new(); out.push(s.members[i].clone()); out },
+        None => Vec::new(),
+    }
+}
+
+fn owned_conversation_rows(s: &Snapshot, owner: u64) -> Vec<Conversation> {
+    let Some(pi) = player_owner_at(&s.players, owner) else { return Vec::new(); };
+    let Some(mi) = member_index(&s.members, s.players[pi].id) else { return Vec::new(); };
+    selected_conversation(&s.conversations, s.members[mi].conversation)
+}
+
+fn movement_player_rows(s: &Snapshot, owner: u64) -> Vec<Player> {
+    let own = player_owner_at(&s.players, owner);
+    let mut rows = Vec::new();
+    let mut i = 0;
+    while i < s.players.len() {
+        let p = &s.players[i];
+        let is_own = match own { Some(index) => index == i, None => false };
+        let row = if is_own { p.clone() } else {
+            // Route planning reads only other residents' positions.
+            Player { id: p.id, owner: p.owner, x: p.x, y: p.y,
+                is_human: false, face_dx: 0, face_dy: 0, speed: 0,
+                dest_x: 0, dest_y: 0, pf: 0, pf_started: 0, wait_until: 0,
+                last_input: 0, activity: 0, activity_until: 0, character: 0, name: Vec::new() }
+        };
+        rows.push(row);
+        i += 1;
+    }
+    rows
+}
+
+fn owned_path_rows(s: &Snapshot, owner: u64) -> Vec<PathNode> {
+    let Some(pi) = player_owner_at(&s.players, owner) else { return Vec::new(); };
+    let id = s.players[pi].id;
+    let mut rows = Vec::new();
+    let mut i = 0;
+    while i < s.paths.len() {
+        let row = s.paths[i].clone();
+        if row.player == id { rows.push(row); }
+        i += 1;
+    }
+    rows
+}
+
+fn invite_player_rows(s: &Snapshot, owner: u64, target: u64) -> Vec<Player> {
+    let Some(pi) = player_owner_at(&s.players, owner) else { return Vec::new(); };
+    let id = s.players[pi].id;
+    let mut rows = Vec::new();
+    let mut i = 0;
+    while i < s.players.len() {
+        let player = s.players[i].id;
+        if player == id || player == target { rows.push(s.players[i].clone()); }
+        i += 1;
+    }
+    rows
+}
+
+fn invite_member_rows(s: &Snapshot, owner: u64, target: u64) -> Vec<Member> {
+    let Some(pi) = player_owner_at(&s.players, owner) else { return Vec::new(); };
+    pair_members(&s.members, s.players[pi].id, target)
+}
+
+fn owned_agent_rows(s: &Snapshot, owner: u64) -> Vec<Agent> {
+    match own_agent(s, owner) {
+        Ok(i) => { let mut out = Vec::new(); out.push(s.agents[i].clone()); out },
+        Err(_) => Vec::new(),
+    }
+}
+
+fn remember_member_rows(s: &Snapshot, owner: u64) -> Vec<Member> {
+    let Ok(ai) = own_agent(s, owner) else { return Vec::new(); };
+    let conv = s.agents[ai].to_remember;
+    let player = s.agents[ai].player;
+    let mut rows = Vec::new();
+    let mut i = 0;
+    while i < s.members.len() && rows.len() == 0 {
+        let row = s.members[i].clone();
+        if row.conversation == conv && row.player != player { rows.push(row); }
+        i += 1;
+    }
+    rows
+}
+
+/// Return a command's writes using only the rows its dispatcher needs.
 pub fn command(actor_user: u64, now: u64, s: &Snapshot, cmd: &Command) -> Result<(Vec<Write>, Reply), Error> {
+    // These commands only read/write the selected rows. Run their existing
+    // dispatchers on a small projection, so authorization, errors and write
+    // ordering stay shared with the full-snapshot reference implementation.
+    match cmd {
+        Command::MoveTo { .. } => {
+            let mut local = empty_command_snapshot();
+            local.meta = s.meta.clone();
+            local.terrain = s.terrain.clone();
+            local.players = movement_player_rows(s, actor_user);
+            local.members = owned_member_rows(s, actor_user);
+            local.paths = owned_path_rows(s, actor_user);
+            command_full(actor_user, now, &local, cmd)
+        }
+        Command::StartConversation { invitee } => {
+            let mut local = empty_command_snapshot();
+            local.meta = s.meta.clone();
+            local.players = invite_player_rows(s, actor_user, *invitee);
+            local.members = invite_member_rows(s, actor_user, *invitee);
+            command_full(actor_user, now, &local, cmd)
+        }
+        Command::FinishOp => {
+            let mut local = empty_command_snapshot();
+            local.meta = s.meta.clone();
+            local.agents = owned_agent_rows(s, actor_user);
+            command_full(actor_user, now, &local, cmd)
+        }
+        Command::Remember { .. } => {
+            let mut local = empty_command_snapshot();
+            local.meta = s.meta.clone();
+            local.agents = owned_agent_rows(s, actor_user);
+            local.members = remember_member_rows(s, actor_user);
+            command_full(actor_user, now, &local, cmd)
+        }
+        Command::Say { .. } | Command::Activity { .. } => {
+            let mut local = empty_command_snapshot();
+            local.meta = s.meta.clone();
+            local.players = owned_player_rows(s, actor_user);
+            local.members = owned_member_rows(s, actor_user);
+            local.conversations = owned_conversation_rows(s, actor_user);
+            command_full(actor_user, now, &local, cmd)
+        }
+        _ => command_full(actor_user, now, s, cmd),
+    }
+}
+
+pub fn command_full(actor_user: u64, now: u64, s: &Snapshot, cmd: &Command) -> Result<(Vec<Write>, Reply), Error> {
     let mut next = s.clone();
     let reply = match cmd {
         Command::Init { width, height, mask } => {
@@ -1671,6 +1989,7 @@ pub fn command(actor_user: u64, now: u64, s: &Snapshot, cmd: &Command) -> Result
             }
             ok!(require_world(&next));
             next = ok!(relocate(next, x, y));
+            next.motion_history = crate::MotionHistory { start_ms: 0, end_ms: 0, data: Vec::new() };
             Reply::Ok
         }
         Command::Freeze => {
@@ -1698,6 +2017,9 @@ pub fn diff(before: &Snapshot, after: &Snapshot) -> Vec<Write> {
     }
     if before.terrain != after.terrain {
         ws.push(Write::PutTerrain(after.terrain.clone()));
+    }
+    if before.motion_history != after.motion_history {
+        ws.push(Write::PutMotionHistory(after.motion_history.clone()));
     }
     diff_player_rows(&before.players, &after.players, &mut ws);
     diff_paths(before, after, &mut ws);
@@ -1731,6 +2053,13 @@ fn diff_player_rows(before: &Vec<Player>, after: &Vec<Player>, ws: &mut Vec<Writ
 }
 
 fn diff_paths(before: &Snapshot, after: &Snapshot, ws: &mut Vec<Write>) {
+    if before.paths == after.paths {
+        return;
+    }
+    if before.paths.len() + after.paths.len() < 64 {
+        diff_paths_scan(before, after, ws);
+        return;
+    }
     if let Some(limit) = id_limit(before, after) {
         if let (Some(bspan), Some(aspan)) = (path_spans(&before.paths, limit), path_spans(&after.paths, limit)) {
             diff_paths_indexed(before, after, &bspan, &aspan, limit, ws);
@@ -1868,6 +2197,9 @@ fn push_id(ids: &mut Vec<u64>, id: u64) {
 }
 
 fn diff_convs(before: &Snapshot, after: &Snapshot, ws: &mut Vec<Write>) {
+    if before.conversations == after.conversations {
+        return;
+    }
     let mut i = 0;
     while i < before.conversations.len() {
         if conv_index(&after.conversations, before.conversations[i].id).is_none() {
@@ -1890,17 +2222,32 @@ fn diff_convs(before: &Snapshot, after: &Snapshot, ws: &mut Vec<Write>) {
 }
 
 fn member_key_index(rows: &Vec<Member>, conv: u64, player: u64) -> Option<usize> {
+    let mut lo = 0usize;
+    let mut hi = rows.len();
+    while lo < hi {
+        let mid = lo + (hi - lo) / 2;
+        if rows[mid].conversation < conv { lo = mid + 1; } else { hi = mid; }
+    }
+    let mut found = None;
+    let mut k = lo;
+    while k < rows.len() && rows[k].conversation == conv && found.is_none() {
+        if rows[k].player == player { found = Some(k); }
+        k += 1;
+    }
     let mut i = 0;
-    while i < rows.len() {
+    while i < rows.len() && found.is_none() {
         if rows[i].conversation == conv && rows[i].player == player {
-            return Some(i);
+            found = Some(i);
         }
         i += 1;
     }
-    None
+    found
 }
 
 fn diff_members(before: &Snapshot, after: &Snapshot, ws: &mut Vec<Write>) {
+    if before.members == after.members {
+        return;
+    }
     let mut i = 0;
     while i < before.members.len() {
         let m = &before.members[i];
@@ -1944,6 +2291,13 @@ fn diff_agents(before: &Snapshot, after: &Snapshot, ws: &mut Vec<Write>) {
 }
 
 fn memory_index(rows: &Vec<Memory>, id: u64) -> Option<usize> {
+    let mut lo = 0usize;
+    let mut hi = rows.len();
+    while lo < hi {
+        let mid = lo + (hi - lo) / 2;
+        if rows[mid].id < id { lo = mid + 1; } else { hi = mid; }
+    }
+    if lo < rows.len() && rows[lo].id == id { return Some(lo); }
     let mut i = 0;
     while i < rows.len() {
         if rows[i].id == id {
@@ -1955,6 +2309,9 @@ fn memory_index(rows: &Vec<Memory>, id: u64) -> Option<usize> {
 }
 
 fn diff_memories(before: &Snapshot, after: &Snapshot, ws: &mut Vec<Write>) {
+    if before.memories == after.memories {
+        return;
+    }
     let mut i = 0;
     while i < after.memories.len() {
         if memory_index(&before.memories, after.memories[i].id).is_none() {
@@ -1965,6 +2322,13 @@ fn diff_memories(before: &Snapshot, after: &Snapshot, ws: &mut Vec<Write>) {
 }
 
 fn message_index(rows: &Vec<Message>, id: u64) -> Option<usize> {
+    let mut lo = 0usize;
+    let mut hi = rows.len();
+    while lo < hi {
+        let mid = lo + (hi - lo) / 2;
+        if rows[mid].id < id { lo = mid + 1; } else { hi = mid; }
+    }
+    if lo < rows.len() && rows[lo].id == id { return Some(lo); }
     let mut i = 0;
     while i < rows.len() {
         if rows[i].id == id {
@@ -1976,6 +2340,9 @@ fn message_index(rows: &Vec<Message>, id: u64) -> Option<usize> {
 }
 
 fn diff_messages(before: &Snapshot, after: &Snapshot, ws: &mut Vec<Write>) {
+    if before.messages == after.messages {
+        return;
+    }
     let mut i = 0;
     while i < after.messages.len() {
         if message_index(&before.messages, after.messages[i].id).is_none() {
@@ -2156,4 +2523,59 @@ fn pairs_apart(s: &Snapshot) -> bool {
 
 pub fn collision_safe(s: &Snapshot) -> bool {
     terrain_clear(s) && pairs_apart(s)
+}
+
+#[cfg(test)]
+mod social_tests {
+    use super::*;
+
+    #[test]
+    fn social_indices_match_scan_through_removals_and_sparse_ids() {
+        let mut s = empty_command_snapshot();
+        s.meta.width = 32;
+        s.meta.height = 32;
+        s.meta.next_id = 1;
+        s.terrain.mask = vec![0; 128];
+        for i in 0..80 {
+            let (writes, _) = command_full(ENGINE, 1_000, &s, &Command::CreateAgent {
+                name: format!("Neighbor {i}").into_bytes(), character: 0,
+                identity: b"neighbor".to_vec(), plan: b"walk".to_vec(),
+            }).unwrap();
+            crate::apply_mut(&mut s, writes);
+        }
+        for i in (0..80).step_by(2) {
+            let (writes, _) = command_full(s.agents[i].owner, 1_000, &s,
+                &Command::StartConversation { invitee: s.players[i + 1].id }).unwrap();
+            crate::apply_mut(&mut s, writes);
+        }
+        for (i, m) in s.members.iter_mut().enumerate() {
+            m.status = 1 + (i / 2 % 3) as u32;
+            m.started = 1_000;
+        }
+        for (i, c) in s.conversations.iter_mut().enumerate() {
+            c.num_messages = if i % 4 == 0 { MAX_MESSAGES } else { i as u64 % 4 };
+        }
+        // Cache construction must preserve first-match behavior for unsorted
+        // rows, and fall back to scans when IDs cannot be densely indexed.
+        for sparse in [false, true] {
+            let mut indexed = s.clone();
+            indexed.members.reverse();
+            indexed.conversations.reverse();
+            if sparse { indexed.meta.next_id = 3_000_000; }
+            let mut scan = indexed.clone();
+            let empty = social_index(&Snapshot::default());
+            for round in 0..100 {
+                let now = 1_016 + round * 1_000;
+                agents(&mut indexed, now);
+                for i in 0..scan.agents.len() { tick_agent(&mut scan, i, now, &empty); }
+                assert_eq!(indexed, scan, "agents round={round} sparse={sparse}");
+                conversations(&mut indexed, now);
+                let ids: Vec<_> = scan.conversations.iter().map(|c| c.id).collect();
+                for id in ids { tick_conv(&mut scan, id, now, &empty); }
+                assert_eq!(indexed, scan, "conversations round={round} sparse={sparse}");
+                for a in &mut indexed.agents { a.op = OP_NONE; }
+                for a in &mut scan.agents { a.op = OP_NONE; }
+            }
+        }
+    }
 }

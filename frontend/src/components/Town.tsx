@@ -1,11 +1,12 @@
 import { Stage, useApp } from '@pixi/react';
 import { Viewport } from 'pixi-viewport';
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useRef, useState, type MutableRefObject } from 'react';
 import type { ISpritesheetData } from 'pixi.js';
 import { characters } from '../characters';
 import { orientation, poseAt } from '../pose';
 import type { Player, TownMap, World } from '../types';
 import { Character } from './Character';
+import { DemoCrowd } from './DemoCrowd';
 import { PixiStaticMap } from './PixiStaticMap';
 import PixiViewport from './PixiViewport';
 
@@ -27,6 +28,7 @@ export function Town({
   onSelect: (id: number) => void;
 }) {
   const box = useRef<HTMLDivElement>(null);
+  const viewportRef = useRef<Viewport | undefined>(undefined);
   const [size, setSize] = useState({ w: 800, h: 600 });
   useEffect(() => {
     const el = box.current;
@@ -40,8 +42,18 @@ export function Town({
   return (
     <div ref={box} className="absolute inset-0">
       <Stage width={size.w} height={size.h} options={{ backgroundAlpha: 0, antialias: false }}>
-        <Scene map={map} world={world} now={now} meId={meId} width={size.w} height={size.h} onMove={onMove} onSelect={onSelect} />
+        <Scene map={map} world={world} now={now} meId={meId} width={size.w} height={size.h} onMove={onMove} onSelect={onSelect} viewportRef={viewportRef} />
       </Stage>
+      {map.demoScenario === 'town' && <div className="absolute right-3 top-3 flex gap-2">
+        <button className="button text-sm" type="button" onClick={() => {
+          viewportRef.current?.setZoom(1);
+          viewportRef.current?.moveCenter(32 * map.tileDim, 24 * map.tileDim);
+        }}>Neighborhood</button>
+        <button className="button text-sm" type="button" onClick={() => {
+          viewportRef.current?.fitWorld();
+          viewportRef.current?.moveCenter(map.width * map.tileDim / 2, map.height * map.tileDim / 2);
+        }}>Overview</button>
+      </div>}
     </div>
   );
 }
@@ -55,6 +67,7 @@ function Scene({
   height,
   onMove,
   onSelect,
+  viewportRef,
 }: {
   map: TownMap;
   world: World;
@@ -64,9 +77,9 @@ function Scene({
   height: number;
   onMove: (x: number, y: number) => void;
   onSelect: (id: number) => void;
+  viewportRef: MutableRefObject<Viewport | undefined>;
 }) {
   const app = useApp();
-  const viewportRef = useRef<Viewport | undefined>(undefined);
   const drag = useRef<{ x: number; y: number } | null>(null);
   const tile = map.tileDim;
   useEffect(() => {
@@ -84,6 +97,7 @@ function Scene({
     <PixiViewport
       app={app}
       viewportRef={viewportRef}
+      overview={map.demo}
       screenWidth={width}
       screenHeight={height}
       worldWidth={map.width * tile}
@@ -111,7 +125,7 @@ function Scene({
           onMove(Math.floor(point.x / tile), Math.floor(point.y / tile));
         }}
       />
-      {world.players.map((player) => (
+      {map.demo ? <DemoCrowd app={app} world={world} now={now} tile={tile} viewportRef={viewportRef} onSelect={onSelect} /> : world.players.map((player) => (
         <Figure key={player.id} player={player} now={now} tile={tile} viewer={player.id === meId} onSelect={onSelect} world={world} />
       ))}
     </PixiViewport>

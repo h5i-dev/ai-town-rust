@@ -1,0 +1,12 @@
+✔ browser decoder matches upstream on varied actual native packets (49.1338ms)
+✔ rendered pose obeys actual ticks, turns and stops even if a future path exists (0.843075ms)
+✔ native quantization can produce a 61-value run including the initial value (0.596476ms)
+✔ Rust demo packets decode identically upstream and reach the authoritative end position (84.649364ms)
+ℹ tests 4
+ℹ suites 0
+ℹ pass 4
+ℹ fail 0
+ℹ cancelled 0
+ℹ skipped 0
+ℹ todo 0
+ℹ duration_ms 260.959064

@@ -1,0 +1,342 @@
+{
+  "scaling": [
+    {
+      "engine": "original",
+      "players": 32,
+      "simulated_ms": 960,
+      "loop_ms": {
+        "median": 13.57,
+        "min": 8.21,
+        "max": 17.798
+      },
+      "history_pack_ms": {
+        "median": 1.845,
+        "min": 1.219,
+        "max": 2.533
+      },
+      "snapshot_ms": {
+        "median": 0.213,
+        "min": 0.138,
+        "max": 0.22
+      },
+      "moved": 16,
+      "decisions": 0,
+      "destinations": 0,
+      "activities": 0,
+      "invitations": 0,
+      "messages": 4,
+      "memories": 0,
+      "pathfinds": 4
+    },
+    {
+      "engine": "rust",
+      "players": 32,
+      "simulated_ms": 960,
+      "loop_ms": {
+        "median": 0.832,
+        "min": 0.813,
+        "max": 0.835
+      },
+      "history_pack_ms": {
+        "median": 0.0,
+        "min": 0.0,
+        "max": 0.0
+      },
+      "snapshot_ms": {
+        "median": 1.007,
+        "min": 0.858,
+        "max": 1.044
+      },
+      "moved": 12,
+      "decisions": 0,
+      "destinations": 0,
+      "activities": 0,
+      "invitations": 0,
+      "messages": 7,
+      "memories": 0,
+      "pathfinds": 0
+    },
+    {
+      "engine": "original",
+      "players": 128,
+      "simulated_ms": 960,
+      "loop_ms": {
+        "median": 57.664,
+        "min": 57.336,
+        "max": 60.996
+      },
+      "history_pack_ms": {
+        "median": 4.055,
+        "min": 3.645,
+        "max": 7.349
+      },
+      "snapshot_ms": {
+        "median": 0.45,
+        "min": 0.409,
+        "max": 1.599
+      },
+      "moved": 64,
+      "decisions": 2,
+      "destinations": 1,
+      "activities": 1,
+      "invitations": 0,
+      "messages": 16,
+      "memories": 0,
+      "pathfinds": 16
+    },
+    {
+      "engine": "rust",
+      "players": 128,
+      "simulated_ms": 960,
+      "loop_ms": {
+        "median": 6.063,
+        "min": 5.624,
+        "max": 6.562
+      },
+      "history_pack_ms": {
+        "median": 0.0,
+        "min": 0.0,
+        "max": 0.0
+      },
+      "snapshot_ms": {
+        "median": 3.557,
+        "min": 3.386,
+        "max": 3.559
+      },
+      "moved": 48,
+      "decisions": 0,
+      "destinations": 0,
+      "activities": 0,
+      "invitations": 0,
+      "messages": 26,
+      "memories": 4,
+      "pathfinds": 0
+    },
+    {
+      "engine": "original",
+      "players": 1000,
+      "simulated_ms": 960,
+      "loop_ms": {
+        "median": 1419.109,
+        "min": 1376.602,
+        "max": 1551.898
+      },
+      "history_pack_ms": {
+        "median": 14.301,
+        "min": 12.96,
+        "max": 21.193
+      },
+      "snapshot_ms": {
+        "median": 4.196,
+        "min": 3.881,
+        "max": 7.374
+      },
+      "moved": 384,
+      "decisions": 30,
+      "destinations": 15,
+      "activities": 7,
+      "invitations": 8,
+      "messages": 116,
+      "memories": 0,
+      "pathfinds": 16
+    },
+    {
+      "engine": "rust",
+      "players": 1000,
+      "simulated_ms": 960,
+      "loop_ms": {
+        "median": 287.086,
+        "min": 286.502,
+        "max": 289.953
+      },
+      "history_pack_ms": {
+        "median": 0.0,
+        "min": 0.0,
+        "max": 0.0
+      },
+      "snapshot_ms": {
+        "median": 29.967,
+        "min": 28.66,
+        "max": 31.519
+      },
+      "moved": 368,
+      "decisions": 0,
+      "destinations": 0,
+      "activities": 0,
+      "invitations": 0,
+      "messages": 192,
+      "memories": 44,
+      "pathfinds": 12
+    },
+    {
+      "engine": "original",
+      "players": 10000,
+      "simulated_ms": 960,
+      "loop_ms": {
+        "median": 232809.971,
+        "min": 225960.725,
+        "max": 236869.788
+      },
+      "history_pack_ms": {
+        "median": 416.44,
+        "min": 411.46,
+        "max": 471.359
+      },
+      "snapshot_ms": {
+        "median": 36.111,
+        "min": 34.382,
+        "max": 37.831
+      },
+      "moved": 3670,
+      "decisions": 320,
+      "destinations": 154,
+      "activities": 84,
+      "invitations": 80,
+      "messages": 1168,
+      "memories": 0,
+      "pathfinds": 16
+    },
+    {
+      "engine": "rust",
+      "players": 10000,
+      "simulated_ms": 960,
+      "loop_ms": {
+        "median": 43626.161,
+        "min": 43489.102,
+        "max": 44400.72
+      },
+      "history_pack_ms": {
+        "median": 0.0,
+        "min": 0.0,
+        "max": 0.0
+      },
+      "snapshot_ms": {
+        "median": 339.692,
+        "min": 331.416,
+        "max": 348.432
+      },
+      "moved": 3656,
+      "decisions": 0,
+      "destinations": 0,
+      "activities": 0,
+      "invitations": 0,
+      "messages": 1909,
+      "memories": 440,
+      "pathfinds": 16
+    }
+  ],
+  "lifecycle": [
+    {
+      "engine": "original",
+      "players": 32,
+      "simulated_ms": 76800,
+      "loop_ms": {
+        "median": 562.512,
+        "min": 545.566,
+        "max": 574.64
+      },
+      "history_pack_ms": {
+        "median": 52.712,
+        "min": 41.107,
+        "max": 54.0
+      },
+      "snapshot_ms": {
+        "median": 0.295,
+        "min": 0.238,
+        "max": 0.305
+      },
+      "moved": 28,
+      "decisions": 681,
+      "destinations": 54,
+      "activities": 20,
+      "invitations": 9,
+      "messages": 73,
+      "memories": 14,
+      "pathfinds": 94
+    },
+    {
+      "engine": "rust",
+      "players": 32,
+      "simulated_ms": 76800,
+      "loop_ms": {
+        "median": 44.295,
+        "min": 44.169,
+        "max": 44.791
+      },
+      "history_pack_ms": {
+        "median": 0.0,
+        "min": 0.0,
+        "max": 0.0
+      },
+      "snapshot_ms": {
+        "median": 1.058,
+        "min": 1.012,
+        "max": 1.068
+      },
+      "moved": 30,
+      "decisions": 75,
+      "destinations": 40,
+      "activities": 28,
+      "invitations": 7,
+      "messages": 65,
+      "memories": 18,
+      "pathfinds": 40
+    },
+    {
+      "engine": "original",
+      "players": 128,
+      "simulated_ms": 76800,
+      "loop_ms": {
+        "median": 10853.952,
+        "min": 10677.595,
+        "max": 10941.832
+      },
+      "history_pack_ms": {
+        "median": 175.268,
+        "min": 160.856,
+        "max": 176.054
+      },
+      "snapshot_ms": {
+        "median": 0.84,
+        "min": 0.791,
+        "max": 1.035
+      },
+      "moved": 121,
+      "decisions": 1959,
+      "destinations": 163,
+      "activities": 61,
+      "invitations": 90,
+      "messages": 551,
+      "memories": 121,
+      "pathfinds": 759
+    },
+    {
+      "engine": "rust",
+      "players": 128,
+      "simulated_ms": 76800,
+      "loop_ms": {
+        "median": 523.129,
+        "min": 491.997,
+        "max": 543.941
+      },
+      "history_pack_ms": {
+        "median": 0.0,
+        "min": 0.0,
+        "max": 0.0
+      },
+      "snapshot_ms": {
+        "median": 6.791,
+        "min": 5.576,
+        "max": 7.691
+      },
+      "moved": 117,
+      "decisions": 307,
+      "destinations": 151,
+      "activities": 84,
+      "invitations": 72,
+      "messages": 373,
+      "memories": 150,
+      "pathfinds": 339
+    }
+  ]
+}

@@ -8,6 +8,7 @@ import { MutableRefObject, ReactNode } from 'react';
 
 export type ViewportProps = {
   app: Application;
+  overview?: boolean;
   viewportRef?: MutableRefObject<Viewport | undefined>;
 
   screenWidth: number;
@@ -20,7 +21,7 @@ export type ViewportProps = {
 // https://davidfig.github.io/pixi-viewport/jsdoc/Viewport.html
 export default PixiComponent('Viewport', {
   create(props: ViewportProps) {
-    const { app, children, viewportRef, ...viewportProps } = props;
+    const { app, children, viewportRef, overview, ...viewportProps } = props;
     const viewport = new Viewport({
       // eslint-disable-next-line @typescript-eslint/no-unsafe-assignment, @typescript-eslint/no-unsafe-member-access
       events: app.renderer.events,
@@ -39,14 +40,20 @@ export default PixiComponent('Viewport', {
       .clamp({ direction: 'all', underflow: 'center' })
       .setZoom(-10)
       .clampZoom({
-        minScale: (1.04 * props.screenWidth) / (props.worldWidth / 2),
+        minScale: overview
+          ? Math.min(props.screenWidth / props.worldWidth, props.screenHeight / props.worldHeight) * 0.95
+          : (1.04 * props.screenWidth) / (props.worldWidth / 2),
         maxScale: 3.0,
       });
+    if (overview) {
+      viewport.fitWorld();
+      viewport.moveCenter(props.worldWidth / 2, props.worldHeight / 2);
+    }
     return viewport;
   },
   applyProps(viewport, oldProps: any, newProps: any) {
     Object.keys(newProps).forEach((p) => {
-      if (p !== 'app' && p !== 'viewportRef' && p !== 'children' && oldProps[p] !== newProps[p]) {
+      if (p !== 'overview' && p !== 'app' && p !== 'viewportRef' && p !== 'children' && oldProps[p] !== newProps[p]) {
         // @ts-expect-error Ignoring TypeScript here
         // eslint-disable-next-line @typescript-eslint/no-unsafe-assignment
         viewport[p] = newProps[p];

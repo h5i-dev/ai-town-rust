@@ -1,0 +1,85 @@
+--- a/bench/src/lib.rs
++++ b/bench/src/lib.rs
+@@ -32,7 +32,6 @@
+     pub state: Snapshot,
+     pub fixture: Value,
+     pub metrics: Metrics,
+-    pub command_ms: Option<[f64; 6]>,
+ }
+ impl Town {
+     pub fn load(path: &str) -> Self {
+@@ -179,13 +178,10 @@
+             state: s,
+             fixture: f,
+             metrics: Metrics::default(),
+-            command_ms: None,
+         }
+     }
+     fn command(&mut self, owner: u64, cmd: Command) -> bool {
+-        let category = match cmd { Command::MoveTo { .. } => 0, Command::StartConversation { .. } => 1, _ => 2 };
+-        let start = self.command_ms.map(|_| Instant::now());
+-        let result = transition(
++        match transition(
+             &Principal {
+                 org: 1,
+                 user: owner,
+@@ -193,17 +189,9 @@
+             },
+             &self.state,
+             &cmd,
+-        );
+-        if let (Some(start), Some(times)) = (start, &mut self.command_ms) {
+-            times[category] += start.elapsed().as_secs_f64() * 1000.;
+-        }
+-        match result {
++        ) {
+             Ok((writes, _)) => {
+-                let start = self.command_ms.map(|_| Instant::now());
+-                apply_mut(&mut self.state, writes);
+-                if let (Some(start), Some(times)) = (start, &mut self.command_ms) {
+-                    times[category + 3] += start.elapsed().as_secs_f64() * 1000.;
+-                }
++                self.state = apply(&self.state, &writes);
+                 true
+             }
+             Err(_) => false,
+@@ -239,8 +227,8 @@
+         (p.x / 1000, p.y / 1000)
+     }
+     pub fn drain(&mut self) {
+-        // Use the same authorized transitions and write interpreter as the
+-        // server. This in-memory owner can commit without cloning the world.
++        // Use the same command boundary as the real server worker. Its clone,
++        // validation and diff costs are intentionally inside the timed region.
+         let pending: Vec<_> = self
+             .state
+             .agents
+@@ -264,8 +252,8 @@
+                         .iter()
+                         .find(|p| {
+                             p.id != id
++                                && !self.state.members.iter().any(|m| m.player == p.id)
+                                 && dist_sq(me.x, me.y, p.x, p.y) < 144_000_000
+-                                && !self.state.members.iter().any(|m| m.player == p.id)
+                         })
+                         .map(|p| p.id);
+                     if let Some(invitee) = target {
+@@ -323,9 +311,17 @@
+         clock.elapsed().as_secs_f64() * 1000.0
+     }
+     pub fn snapshot(&self, tick_ms: f64, step_ms: u64) -> String {
+-        let mut v = ai_town_server::to_value_with_options(&self.state, false, 100);
++        let mut v: Value = serde_json::from_str(&ai_town_server::to_json(&self.state)).unwrap();
+         // Both engines show authoritative positions. Never animate a planned
+         // future path while an overloaded engine is still computing the tick.
++        for p in v["players"].as_array_mut().unwrap() {
++            p["path"] = json!([]);
++        }
++        if let Some(messages) = v["messages"].as_array_mut() {
++            if messages.len() > 100 {
++                messages.drain(..messages.len() - 100);
++            }
++        }
+         v["demo"] = json!({"engine":"rust","scenario":"town","tickMs":tick_ms,"stepMs":step_ms,
+             "metrics":self.metrics.json(),"density":self.fixture["density"],"districts":self.fixture["districts"]});
+         v.to_string()

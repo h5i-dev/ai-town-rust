@@ -8,6 +8,7 @@ export type PathNode = {
 };
 
 export type Player = {
+  motion?: import('./history').MotionTrack;
   id: number;
   owner: number;
   human: boolean;
@@ -61,6 +62,9 @@ export type Agent = {
 };
 
 export type World = {
+  motionHistory?: {startMs:number;endMs:number;locations:{playerId:number;buffer:string}[]} | null;
+  demo?: { engine: 'rust' | 'original'; scenario?: 'town'; tickMs: number; stepMs: number; districts?: number; density?: number;
+    metrics?: { decisions: number; destinations: number; activities: number; invitations: number; messages: number; memories: number; pathfinds: number } };
   nowMs: number;
   width: number;
   height: number;
@@ -72,6 +76,9 @@ export type World = {
 };
 
 export type TownMap = {
+  demo?: boolean;
+  demoEngine?: 'rust' | 'original';
+  demoScenario?: 'town';
   tileSetUrl: string;
   tileSetDimX: number;
   tileSetDimY: number;

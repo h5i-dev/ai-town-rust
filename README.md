@@ -3,7 +3,8 @@
 [AI Town](https://github.com/a16z-infra/ai-town) with a Rust backend,
 PostgreSQL, and game rules extracted to Lean 4 through
 [h5i-app](https://crates.io/crates/h5i-app). The React/PixiJS client talks to
-HTTP and WebSocket endpoints. Agents use NVIDIA NIM or a deterministic stub.
+HTTP and WebSocket endpoints. Agents use an OpenAI-compatible inference server
+or a deterministic stub.
 
 ## Run
 
@@ -24,8 +25,50 @@ npm run dev
 ```
 
 Open <http://127.0.0.1:5173/ai-town/>. The backend listens on port 8080.
-Set `NVIDIA_API_KEY` to use NIM; `NVIDIA_MODEL` overrides the default model,
-`google/diffusiongemma-26b-a4b-it`.
+
+## LLM
+
+Without configuration, agents use the deterministic stub. To use a model, point
+the backend at any OpenAI-compatible server or proxy:
+
+```bash
+export LLM_BASE_URL=http://127.0.0.1:4000/v1
+export LLM_MODEL=town-model     # model name or alias exposed by that server
+export LLM_API_KEY=...          # only if the server requires a token
+cargo run -p ai-town-server
+```
+
+AI Town reads no provider keys; Gemini, NVIDIA, and other credentials belong in
+the proxy. For a quick local test, `examples/llm-proxy.py` (Python standard
+library only) serves `town-model` on port 4000:
+
+```bash
+GEMINI_API_KEY=... python3 examples/llm-proxy.py gemini    # gemini-3.1-flash-lite
+NVIDIA_API_KEY=... python3 examples/llm-proxy.py nvidia    # google/diffusiongemma-26b-a4b-it
+```
+
+Then start the backend with the two `LLM_*` settings above (no `LLM_API_KEY`
+unless you pass `--token`). `--model` picks another upstream model. For real
+deployments use a full proxy such as
+[LiteLLM](https://docs.litellm.ai/docs/proxy/docker_quick_start). See
+[inference server setup](docs/LLM.md) for the API contract, verified models, and
+migration from the old `NVIDIA_*` settings.
+
+## Town demo
+
+```bash
+./bench/demo.sh                    # 10,000 residents; starts backend + UI + browser
+./bench/demo.sh --players 128      # choose 1–14,400 residents
+./bench/demo.sh --engine original  # original AI Town game loop, same demo UI
+./bench/demo.sh --seed 7 --no-open # reproducible setup / SSH
+```
+
+Residents walk, read, garden, invite neighbors, converse, and write memories,
+using fixed offline responses (no LLM, PostgreSQL, or Convex). Both engines run
+their real game rules. Large populations use repeated copies of the town map,
+beyond the server's 128 × 128 limit, so this shows the in-memory engine rather
+than deployed capacity. Requirements, controls, and the original-engine setup
+are in the [demo notes](docs/TOWN_BENCHMARKS.md#demo).
 
 ## Verification
 
@@ -48,17 +91,21 @@ server are outside these proofs. See the
 
 ## Performance
 
-60 ticks of uncontested movement, medians in milliseconds (2026-10-21):
+Offline town simulation, 10,000 residents, in-memory CPU, including tick
+history recording (2026-10-23):
 
-| Players | Original AI Town | Rust CPU | GPU with placement check |
-|---:|---:|---:|---:|
-| 1,000 | 1,476.3 | 14.2 | 7.4 |
-| 10,000 | 128,668.4 | 147.9 | 63.5 |
+| Engine | 0.96 simulated seconds |
+|---|---:|
+| Original AI Town | 214.88 s |
+| Rust | 0.385 s |
 
-GPU timing includes preparation, copies, and checked write-back. The original
-also records position history. This is an in-memory movement comparison;
-[methods, grid-check costs, server latency, and raw samples](docs/BENCHMARKS.md)
-give the scope and reproduction commands.
+The engines complete different native work, so this is not a feature-equivalent
+speedup ratio. Database, transport, and LLM costs are excluded. Reproduce with
+`./bench/town.sh --players 32,128,1000,10000 --samples 3`; see
+[results and profiling](docs/TOWN_BENCHMARKS.md), which also covers GPU
+movement (16.78 ms for 60 checked rounds). The
+[movement microbenchmarks](docs/BENCHMARKS.md) cover synchronized walking and
+HTTP latency.
 
 ## Code
 

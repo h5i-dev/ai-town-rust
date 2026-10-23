@@ -202,13 +202,60 @@ def Terrain.putA (x : Terrain) : AWrite Val := .put Terrain.table Terrain.keyLen
 /-- A fresh tenant's `Terrain`: all zeros. -/
 def Terrain.zero : Terrain := { mask := alloc.vec.Vec.new U8 }
 
+/-! ## `MotionHistory` (table `motion_history`) -/
+
+/-- Columns `start_ms`, `end_ms`, `data`. -/
+def MotionHistory.row (x : MotionHistory) : List Val :=
+  [int x.start_ms.val, int x.end_ms.val, .Bytes x.data]
+
+def MotionHistory.table : Nat := 2
+def MotionHistory.keyLen : Nat := 0
+def MotionHistory.col_start_ms : Nat := 0
+def MotionHistory.col_end_ms : Nat := 1
+def MotionHistory.col_data : Nat := 2
+
+@[simp] theorem MotionHistory.row_col_start_ms (x : MotionHistory) :
+    (MotionHistory.row x)[MotionHistory.col_start_ms]? = some (int x.start_ms.val) := by
+  simp [MotionHistory.row, MotionHistory.col_start_ms]
+
+@[simp] theorem MotionHistory.row_col_end_ms (x : MotionHistory) :
+    (MotionHistory.row x)[MotionHistory.col_end_ms]? = some (int x.end_ms.val) := by
+  simp [MotionHistory.row, MotionHistory.col_end_ms]
+
+@[simp] theorem MotionHistory.row_col_data (x : MotionHistory) :
+    (MotionHistory.row x)[MotionHistory.col_data]? = some (.Bytes x.data) := by
+  simp [MotionHistory.row, MotionHistory.col_data]
+
+@[simp] theorem MotionHistory.row_length (x : MotionHistory) : (MotionHistory.row x).length = 3 := rfl
+
+@[step] theorem MotionHistory.to_row_spec (x : MotionHistory) : MotionHistory.to_row x ⦃ v => v.val = MotionHistory.row x ⦄ := by
+  have := usize_max_le
+  unfold MotionHistory.to_row; step* <;> simp_all [MotionHistory.row] <;> scalar_tac
+
+theorem MotionHistory.row_inj : Function.Injective MotionHistory.row := by
+  intro a b h; cases a; cases b; simp_all [MotionHistory.row]
+
+theorem MotionHistory.clone_eq (x : MotionHistory) : MotionHistory.Insts.CoreCloneClone.clone x = ok x := by
+  simp [MotionHistory.Insts.CoreCloneClone.clone, u8vec_clone, lift]
+
+@[step] theorem MotionHistory.clone_spec (x : MotionHistory) : MotionHistory.Insts.CoreCloneClone.clone x ⦃ y => y = x ⦄ := by
+  rw [MotionHistory.clone_eq]; simp
+
+def MotionHistory.putA (x : MotionHistory) : AWrite Val := .put MotionHistory.table MotionHistory.keyLen (MotionHistory.row x)
+
+@[step] theorem MotionHistory.sql_put_spec (x : MotionHistory) : MotionHistory.sql_put x ⦃ w => sqlW w = MotionHistory.putA x ⦄ := by
+  unfold MotionHistory.sql_put; step*; simp_all [sqlW, MotionHistory.putA, MotionHistory.table, MotionHistory.keyLen, MotionHistory.TABLE, MotionHistory.KEY_LEN]
+
+/-- A fresh tenant's `MotionHistory`: all zeros. -/
+def MotionHistory.zero : MotionHistory := { start_ms := 0#u64, end_ms := 0#u64, data := alloc.vec.Vec.new U8 }
+
 /-! ## `Player` (table `players`) -/
 
 /-- Columns `id`, `owner`, `is_human`, `x`, `y`, `face_dx`, `face_dy`, `speed`, `dest_x`, `dest_y`, `pf`, `pf_started`, `wait_until`, `last_input`, `activity`, `activity_until`, `character`, `name`. -/
 def Player.row (x : Player) : List Val :=
   [int x.id.val, int x.owner.val, .Bool x.is_human, int x.x.val, int x.y.val, int x.face_dx.val, int x.face_dy.val, int x.speed.val, int x.dest_x.val, int x.dest_y.val, int x.pf.val, int x.pf_started.val, int x.wait_until.val, int x.last_input.val, int x.activity.val, int x.activity_until.val, int x.character.val, .Bytes x.name]
 
-def Player.table : Nat := 2
+def Player.table : Nat := 3
 def Player.keyLen : Nat := 1
 def Player.col_id : Nat := 0
 def Player.col_owner : Nat := 1
@@ -383,7 +430,7 @@ def Player.delWhereA (col : Nat) (val : Val) : AWrite Val := .delWhere Player.ta
 def PathNode.row (x : PathNode) : List Val :=
   [int x.player.val, int x.seq.val, int x.x.val, int x.y.val, int x.face_dx.val, int x.face_dy.val, int x.t.val]
 
-def PathNode.table : Nat := 3
+def PathNode.table : Nat := 4
 def PathNode.keyLen : Nat := 2
 def PathNode.col_player : Nat := 0
 def PathNode.col_seq : Nat := 1
@@ -503,7 +550,7 @@ def PathNode.delWhereA (col : Nat) (val : Val) : AWrite Val := .delWhere PathNod
 def Conversation.row (x : Conversation) : List Val :=
   [int x.id.val, int x.creator.val, int x.created.val, int x.typing_player.val, int x.typing_since.val, int x.last_author.val, int x.last_at.val, int x.num_messages.val]
 
-def Conversation.table : Nat := 4
+def Conversation.table : Nat := 5
 def Conversation.keyLen : Nat := 1
 def Conversation.col_id : Nat := 0
 def Conversation.col_creator : Nat := 1
@@ -628,7 +675,7 @@ def Conversation.delWhereA (col : Nat) (val : Val) : AWrite Val := .delWhere Con
 def Member.row (x : Member) : List Val :=
   [int x.conversation.val, int x.player.val, int x.invited.val, int x.status.val, int x.started.val]
 
-def Member.table : Nat := 5
+def Member.table : Nat := 6
 def Member.keyLen : Nat := 2
 def Member.col_conversation : Nat := 0
 def Member.col_player : Nat := 1
@@ -738,7 +785,7 @@ def Member.delWhereA (col : Nat) (val : Val) : AWrite Val := .delWhere Member.ta
 def Agent.row (x : Agent) : List Val :=
   [int x.id.val, int x.player.val, int x.owner.val, int x.to_remember.val, int x.last_conversation.val, int x.last_invite.val, int x.op.val, int x.op_since.val, int x.op_arg.val, int x.character.val, .Bytes x.name, .Bytes x.identity, .Bytes x.plan]
 
-def Agent.table : Nat := 6
+def Agent.table : Nat := 7
 def Agent.keyLen : Nat := 1
 def Agent.col_id : Nat := 0
 def Agent.col_player : Nat := 1
@@ -888,7 +935,7 @@ def Agent.delWhereA (col : Nat) (val : Val) : AWrite Val := .delWhere Agent.tabl
 def Memory.row (x : Memory) : List Val :=
   [int x.id.val, int x.agent.val, int x.other.val, int x.conversation.val, .Bytes x.summary]
 
-def Memory.table : Nat := 7
+def Memory.table : Nat := 8
 def Memory.keyLen : Nat := 1
 def Memory.col_id : Nat := 0
 def Memory.col_agent : Nat := 1
@@ -998,7 +1045,7 @@ def Memory.delWhereA (col : Nat) (val : Val) : AWrite Val := .delWhere Memory.ta
 def Message.row (x : Message) : List Val :=
   [int x.id.val, int x.conversation.val, int x.author.val, int x.ts.val, .Bytes x.text]
 
-def Message.table : Nat := 8
+def Message.table : Nat := 9
 def Message.keyLen : Nat := 1
 def Message.col_id : Nat := 0
 def Message.col_conversation : Nat := 1
@@ -1108,7 +1155,7 @@ def Message.delWhereA (col : Nat) (val : Val) : AWrite Val := .delWhere Message.
 macro "row_tac" : tactic => `(tactic| (
   repeat (first
     | (step*; done)
-    | (simp_all only [Meta.row, Terrain.row, Player.row, PathNode.row, Conversation.row, Member.row, Agent.row, Memory.row, Message.row, List.getElem_cons_zero, List.getElem_cons_succ, Nat.zero_add, Nat.reduceAdd, bind_tc_ok, u64_from_val, bool_from_val, bytes_from_val]; step*))
+    | (simp_all only [Meta.row, Terrain.row, MotionHistory.row, Player.row, PathNode.row, Conversation.row, Member.row, Agent.row, Memory.row, Message.row, List.getElem_cons_zero, List.getElem_cons_succ, Nat.zero_add, Nat.reduceAdd, bind_tc_ok, u64_from_val, bool_from_val, bytes_from_val]; step*))
   all_goals simp_all))
 
 theorem Meta.from_row_spec (x : Meta) (v : alloc.vec.Vec Val) (h : v.val = Meta.row x) :
@@ -1120,6 +1167,11 @@ theorem Terrain.from_row_spec (x : Terrain) (v : alloc.vec.Vec Val) (h : v.val =
     Terrain.from_row v ⦃ o => o = some x ⦄ := by
   have hl : v.length = 1 := by simp [alloc.vec.Vec.length, h, Terrain.row]
   unfold Terrain.from_row; row_tac
+
+theorem MotionHistory.from_row_spec (x : MotionHistory) (v : alloc.vec.Vec Val) (h : v.val = MotionHistory.row x) :
+    MotionHistory.from_row v ⦃ o => o = some x ⦄ := by
+  have hl : v.length = 3 := by simp [alloc.vec.Vec.length, h, MotionHistory.row]
+  unfold MotionHistory.from_row; row_tac
 
 theorem Player.from_row_spec (x : Player) (v : alloc.vec.Vec Val) (h : v.val = Player.row x) :
     Player.from_row v ⦃ o => o = some x ⦄ := by
@@ -1198,6 +1250,28 @@ theorem Terrain.from_one_spec (rows : alloc.vec.Vec (alloc.vec.Vec Val)) (l : Li
     step as ⟨ w, hw ⟩
     have : w.val = Terrain.row x := by rw [hw]; simp [hv, hvv]
     step with Terrain.from_row_spec x w this
+    simp_all
+
+theorem MotionHistory.from_one_spec (rows : alloc.vec.Vec (alloc.vec.Vec Val)) (l : List MotionHistory)
+    (hl : l.length ≤ 1) (h : rows.val.map (·.val) = l.map MotionHistory.row) :
+    MotionHistory.from_one rows ⦃ o => o = some (l.headD MotionHistory.zero) ⦄ := by
+  unfold MotionHistory.from_one
+  match l, hl with
+  | [], _ =>
+    have hr : rows.val = [] := by simpa using h
+    have h0 : rows.len = 0#usize := by scalar_tac
+    rw [if_pos h0]; step*; simp_all [MotionHistory.zero]
+  | [x], _ =>
+    obtain ⟨v, hv, hvv⟩ : ∃ v, rows.val = [v] ∧ v.val = MotionHistory.row x := by
+      simp only [List.map_cons, List.map_nil] at h
+      obtain ⟨v, rest⟩ := List.map_eq_singleton_iff.1 h
+      exact ⟨v, rest.1, rest.2⟩
+    have h0 : ¬ rows.len = 0#usize := by scalar_tac
+    have h1 : rows.len = 1#usize := by scalar_tac
+    rw [if_neg h0, if_pos h1]
+    step as ⟨ w, hw ⟩
+    have : w.val = MotionHistory.row x := by rw [hw]; simp [hv, hvv]
+    step with MotionHistory.from_row_spec x w this
     simp_all
 
 theorem Player.from_rows_spec (rows : alloc.vec.Vec (alloc.vec.Vec Val)) (l : List Player)
@@ -1318,54 +1392,57 @@ theorem Message.from_rows_spec (rows : alloc.vec.Vec (alloc.vec.Vec Val)) (l : L
 def kl : Nat → Nat
   | 0 => 0
   | 1 => 0
-  | 2 => 1
-  | 3 => 2
-  | 4 => 1
-  | 5 => 2
-  | 6 => 1
+  | 2 => 0
+  | 3 => 1
+  | 4 => 2
+  | 5 => 1
+  | 6 => 2
   | 7 => 1
   | 8 => 1
+  | 9 => 1
   | _ => 0
 
 @[simp] theorem kl_0 : kl 0 = 0 := rfl
 @[simp] theorem kl_1 : kl 1 = 0 := rfl
-@[simp] theorem kl_2 : kl 2 = 1 := rfl
-@[simp] theorem kl_3 : kl 3 = 2 := rfl
-@[simp] theorem kl_4 : kl 4 = 1 := rfl
-@[simp] theorem kl_5 : kl 5 = 2 := rfl
-@[simp] theorem kl_6 : kl 6 = 1 := rfl
+@[simp] theorem kl_2 : kl 2 = 0 := rfl
+@[simp] theorem kl_3 : kl 3 = 1 := rfl
+@[simp] theorem kl_4 : kl 4 = 2 := rfl
+@[simp] theorem kl_5 : kl 5 = 1 := rfl
+@[simp] theorem kl_6 : kl 6 = 2 := rfl
 @[simp] theorem kl_7 : kl 7 = 1 := rfl
 @[simp] theorem kl_8 : kl 8 = 1 := rfl
+@[simp] theorem kl_9 : kl 9 = 1 := rfl
 
 /-- `row` encodes a value of table `t`'s row type. -/
 def IsRow : Nat → List Val → Prop
   | 0 => fun r => ∃ x : Meta, r = Meta.row x
   | 1 => fun r => ∃ x : Terrain, r = Terrain.row x
-  | 2 => fun r => ∃ x : Player, r = Player.row x
-  | 3 => fun r => ∃ x : PathNode, r = PathNode.row x
-  | 4 => fun r => ∃ x : Conversation, r = Conversation.row x
-  | 5 => fun r => ∃ x : Member, r = Member.row x
-  | 6 => fun r => ∃ x : Agent, r = Agent.row x
-  | 7 => fun r => ∃ x : Memory, r = Memory.row x
-  | 8 => fun r => ∃ x : Message, r = Message.row x
+  | 2 => fun r => ∃ x : MotionHistory, r = MotionHistory.row x
+  | 3 => fun r => ∃ x : Player, r = Player.row x
+  | 4 => fun r => ∃ x : PathNode, r = PathNode.row x
+  | 5 => fun r => ∃ x : Conversation, r = Conversation.row x
+  | 6 => fun r => ∃ x : Member, r = Member.row x
+  | 7 => fun r => ∃ x : Agent, r = Agent.row x
+  | 8 => fun r => ∃ x : Memory, r = Memory.row x
+  | 9 => fun r => ∃ x : Message, r = Message.row x
   | _ => fun _ => False
 
 /-- Split a goal about table `t` into one goal per table. -/
-macro "cases_table " t:ident : tactic => `(tactic| rcases $t:ident with _ | _ | _ | _ | _ | _ | _ | _ | _ | $t:ident)
+macro "cases_table " t:ident : tactic => `(tactic| rcases $t:ident with _ | _ | _ | _ | _ | _ | _ | _ | _ | _ | $t:ident)
 
 /-- A write's table writes map a state's encoding to the next: `schema_step [enc, sqlA, applyWrite]`. -/
 macro "schema_step" " [" ls:Lean.Parser.Tactic.simpLemma,* "]" : tactic => `(tactic| (
   intro s w; funext t
   cases w <;> cases_table t <;>
-    simp [applyAllW, applyW, upsert, Meta.putA, Meta.table, Meta.keyLen, Meta.row, Terrain.putA, Terrain.table, Terrain.keyLen, Terrain.row, Player.putA, Player.table, Player.keyLen, Player.delA, Player.delWhereA, PathNode.putA, PathNode.table, PathNode.keyLen, PathNode.delA, PathNode.delWhereA, Conversation.putA, Conversation.table, Conversation.keyLen, Conversation.delA, Conversation.delWhereA, Member.putA, Member.table, Member.keyLen, Member.delA, Member.delWhereA, Agent.putA, Agent.table, Agent.keyLen, Agent.delA, Agent.delWhereA, Memory.putA, Memory.table, Memory.keyLen, Memory.delA, Memory.delWhereA, Message.putA, Message.table, Message.keyLen, Message.delA, Message.delWhereA, $ls,*] <;>
+    simp [applyAllW, applyW, upsert, Meta.putA, Meta.table, Meta.keyLen, Meta.row, Terrain.putA, Terrain.table, Terrain.keyLen, Terrain.row, MotionHistory.putA, MotionHistory.table, MotionHistory.keyLen, MotionHistory.row, Player.putA, Player.table, Player.keyLen, Player.delA, Player.delWhereA, PathNode.putA, PathNode.table, PathNode.keyLen, PathNode.delA, PathNode.delWhereA, Conversation.putA, Conversation.table, Conversation.keyLen, Conversation.delA, Conversation.delWhereA, Member.putA, Member.table, Member.keyLen, Member.delA, Member.delWhereA, Agent.putA, Agent.table, Agent.keyLen, Agent.delA, Agent.delWhereA, Memory.putA, Memory.table, Memory.keyLen, Memory.delA, Memory.delWhereA, Message.putA, Message.table, Message.keyLen, Message.delA, Message.delWhereA, $ls,*] <;>
     first
-      | exact map_filter_of _ _ _ _ (fun y => by simp [Meta.row, Terrain.row, Player.row, PathNode.row, Conversation.row, Member.row, Agent.row, Memory.row, Message.row])
-      | (congr 1; exact List.filter_congr (fun y _ => by simp [Meta.row, Terrain.row, Player.row, PathNode.row, Conversation.row, Member.row, Agent.row, Memory.row, Message.row]))))
+      | exact map_filter_of _ _ _ _ (fun y => by simp [Meta.row, Terrain.row, MotionHistory.row, Player.row, PathNode.row, Conversation.row, Member.row, Agent.row, Memory.row, Message.row])
+      | (congr 1; exact List.filter_congr (fun y _ => by simp [Meta.row, Terrain.row, MotionHistory.row, Player.row, PathNode.row, Conversation.row, Member.row, Agent.row, Memory.row, Message.row]))))
 
 /-- Every table write is well formed: `schema_ok [sqlA]`. -/
 macro "schema_ok" " [" ls:Lean.Parser.Tactic.simpLemma,* "]" : tactic => `(tactic| (
   intro w; cases w <;>
-    simp [WriteOk, RowOk, IsRow, Meta.putA, Meta.table, Meta.keyLen, Terrain.putA, Terrain.table, Terrain.keyLen, Player.putA, Player.table, Player.keyLen, Player.delA, Player.delWhereA, PathNode.putA, PathNode.table, PathNode.keyLen, PathNode.delA, PathNode.delWhereA, Conversation.putA, Conversation.table, Conversation.keyLen, Conversation.delA, Conversation.delWhereA, Member.putA, Member.table, Member.keyLen, Member.delA, Member.delWhereA, Agent.putA, Agent.table, Agent.keyLen, Agent.delA, Agent.delWhereA, Memory.putA, Memory.table, Memory.keyLen, Memory.delA, Memory.delWhereA, Message.putA, Message.table, Message.keyLen, Message.delA, Message.delWhereA, $ls,*]))
+    simp [WriteOk, RowOk, IsRow, Meta.putA, Meta.table, Meta.keyLen, Terrain.putA, Terrain.table, Terrain.keyLen, MotionHistory.putA, MotionHistory.table, MotionHistory.keyLen, Player.putA, Player.table, Player.keyLen, Player.delA, Player.delWhereA, PathNode.putA, PathNode.table, PathNode.keyLen, PathNode.delA, PathNode.delWhereA, Conversation.putA, Conversation.table, Conversation.keyLen, Conversation.delA, Conversation.delWhereA, Member.putA, Member.table, Member.keyLen, Member.delA, Member.delWhereA, Agent.putA, Agent.table, Agent.keyLen, Agent.delA, Agent.delWhereA, Memory.putA, Memory.table, Memory.keyLen, Memory.delA, Memory.delWhereA, Message.putA, Message.table, Message.keyLen, Message.delA, Message.delWhereA, $ls,*]))
 
 /-- A fresh tenant's tables: `schema_init [enc, init]`. -/
 macro "schema_init" " [" ls:Lean.Parser.Tactic.simpLemma,* "]" : tactic => `(tactic| (
@@ -1373,7 +1450,7 @@ macro "schema_init" " [" ls:Lean.Parser.Tactic.simpLemma,* "]" : tactic => `(tac
 
 /-- A fresh tenant's rows are rows of their tables: `schema_rows [enc, init]`. -/
 macro "schema_rows" " [" ls:Lean.Parser.Tactic.simpLemma,* "]" : tactic => `(tactic| (
-  intro t r h; cases_table t <;> simp [$ls,*] at h <;> subst h <;> first | exact ⟨Meta.zero, rfl⟩ | exact ⟨Terrain.zero, rfl⟩))
+  intro t r h; cases_table t <;> simp [$ls,*] at h <;> subst h <;> first | exact ⟨Meta.zero, rfl⟩ | exact ⟨Terrain.zero, rfl⟩ | exact ⟨MotionHistory.zero, rfl⟩))
 
 /-! ## The snapshot -/
 
@@ -1381,36 +1458,39 @@ macro "schema_rows" " [" ls:Lean.Parser.Tactic.simpLemma,* "]" : tactic => `(tac
 def Snapshot.enc (s : Snapshot) : Tables Val
   | 0 => [Meta.row s.meta]
   | 1 => [Terrain.row s.terrain]
-  | 2 => s.players.val.map Player.row
-  | 3 => s.paths.val.map PathNode.row
-  | 4 => s.conversations.val.map Conversation.row
-  | 5 => s.members.val.map Member.row
-  | 6 => s.agents.val.map Agent.row
-  | 7 => s.memories.val.map Memory.row
-  | 8 => s.messages.val.map Message.row
+  | 2 => [MotionHistory.row s.motion_history]
+  | 3 => s.players.val.map Player.row
+  | 4 => s.paths.val.map PathNode.row
+  | 5 => s.conversations.val.map Conversation.row
+  | 6 => s.members.val.map Member.row
+  | 7 => s.agents.val.map Agent.row
+  | 8 => s.memories.val.map Memory.row
+  | 9 => s.messages.val.map Message.row
   | _ => []
 
 /-- A fresh tenant's snapshot. -/
 def Snapshot.empty : Snapshot :=
-  { meta := Meta.zero, terrain := Terrain.zero, players := alloc.vec.Vec.new Player, paths := alloc.vec.Vec.new PathNode, conversations := alloc.vec.Vec.new Conversation, members := alloc.vec.Vec.new Member, agents := alloc.vec.Vec.new Agent, memories := alloc.vec.Vec.new Memory, messages := alloc.vec.Vec.new Message }
+  { meta := Meta.zero, terrain := Terrain.zero, motion_history := MotionHistory.zero, players := alloc.vec.Vec.new Player, paths := alloc.vec.Vec.new PathNode, conversations := alloc.vec.Vec.new Conversation, members := alloc.vec.Vec.new Member, agents := alloc.vec.Vec.new Agent, memories := alloc.vec.Vec.new Memory, messages := alloc.vec.Vec.new Message }
 
 /-- Stored rows, table by table. -/
 def Rows.tabs (r : Rows) : Tables Val
   | 0 => r.meta.val.map (·.val)
   | 1 => r.terrain.val.map (·.val)
-  | 2 => r.players.val.map (·.val)
-  | 3 => r.paths.val.map (·.val)
-  | 4 => r.conversations.val.map (·.val)
-  | 5 => r.members.val.map (·.val)
-  | 6 => r.agents.val.map (·.val)
-  | 7 => r.memories.val.map (·.val)
-  | 8 => r.messages.val.map (·.val)
+  | 2 => r.motion_history.val.map (·.val)
+  | 3 => r.players.val.map (·.val)
+  | 4 => r.paths.val.map (·.val)
+  | 5 => r.conversations.val.map (·.val)
+  | 6 => r.members.val.map (·.val)
+  | 7 => r.agents.val.map (·.val)
+  | 8 => r.memories.val.map (·.val)
+  | 9 => r.messages.val.map (·.val)
   | _ => []
 
 theorem Snapshot.clone_eq (s : Snapshot) : Snapshot.Insts.CoreCloneClone.clone s = ok s := by
   simp [Snapshot.Insts.CoreCloneClone.clone,
     Meta.clone_eq,
     Terrain.clone_eq,
+    MotionHistory.clone_eq,
     vec_clone_eq Player.Insts.CoreCloneClone s.players Player.clone_eq,
     vec_clone_eq PathNode.Insts.CoreCloneClone s.paths PathNode.clone_eq,
     vec_clone_eq Conversation.Insts.CoreCloneClone s.conversations Conversation.clone_eq,
@@ -1424,56 +1504,61 @@ theorem decode_spec (r : Rows) (E : Tables Val)
     (hrow : ∀ t, ∀ row ∈ E t, IsRow t row)
     (hone0 : (E 0).length = 1)
     (hone1 : (E 1).length = 1)
-    (hnil : ∀ t, 9 ≤ t → E t = [])
+    (hone2 : (E 2).length = 1)
+    (hnil : ∀ t, 10 ≤ t → E t = [])
     (hR : ∀ t, (Rows.tabs r t).Perm (E t) ∨ (Rows.tabs r t = [] ∧ E t = Snapshot.enc Snapshot.empty t)) :
     decode r ⦃ o => ∃ s, o = some s ∧ ∀ t, (Snapshot.enc s t).Perm (E t) ⦄ := by
   obtain ⟨l0, n0, e0, f0⟩ := one_row Meta.row Meta.zero (Rows.tabs r 0) (E 0) hone0 (hrow 0) (hR 0)
   obtain ⟨l1, n1, e1, f1⟩ := one_row Terrain.row Terrain.zero (Rows.tabs r 1) (E 1) hone1 (hrow 1) (hR 1)
-  have h2 : (Rows.tabs r 2).Perm (E 2) := keyed_perm (hR 2)
-  obtain ⟨l2, e2⟩ := exists_map Player.row (Rows.tabs r 2) (fun row h => hrow 2 row (h2.subset h))
+  obtain ⟨l2, n2, e2, f2⟩ := one_row MotionHistory.row MotionHistory.zero (Rows.tabs r 2) (E 2) hone2 (hrow 2) (hR 2)
   have h3 : (Rows.tabs r 3).Perm (E 3) := keyed_perm (hR 3)
-  obtain ⟨l3, e3⟩ := exists_map PathNode.row (Rows.tabs r 3) (fun row h => hrow 3 row (h3.subset h))
+  obtain ⟨l3, e3⟩ := exists_map Player.row (Rows.tabs r 3) (fun row h => hrow 3 row (h3.subset h))
   have h4 : (Rows.tabs r 4).Perm (E 4) := keyed_perm (hR 4)
-  obtain ⟨l4, e4⟩ := exists_map Conversation.row (Rows.tabs r 4) (fun row h => hrow 4 row (h4.subset h))
+  obtain ⟨l4, e4⟩ := exists_map PathNode.row (Rows.tabs r 4) (fun row h => hrow 4 row (h4.subset h))
   have h5 : (Rows.tabs r 5).Perm (E 5) := keyed_perm (hR 5)
-  obtain ⟨l5, e5⟩ := exists_map Member.row (Rows.tabs r 5) (fun row h => hrow 5 row (h5.subset h))
+  obtain ⟨l5, e5⟩ := exists_map Conversation.row (Rows.tabs r 5) (fun row h => hrow 5 row (h5.subset h))
   have h6 : (Rows.tabs r 6).Perm (E 6) := keyed_perm (hR 6)
-  obtain ⟨l6, e6⟩ := exists_map Agent.row (Rows.tabs r 6) (fun row h => hrow 6 row (h6.subset h))
+  obtain ⟨l6, e6⟩ := exists_map Member.row (Rows.tabs r 6) (fun row h => hrow 6 row (h6.subset h))
   have h7 : (Rows.tabs r 7).Perm (E 7) := keyed_perm (hR 7)
-  obtain ⟨l7, e7⟩ := exists_map Memory.row (Rows.tabs r 7) (fun row h => hrow 7 row (h7.subset h))
+  obtain ⟨l7, e7⟩ := exists_map Agent.row (Rows.tabs r 7) (fun row h => hrow 7 row (h7.subset h))
   have h8 : (Rows.tabs r 8).Perm (E 8) := keyed_perm (hR 8)
-  obtain ⟨l8, e8⟩ := exists_map Message.row (Rows.tabs r 8) (fun row h => hrow 8 row (h8.subset h))
+  obtain ⟨l8, e8⟩ := exists_map Memory.row (Rows.tabs r 8) (fun row h => hrow 8 row (h8.subset h))
+  have h9 : (Rows.tabs r 9).Perm (E 9) := keyed_perm (hR 9)
+  obtain ⟨l9, e9⟩ := exists_map Message.row (Rows.tabs r 9) (fun row h => hrow 9 row (h9.subset h))
   unfold decode
   step with Meta.from_one_spec r.meta l0 n0 e0 as ⟨ o0, h0 ⟩
   subst h0; dsimp only
   step with Terrain.from_one_spec r.terrain l1 n1 e1 as ⟨ o1, h1 ⟩
   subst h1; dsimp only
-  step with Player.from_rows_spec r.players l2 e2 as ⟨ o2, v2, ho2, hv2 ⟩
-  subst ho2; dsimp only
-  step with PathNode.from_rows_spec r.paths l3 e3 as ⟨ o3, v3, ho3, hv3 ⟩
+  step with MotionHistory.from_one_spec r.motion_history l2 n2 e2 as ⟨ o2, h2 ⟩
+  subst h2; dsimp only
+  step with Player.from_rows_spec r.players l3 e3 as ⟨ o3, v3, ho3, hv3 ⟩
   subst ho3; dsimp only
-  step with Conversation.from_rows_spec r.conversations l4 e4 as ⟨ o4, v4, ho4, hv4 ⟩
+  step with PathNode.from_rows_spec r.paths l4 e4 as ⟨ o4, v4, ho4, hv4 ⟩
   subst ho4; dsimp only
-  step with Member.from_rows_spec r.members l5 e5 as ⟨ o5, v5, ho5, hv5 ⟩
+  step with Conversation.from_rows_spec r.conversations l5 e5 as ⟨ o5, v5, ho5, hv5 ⟩
   subst ho5; dsimp only
-  step with Agent.from_rows_spec r.agents l6 e6 as ⟨ o6, v6, ho6, hv6 ⟩
+  step with Member.from_rows_spec r.members l6 e6 as ⟨ o6, v6, ho6, hv6 ⟩
   subst ho6; dsimp only
-  step with Memory.from_rows_spec r.memories l7 e7 as ⟨ o7, v7, ho7, hv7 ⟩
+  step with Agent.from_rows_spec r.agents l7 e7 as ⟨ o7, v7, ho7, hv7 ⟩
   subst ho7; dsimp only
-  step with Message.from_rows_spec r.messages l8 e8 as ⟨ o8, v8, ho8, hv8 ⟩
+  step with Memory.from_rows_spec r.memories l8 e8 as ⟨ o8, v8, ho8, hv8 ⟩
   subst ho8; dsimp only
+  step with Message.from_rows_spec r.messages l9 e9 as ⟨ o9, v9, ho9, hv9 ⟩
+  subst ho9; dsimp only
   refine ⟨_, rfl, fun t => ?_⟩
   match t with
   | 0 => simp only [Snapshot.enc, f0]; exact .refl _
   | 1 => simp only [Snapshot.enc, f1]; exact .refl _
-  | 2 => simp only [Snapshot.enc, hv2]; rw [← e2]; exact h2
+  | 2 => simp only [Snapshot.enc, f2]; exact .refl _
   | 3 => simp only [Snapshot.enc, hv3]; rw [← e3]; exact h3
   | 4 => simp only [Snapshot.enc, hv4]; rw [← e4]; exact h4
   | 5 => simp only [Snapshot.enc, hv5]; rw [← e5]; exact h5
   | 6 => simp only [Snapshot.enc, hv6]; rw [← e6]; exact h6
   | 7 => simp only [Snapshot.enc, hv7]; rw [← e7]; exact h7
   | 8 => simp only [Snapshot.enc, hv8]; rw [← e8]; exact h8
-  | t + 9 => simp only [Snapshot.enc, hnil (t + 9) (by omega)]; exact .refl _
+  | 9 => simp only [Snapshot.enc, hv9]; rw [← e9]; exact h9
+  | t + 10 => simp only [Snapshot.enc, hnil (t + 10) (by omega)]; exact .refl _
 
 /-! ## Partial loads
 
@@ -1494,40 +1579,40 @@ noncomputable def pickVec {α : Type} (plan : List (Query.Read Val)) (tabs : Tab
 /-- What loading `plan` from the tables of `s` decodes to: each table's rows its read keeps, none if the plan
 does not read it; a singleton table reads as fresh unless its read keeps its row. -/
 noncomputable def Snapshot.load (plan : List (Query.Read Val)) (s : Snapshot) : Snapshot :=
-  { meta := (pickRows plan (Snapshot.enc s) 0 Meta.row [s.meta]).headD Meta.zero, terrain := (pickRows plan (Snapshot.enc s) 1 Terrain.row [s.terrain]).headD Terrain.zero, players := pickVec plan (Snapshot.enc s) 2 Player.row s.players, paths := pickVec plan (Snapshot.enc s) 3 PathNode.row s.paths, conversations := pickVec plan (Snapshot.enc s) 4 Conversation.row s.conversations, members := pickVec plan (Snapshot.enc s) 5 Member.row s.members, agents := pickVec plan (Snapshot.enc s) 6 Agent.row s.agents, memories := pickVec plan (Snapshot.enc s) 7 Memory.row s.memories, messages := pickVec plan (Snapshot.enc s) 8 Message.row s.messages }
+  { meta := (pickRows plan (Snapshot.enc s) 0 Meta.row [s.meta]).headD Meta.zero, terrain := (pickRows plan (Snapshot.enc s) 1 Terrain.row [s.terrain]).headD Terrain.zero, motion_history := (pickRows plan (Snapshot.enc s) 2 MotionHistory.row [s.motion_history]).headD MotionHistory.zero, players := pickVec plan (Snapshot.enc s) 3 Player.row s.players, paths := pickVec plan (Snapshot.enc s) 4 PathNode.row s.paths, conversations := pickVec plan (Snapshot.enc s) 5 Conversation.row s.conversations, members := pickVec plan (Snapshot.enc s) 6 Member.row s.members, agents := pickVec plan (Snapshot.enc s) 7 Agent.row s.agents, memories := pickVec plan (Snapshot.enc s) 8 Memory.row s.memories, messages := pickVec plan (Snapshot.enc s) 9 Message.row s.messages }
 
 @[simp] theorem Snapshot.load_players (plan : List (Query.Read Val)) (s : Snapshot) :
-    (Snapshot.load plan s).players.val = pickRows plan (Snapshot.enc s) 2 Player.row s.players.val :=
+    (Snapshot.load plan s).players.val = pickRows plan (Snapshot.enc s) 3 Player.row s.players.val :=
   alloc.vec.Vec.from_val _ _
 
 @[simp] theorem Snapshot.load_paths (plan : List (Query.Read Val)) (s : Snapshot) :
-    (Snapshot.load plan s).paths.val = pickRows plan (Snapshot.enc s) 3 PathNode.row s.paths.val :=
+    (Snapshot.load plan s).paths.val = pickRows plan (Snapshot.enc s) 4 PathNode.row s.paths.val :=
   alloc.vec.Vec.from_val _ _
 
 @[simp] theorem Snapshot.load_conversations (plan : List (Query.Read Val)) (s : Snapshot) :
-    (Snapshot.load plan s).conversations.val = pickRows plan (Snapshot.enc s) 4 Conversation.row s.conversations.val :=
+    (Snapshot.load plan s).conversations.val = pickRows plan (Snapshot.enc s) 5 Conversation.row s.conversations.val :=
   alloc.vec.Vec.from_val _ _
 
 @[simp] theorem Snapshot.load_members (plan : List (Query.Read Val)) (s : Snapshot) :
-    (Snapshot.load plan s).members.val = pickRows plan (Snapshot.enc s) 5 Member.row s.members.val :=
+    (Snapshot.load plan s).members.val = pickRows plan (Snapshot.enc s) 6 Member.row s.members.val :=
   alloc.vec.Vec.from_val _ _
 
 @[simp] theorem Snapshot.load_agents (plan : List (Query.Read Val)) (s : Snapshot) :
-    (Snapshot.load plan s).agents.val = pickRows plan (Snapshot.enc s) 6 Agent.row s.agents.val :=
+    (Snapshot.load plan s).agents.val = pickRows plan (Snapshot.enc s) 7 Agent.row s.agents.val :=
   alloc.vec.Vec.from_val _ _
 
 @[simp] theorem Snapshot.load_memories (plan : List (Query.Read Val)) (s : Snapshot) :
-    (Snapshot.load plan s).memories.val = pickRows plan (Snapshot.enc s) 7 Memory.row s.memories.val :=
+    (Snapshot.load plan s).memories.val = pickRows plan (Snapshot.enc s) 8 Memory.row s.memories.val :=
   alloc.vec.Vec.from_val _ _
 
 @[simp] theorem Snapshot.load_messages (plan : List (Query.Read Val)) (s : Snapshot) :
-    (Snapshot.load plan s).messages.val = pickRows plan (Snapshot.enc s) 8 Message.row s.messages.val :=
+    (Snapshot.load plan s).messages.val = pickRows plan (Snapshot.enc s) 9 Message.row s.messages.val :=
   alloc.vec.Vec.from_val _ _
 
 
 /-- Rows holding, for each table, what `plan` loads from the tables of `s` decode to `Snapshot.load plan s`. -/
 theorem decode_load (plan : List (Query.Read Val)) (s : Snapshot) (r : Rows)
-    (h : ∀ t, t < 9 → Rows.tabs r t = load plan (Snapshot.enc s) t) :
+    (h : ∀ t, t < 10 → Rows.tabs r t = load plan (Snapshot.enc s) t) :
     decode r = ok (some (Snapshot.load plan s)) := by
   have e0 := h 0 (by omega)
   rw [load_pick plan _ 0 Meta.row [s.meta] rfl] at e0
@@ -1536,19 +1621,22 @@ theorem decode_load (plan : List (Query.Read Val)) (s : Snapshot) (r : Rows)
   rw [load_pick plan _ 1 Terrain.row [s.terrain] rfl] at e1
   have hl1 := pickRows_length plan (Snapshot.enc s) 1 Terrain.row [s.terrain]
   have e2 := h 2 (by omega)
-  rw [load_pick plan _ 2 Player.row s.players.val rfl] at e2
+  rw [load_pick plan _ 2 MotionHistory.row [s.motion_history] rfl] at e2
+  have hl2 := pickRows_length plan (Snapshot.enc s) 2 MotionHistory.row [s.motion_history]
   have e3 := h 3 (by omega)
-  rw [load_pick plan _ 3 PathNode.row s.paths.val rfl] at e3
+  rw [load_pick plan _ 3 Player.row s.players.val rfl] at e3
   have e4 := h 4 (by omega)
-  rw [load_pick plan _ 4 Conversation.row s.conversations.val rfl] at e4
+  rw [load_pick plan _ 4 PathNode.row s.paths.val rfl] at e4
   have e5 := h 5 (by omega)
-  rw [load_pick plan _ 5 Member.row s.members.val rfl] at e5
+  rw [load_pick plan _ 5 Conversation.row s.conversations.val rfl] at e5
   have e6 := h 6 (by omega)
-  rw [load_pick plan _ 6 Agent.row s.agents.val rfl] at e6
+  rw [load_pick plan _ 6 Member.row s.members.val rfl] at e6
   have e7 := h 7 (by omega)
-  rw [load_pick plan _ 7 Memory.row s.memories.val rfl] at e7
+  rw [load_pick plan _ 7 Agent.row s.agents.val rfl] at e7
   have e8 := h 8 (by omega)
-  rw [load_pick plan _ 8 Message.row s.messages.val rfl] at e8
+  rw [load_pick plan _ 8 Memory.row s.memories.val rfl] at e8
+  have e9 := h 9 (by omega)
+  rw [load_pick plan _ 9 Message.row s.messages.val rfl] at e9
   simp only [Rows.tabs] at *
   apply eq_ok_of_spec
   unfold decode
@@ -1556,20 +1644,22 @@ theorem decode_load (plan : List (Query.Read Val)) (s : Snapshot) (r : Rows)
   subst h0; dsimp only
   step with Terrain.from_one_spec r.terrain _ hl1 e1 as ⟨ o1, h1 ⟩
   subst h1; dsimp only
-  step with Player.from_rows_spec r.players _ e2 as ⟨ o2, v2, ho2, hv2 ⟩
-  subst ho2; dsimp only
-  step with PathNode.from_rows_spec r.paths _ e3 as ⟨ o3, v3, ho3, hv3 ⟩
+  step with MotionHistory.from_one_spec r.motion_history _ hl2 e2 as ⟨ o2, h2 ⟩
+  subst h2; dsimp only
+  step with Player.from_rows_spec r.players _ e3 as ⟨ o3, v3, ho3, hv3 ⟩
   subst ho3; dsimp only
-  step with Conversation.from_rows_spec r.conversations _ e4 as ⟨ o4, v4, ho4, hv4 ⟩
+  step with PathNode.from_rows_spec r.paths _ e4 as ⟨ o4, v4, ho4, hv4 ⟩
   subst ho4; dsimp only
-  step with Member.from_rows_spec r.members _ e5 as ⟨ o5, v5, ho5, hv5 ⟩
+  step with Conversation.from_rows_spec r.conversations _ e5 as ⟨ o5, v5, ho5, hv5 ⟩
   subst ho5; dsimp only
-  step with Agent.from_rows_spec r.agents _ e6 as ⟨ o6, v6, ho6, hv6 ⟩
+  step with Member.from_rows_spec r.members _ e6 as ⟨ o6, v6, ho6, hv6 ⟩
   subst ho6; dsimp only
-  step with Memory.from_rows_spec r.memories _ e7 as ⟨ o7, v7, ho7, hv7 ⟩
+  step with Agent.from_rows_spec r.agents _ e7 as ⟨ o7, v7, ho7, hv7 ⟩
   subst ho7; dsimp only
-  step with Message.from_rows_spec r.messages _ e8 as ⟨ o8, v8, ho8, hv8 ⟩
+  step with Memory.from_rows_spec r.memories _ e8 as ⟨ o8, v8, ho8, hv8 ⟩
   subst ho8; dsimp only
+  step with Message.from_rows_spec r.messages _ e9 as ⟨ o9, v9, ho9, hv9 ⟩
+  subst ho9; dsimp only
   simp only [WP.spec_ok, Option.some.injEq, Snapshot.load]
   congr 1 <;> apply alloc.vec.Vec.ext <;> simp [pickVec, *]
 
@@ -1600,10 +1690,10 @@ theorem holds_in_2 (s : Snapshot) (i j : Nat) (p : Query.Pred Val) (w : Query.Wi
     (Query.Pred.isIn i 2 p j w).holds (Snapshot.enc s) r =
       match r[i]? with
       | none => false
-      | some x => (w.apply ((s.players.val).filter (fun y => p.holds (Snapshot.enc s) (Player.row y)))).any
-          (fun y => decide ((Player.row y)[j]? = some x)) := by
-  rw [Query.holds_isIn (tabs := Snapshot.enc s) (i := i) (t := 2) (j := j) (p := p) (w := w) (r := r) (f := Player.row)
-    (l := s.players.val) (h := rfl)]
+      | some x => (w.apply (([s.motion_history]).filter (fun y => p.holds (Snapshot.enc s) (MotionHistory.row y)))).any
+          (fun y => decide ((MotionHistory.row y)[j]? = some x)) := by
+  rw [Query.holds_isIn (tabs := Snapshot.enc s) (i := i) (t := 2) (j := j) (p := p) (w := w) (r := r) (f := MotionHistory.row)
+    (l := [s.motion_history]) (h := rfl)]
   cases r[i]? <;> rfl
 
 /-- `IN` a column of a read of table 3, as a test on the snapshot's rows. -/
@@ -1611,10 +1701,10 @@ theorem holds_in_3 (s : Snapshot) (i j : Nat) (p : Query.Pred Val) (w : Query.Wi
     (Query.Pred.isIn i 3 p j w).holds (Snapshot.enc s) r =
       match r[i]? with
       | none => false
-      | some x => (w.apply ((s.paths.val).filter (fun y => p.holds (Snapshot.enc s) (PathNode.row y)))).any
-          (fun y => decide ((PathNode.row y)[j]? = some x)) := by
-  rw [Query.holds_isIn (tabs := Snapshot.enc s) (i := i) (t := 3) (j := j) (p := p) (w := w) (r := r) (f := PathNode.row)
-    (l := s.paths.val) (h := rfl)]
+      | some x => (w.apply ((s.players.val).filter (fun y => p.holds (Snapshot.enc s) (Player.row y)))).any
+          (fun y => decide ((Player.row y)[j]? = some x)) := by
+  rw [Query.holds_isIn (tabs := Snapshot.enc s) (i := i) (t := 3) (j := j) (p := p) (w := w) (r := r) (f := Player.row)
+    (l := s.players.val) (h := rfl)]
   cases r[i]? <;> rfl
 
 /-- `IN` a column of a read of table 4, as a test on the snapshot's rows. -/
@@ -1622,10 +1712,10 @@ theorem holds_in_4 (s : Snapshot) (i j : Nat) (p : Query.Pred Val) (w : Query.Wi
     (Query.Pred.isIn i 4 p j w).holds (Snapshot.enc s) r =
       match r[i]? with
       | none => false
-      | some x => (w.apply ((s.conversations.val).filter (fun y => p.holds (Snapshot.enc s) (Conversation.row y)))).any
-          (fun y => decide ((Conversation.row y)[j]? = some x)) := by
-  rw [Query.holds_isIn (tabs := Snapshot.enc s) (i := i) (t := 4) (j := j) (p := p) (w := w) (r := r) (f := Conversation.row)
-    (l := s.conversations.val) (h := rfl)]
+      | some x => (w.apply ((s.paths.val).filter (fun y => p.holds (Snapshot.enc s) (PathNode.row y)))).any
+          (fun y => decide ((PathNode.row y)[j]? = some x)) := by
+  rw [Query.holds_isIn (tabs := Snapshot.enc s) (i := i) (t := 4) (j := j) (p := p) (w := w) (r := r) (f := PathNode.row)
+    (l := s.paths.val) (h := rfl)]
   cases r[i]? <;> rfl
 
 /-- `IN` a column of a read of table 5, as a test on the snapshot's rows. -/
@@ -1633,10 +1723,10 @@ theorem holds_in_5 (s : Snapshot) (i j : Nat) (p : Query.Pred Val) (w : Query.Wi
     (Query.Pred.isIn i 5 p j w).holds (Snapshot.enc s) r =
       match r[i]? with
       | none => false
-      | some x => (w.apply ((s.members.val).filter (fun y => p.holds (Snapshot.enc s) (Member.row y)))).any
-          (fun y => decide ((Member.row y)[j]? = some x)) := by
-  rw [Query.holds_isIn (tabs := Snapshot.enc s) (i := i) (t := 5) (j := j) (p := p) (w := w) (r := r) (f := Member.row)
-    (l := s.members.val) (h := rfl)]
+      | some x => (w.apply ((s.conversations.val).filter (fun y => p.holds (Snapshot.enc s) (Conversation.row y)))).any
+          (fun y => decide ((Conversation.row y)[j]? = some x)) := by
+  rw [Query.holds_isIn (tabs := Snapshot.enc s) (i := i) (t := 5) (j := j) (p := p) (w := w) (r := r) (f := Conversation.row)
+    (l := s.conversations.val) (h := rfl)]
   cases r[i]? <;> rfl
 
 /-- `IN` a column of a read of table 6, as a test on the snapshot's rows. -/
@@ -1644,10 +1734,10 @@ theorem holds_in_6 (s : Snapshot) (i j : Nat) (p : Query.Pred Val) (w : Query.Wi
     (Query.Pred.isIn i 6 p j w).holds (Snapshot.enc s) r =
       match r[i]? with
       | none => false
-      | some x => (w.apply ((s.agents.val).filter (fun y => p.holds (Snapshot.enc s) (Agent.row y)))).any
-          (fun y => decide ((Agent.row y)[j]? = some x)) := by
-  rw [Query.holds_isIn (tabs := Snapshot.enc s) (i := i) (t := 6) (j := j) (p := p) (w := w) (r := r) (f := Agent.row)
-    (l := s.agents.val) (h := rfl)]
+      | some x => (w.apply ((s.members.val).filter (fun y => p.holds (Snapshot.enc s) (Member.row y)))).any
+          (fun y => decide ((Member.row y)[j]? = some x)) := by
+  rw [Query.holds_isIn (tabs := Snapshot.enc s) (i := i) (t := 6) (j := j) (p := p) (w := w) (r := r) (f := Member.row)
+    (l := s.members.val) (h := rfl)]
   cases r[i]? <;> rfl
 
 /-- `IN` a column of a read of table 7, as a test on the snapshot's rows. -/
@@ -1655,10 +1745,10 @@ theorem holds_in_7 (s : Snapshot) (i j : Nat) (p : Query.Pred Val) (w : Query.Wi
     (Query.Pred.isIn i 7 p j w).holds (Snapshot.enc s) r =
       match r[i]? with
       | none => false
-      | some x => (w.apply ((s.memories.val).filter (fun y => p.holds (Snapshot.enc s) (Memory.row y)))).any
-          (fun y => decide ((Memory.row y)[j]? = some x)) := by
-  rw [Query.holds_isIn (tabs := Snapshot.enc s) (i := i) (t := 7) (j := j) (p := p) (w := w) (r := r) (f := Memory.row)
-    (l := s.memories.val) (h := rfl)]
+      | some x => (w.apply ((s.agents.val).filter (fun y => p.holds (Snapshot.enc s) (Agent.row y)))).any
+          (fun y => decide ((Agent.row y)[j]? = some x)) := by
+  rw [Query.holds_isIn (tabs := Snapshot.enc s) (i := i) (t := 7) (j := j) (p := p) (w := w) (r := r) (f := Agent.row)
+    (l := s.agents.val) (h := rfl)]
   cases r[i]? <;> rfl
 
 /-- `IN` a column of a read of table 8, as a test on the snapshot's rows. -/
@@ -1666,9 +1756,20 @@ theorem holds_in_8 (s : Snapshot) (i j : Nat) (p : Query.Pred Val) (w : Query.Wi
     (Query.Pred.isIn i 8 p j w).holds (Snapshot.enc s) r =
       match r[i]? with
       | none => false
+      | some x => (w.apply ((s.memories.val).filter (fun y => p.holds (Snapshot.enc s) (Memory.row y)))).any
+          (fun y => decide ((Memory.row y)[j]? = some x)) := by
+  rw [Query.holds_isIn (tabs := Snapshot.enc s) (i := i) (t := 8) (j := j) (p := p) (w := w) (r := r) (f := Memory.row)
+    (l := s.memories.val) (h := rfl)]
+  cases r[i]? <;> rfl
+
+/-- `IN` a column of a read of table 9, as a test on the snapshot's rows. -/
+theorem holds_in_9 (s : Snapshot) (i j : Nat) (p : Query.Pred Val) (w : Query.Window) (r : List Val) :
+    (Query.Pred.isIn i 9 p j w).holds (Snapshot.enc s) r =
+      match r[i]? with
+      | none => false
       | some x => (w.apply ((s.messages.val).filter (fun y => p.holds (Snapshot.enc s) (Message.row y)))).any
           (fun y => decide ((Message.row y)[j]? = some x)) := by
-  rw [Query.holds_isIn (tabs := Snapshot.enc s) (i := i) (t := 8) (j := j) (p := p) (w := w) (r := r) (f := Message.row)
+  rw [Query.holds_isIn (tabs := Snapshot.enc s) (i := i) (t := 9) (j := j) (p := p) (w := w) (r := r) (f := Message.row)
     (l := s.messages.val) (h := rfl)]
   cases r[i]? <;> rfl
 
@@ -1691,7 +1792,7 @@ structure Fits : Prop where
   rows : A.IsRow = IsRow
   enc : ∀ s, A.enc (toSt s) = Snapshot.enc s
   init : A.enc A.init = Snapshot.enc Snapshot.empty
-  nil : ∀ s t, 9 ≤ t → A.enc s t = []
+  nil : ∀ s t, 10 ≤ t → A.enc s t = []
 
 variable {A toSt}
 
@@ -1703,7 +1804,7 @@ theorem loaded (hf : Fits A toSt) {db : Db Val} {s : St} (h : A.Served db s) (r 
   have hR := A.served_lists h _ (by rw [hf.kl]; exact hl)
   rw [hf.rows] at hrow
   rw [hf.kl] at hone
-  apply WP.spec_mono (decode_spec r (A.enc s) hrow (hone 0 rfl (by rw [hf.init]; rfl)) (hone 1 rfl (by rw [hf.init]; rfl)) (hf.nil s)
+  apply WP.spec_mono (decode_spec r (A.enc s) hrow (hone 0 rfl (by rw [hf.init]; rfl)) (hone 1 rfl (by rw [hf.init]; rfl)) (hone 2 rfl (by rw [hf.init]; rfl)) (hf.nil s)
     (fun t => by rw [← hf.init]; exact hR t))
   rintro o ⟨snap, rfl, hp⟩
   exact ⟨snap, rfl, fun t => by rw [hf.enc]; exact hp t⟩
@@ -1822,7 +1923,7 @@ variable {St : Type} (A : App St Write Val) (toSt : Snapshot → St) (ts : List 
 
 /-- Rows the compiled `SELECT` of each table returns, in any order. -/
 def Loads (db : Pg.PgDb Val) (r : Rows) : Prop :=
-  ∀ t, t < 9 → ∃ q ps R0, Pg.selectA valKind ts tv t none = some (q, ps) ∧
+  ∀ t, t < 10 → ∃ q ps R0, Pg.selectA valKind ts tv t none = some (q, ps) ∧
     Pg.selected valKind db q ps = some R0 ∧ (Rows.tabs r t).Perm R0
 
 inductive PgServed : Pg.PgDb Val → St → Prop
@@ -1841,13 +1942,13 @@ inductive PgServed : Pg.PgDb Val → St → Prop
 
 variable {A toSt ts tv Step}
 
-theorem Rows.tabs_nil (r : Rows) (t : Nat) (h : 9 ≤ t) : Rows.tabs r t = [] := by
+theorem Rows.tabs_nil (r : Rows) (t : Nat) (h : 10 ≤ t) : Rows.tabs r t = [] := by
   obtain ⟨k, rfl⟩ := Nat.exists_eq_add_of_le' h
   simp only [Rows.tabs]
 
 /-- The tenant's view of a `PgServed` database is `Served`, with the same state. -/
 theorem pg_served (hs : SqlFits A) (hf : Fits A toSt) (hv : Pg.Valid ts) (htv : valKind tv = some .int)
-    (hkl : Pg.klOf ts = kl) (hlen : ts.length = 9) {db : Pg.PgDb Val} {s : St}
+    (hkl : Pg.klOf ts = kl) (hlen : ts.length = 10) {db : Pg.PgDb Val} {s : St}
     (h : PgServed A toSt ts tv Step db s) : Pg.Matches valKind ts db ∧ Served A toSt (Pg.view ts tv db) s := by
   induction h with
   | fresh hm he => exact ⟨hm, he ▸ .fresh⟩
@@ -1870,7 +1971,7 @@ theorem pg_served (hs : SqlFits A) (hf : Fits A toSt) (hv : Pg.Valid ts) (htv : 
 
 /-- An `Inv` kept by init, row reordering and every `Step` holds on PostgreSQL and on every load. -/
 theorem pg_loaded_inv (hs : SqlFits A) (hf : Fits A toSt) (hv : Pg.Valid ts) (htv : valKind tv = some .int)
-    (hkl : Pg.klOf ts = kl) (hlen : ts.length = 9) (Inv : St → Prop) (hinit : Inv A.init)
+    (hkl : Pg.klOf ts = kl) (hlen : ts.length = 10) (Inv : St → Prop) (hinit : Inv A.init)
     (hequiv : ∀ snap s', A.Equiv (toSt snap) s' → Inv s' → Inv (toSt snap))
     (hstep : ∀ snap ws, Step snap ws → Inv (toSt snap) → Inv (ws.val.foldl A.step (toSt snap)))
     {db : Pg.PgDb Val} {s : St} (h : PgServed A toSt ts tv Step db s) :

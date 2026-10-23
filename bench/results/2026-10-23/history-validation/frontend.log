@@ -1,0 +1,23 @@
+
+> build
+> tsc --noEmit && vite build
+
+vite v5.4.21 building for production...
+transforming...
+
+/ai-town/assets/fonts/upheaval_pro.ttf referenced in /ai-town/assets/fonts/upheaval_pro.ttf didn't resolve at build time, it will remain unchanged to be resolved at runtime
+
+/ai-town/assets/fonts/vcr_osd_mono.ttf referenced in /ai-town/assets/fonts/vcr_osd_mono.ttf didn't resolve at build time, it will remain unchanged to be resolved at runtime
+✓ 528 modules transformed.
+rendering chunks...
+computing gzip size...
+dist/index.html                         0.48 kB │ gzip:   0.30 kB
+dist/assets/background-BtfA3JtK.webp  350.87 kB
+dist/assets/index-Dvo6uzj2.css         24.74 kB │ gzip:   4.93 kB
+dist/assets/index-DYyhUrGS.js         848.70 kB │ gzip: 254.64 kB
+
+(!) Some chunks are larger than 500 kB after minification. Consider:
+- Using dynamic import() to code-split the application
+- Use build.rollupOptions.output.manualChunks to improve chunking: https://rollupjs.org/configuration-options/#output-manualchunks
+- Adjust chunk size limit for this warning via build.chunkSizeWarningLimit.
+✓ built in 4.17s

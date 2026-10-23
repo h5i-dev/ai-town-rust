@@ -1,0 +1,1 @@
+{"engine":"rust","n":10000,"frames":3,"firstMs":1031504,"lastMs":1033424,"moved":831,"metrics":{"activities":1788,"decisions":7335,"destinations":3668,"invitations":1879,"memories":3968,"messages":5573,"pathfinds":4244},"selected":"Resident 1040","errors":[],"failed":[]}

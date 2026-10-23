@@ -10,6 +10,10 @@ publish = false
 name = "ai-town-bench"
 path = "src/main.rs"
 
+[[bin]]
+name = "demo"
+path = "src/demo.rs"
+
 [features]
 default = []
 gpu = ["ai-town-server/gpu"]
@@ -19,6 +23,7 @@ name = "pipe"
 path = "src/pipe.rs"
 
 [dependencies]
+axum = { version = "0.8", features = ["ws"] }
 ai-town-kernel = { path = "../kernel" }
 ai-town-server = { path = "../server" }
 futures-util = "0.3"

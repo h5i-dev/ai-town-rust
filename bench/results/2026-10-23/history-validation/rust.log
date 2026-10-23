@@ -1,0 +1,136 @@
+   Compiling ai-town-kernel v0.1.0 (/home/ht2673/Dev/ai-town-rust/kernel)
+   Compiling ai-town-server v0.1.0 (/home/ht2673/Dev/ai-town-rust/server)
+   Compiling ai-town-bench v0.1.0 (/home/ht2673/Dev/ai-town-rust/bench)
+    Finished `test` profile [unoptimized + debuginfo] target(s) in 2.53s
+     Running unittests src/lib.rs (/tmp/ai-town-rust-demo-0-target/debug/deps/ai_town_bench-7c297a90b2305039)
+
+running 0 tests
+
+test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+     Running unittests src/main.rs (/tmp/ai-town-rust-demo-0-target/debug/deps/ai_town_bench-3c9b39a09f8bf5d0)
+
+running 0 tests
+
+test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+     Running unittests src/demo.rs (/tmp/ai-town-rust-demo-0-target/debug/deps/demo-d3d6365b5f141b10)
+
+running 1 test
+test tests::crowd_moves_and_turns_without_collisions ... ok
+
+test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 18.43s
+
+     Running unittests src/pipe.rs (/tmp/ai-town-rust-demo-0-target/debug/deps/pipe-6144297c39ce31df)
+
+running 0 tests
+
+test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+     Running unittests src/bin/town-bench.rs (/tmp/ai-town-rust-demo-0-target/debug/deps/town_bench-ccb84fcaaa4d5322)
+
+running 0 tests
+
+test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+     Running unittests src/bin/town-profile.rs (/tmp/ai-town-rust-demo-0-target/debug/deps/town_profile-27652e2b33296c43)
+
+running 0 tests
+
+test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+     Running unittests src/lib.rs (/tmp/ai-town-rust-demo-0-target/debug/deps/ai_town_kernel-ba6579459a1aa030)
+
+running 45 tests
+test geom_f64::compress_path_cases ... ok
+test geom_f64::distance_cases ... ok
+test geom_f64::manhattan_cases ... ok
+test geom_f64::points_equal_cases ... ok
+test geom_f64::path_position_cases ... ok
+test geom_f64::path_overlap_cases ... ok
+test geom_f64::vector_cases ... ok
+test history::tests::packets_match_upstream_reference_vectors ... ok
+test history::tests::removed_residents_do_not_shift_tracks ... ok
+test tests::a_player_cannot_step_the_world_or_move_someone_else ... ok
+test tests::agent_step_refuses_a_blocked_tile_and_a_neighbor ... ok
+test tests::batch_seek_matches_scalar_seek ... ok
+test tests::a_normal_step_reverts_nothing ... ok
+test tests::compress_keeps_turns ... ok
+test tests::compress_straight_line_and_turn ... ok
+test tests::conversation_exclusivity_and_membership ... ok
+test tests::diff_roundtrip_matches_apply ... ok
+test tests::engine_relocate_writes_positions_and_drops_paths ... ok
+test tests::grid_wellformed_rejects_broken_chains ... ok
+test tests::integer_distance_and_path_pose ... ok
+test tests::grid_yield_matches_the_full_scan ... ok
+test h5i_app_lean_schema_is_current ... ok
+test tests::checked_ticks_record_committed_locations_and_persist_the_batch ... ok
+test tests::join_move_and_isolation ... ok
+test tests::min_heap_matches_the_typescript_suite ... ok
+test tests::integer_sqrt_is_exact_at_squares_and_full_width_inputs ... ok
+test tests::owned_path_commits_match_the_write_interpreter_with_duplicate_keys ... ok
+test tests::player_index_finds_sorted_ids_and_an_unsorted_row ... ok
+test tests::near_grid_matches_full_scan_including_a_short_move ... ok
+test tests::relocate_refuses_overlap_and_blocked_tiles ... ok
+test tests::step_plus_collision_radius_fits_in_one_tile ... ok
+test tests::settle_reverts_a_movement_that_overlaps ... ok
+test tests::path_speed_matches_integer_distance_for_axes_and_diagonals ... ok
+test tests::collision_holds_across_a_step ... ok
+test tests::sequential_tick_still_sees_the_earlier_landing ... ok
+test tests::tick_moves_lets_the_next_agent_see_the_landing ... ok
+test tests::tick_players_matches_one_engine_tick ... ok
+test tests::tick_round_uses_priority_and_previous_positions ... ok
+test tests::tick_round_refuses_a_blocked_tile_and_stays_apart ... ok
+test tests::bucketed_placement_matches_the_all_pairs_scan ... ok
+test tests::blocked_tile_is_not_entered ... ok
+test tests::projected_commands_match_full_snapshot_writes_and_errors ... ok
+test tests::conversation_approaches_respect_the_shared_pathfinding_budget ... ok
+test tests::grid_answers_do_not_depend_on_chain_order ... ok
+test rules::social_tests::social_indices_match_scan_through_removals_and_sparse_ids ... ok
+
+test result: ok. 45 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.06s
+
+     Running unittests src/lib.rs (/tmp/ai-town-rust-demo-0-target/debug/deps/ai_town_server-8e40c14829136cd2)
+
+running 14 tests
+test agent::tests::live_inference_server ... ignored, requires LLM_BASE_URL and LLM_MODEL; makes live inference requests
+test map::tests::a_single_object_sets_one_bit ... ok
+test schema_is_valid ... ok
+test world::tests::compressed_tick_history_is_delivered_and_stale_or_truncated_data_is_omitted ... ok
+test llm::tests::configuration_only_uses_inference_server_settings ... ok
+test agent::tests::provider_debug_does_not_print_a_key ... ok
+test world::tests::paths_are_grouped_by_player_and_sorted_by_sequence ... ok
+test map::tests::gentle_mask_matches_the_object_layer ... ok
+test agent::tests::memory_uses_the_same_inference_server ... ok
+test agent::tests::a_model_line_is_kept_when_the_request_succeeds ... ok
+test llm::tests::sends_the_chat_contract_with_optional_server_authentication ... ok
+test agent::tests::unusable_responses_fall_back_for_dialogue_and_memory ... ok
+test agent::tests::gentle_town_spawns_steps_and_wanders ... ok
+test agent::tests::rate_limit_and_timeout_fall_back_to_the_stub ... ok
+
+test result: ok. 13 passed; 0 failed; 1 ignored; 0 measured; 0 filtered out; finished in 0.11s
+
+     Running unittests src/main.rs (/tmp/ai-town-rust-demo-0-target/debug/deps/ai_town_server-dcf5cff523c8b858)
+
+running 0 tests
+
+test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+   Doc-tests ai_town_bench
+
+running 0 tests
+
+test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+   Doc-tests ai_town_kernel
+
+running 0 tests
+
+test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+   Doc-tests ai_town_server
+
+running 0 tests
+
+test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+

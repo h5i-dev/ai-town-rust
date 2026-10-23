@@ -17,6 +17,7 @@ version = "0.1.0"
 dependencies = [
  "ai-town-kernel",
  "ai-town-server",
+ "axum",
  "futures-util",
  "h5i-app",
  "reqwest",
@@ -48,6 +49,7 @@ dependencies = [
  "ai-town-gpu",
  "ai-town-kernel",
  "axum",
+ "base64 0.22.1",
  "h5i-app",
  "h5i-app-core",
  "h5i-app-pg",

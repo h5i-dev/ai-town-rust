@@ -41,8 +41,16 @@ pub fn isqrt(n: u64) -> u64 {
     if n == 0 {
         return 0;
     }
-    let mut x = n;
-    let mut y = x / 2 + 1;
+    // Start above sqrt(n), within a factor of two. Starting at n wastes
+    // integer divisions halving the estimate on every facing/path query.
+    // x <= 2^32 also keeps x + n/x in range for every u64 input.
+    let mut bits = n;
+    let mut x = 1u64;
+    while bits > 0 {
+        bits >>= 2;
+        x <<= 1;
+    }
+    let mut y = (x + n / x) / 2;
     while y < x {
         x = y;
         y = (x + n / x) / 2;
@@ -102,7 +110,7 @@ pub fn travel_ms(milli: u32) -> u64 {
 }
 
 pub fn lerp(a: u32, b: u32, u: u64, dt: u64) -> u32 {
-    if dt == 0 {
+    if dt == 0 || a == b {
         return a;
     }
     if b >= a {
@@ -148,7 +156,11 @@ pub fn path_pose(path: &[PathNode], now: u64) -> Option<Pose> {
             let speed = if dt == 0 {
                 0
             } else {
-                let d = isqrt(dist_sq(a.x, a.y, b.x, b.y));
+                // Most town paths follow grid axes. Their exact integer length needs
+                // no square root (and no repeated integer divisions).
+                let d = if a.x == b.x { abs_diff(a.y, b.y) }
+                    else if a.y == b.y { abs_diff(a.x, b.x) }
+                    else { isqrt(dist_sq(a.x, a.y, b.x, b.y)) };
                 (d * 1000 / dt) as u32
             };
             return Some(Pose { x, y, face_dx: a.face_dx, face_dy: a.face_dy, speed });

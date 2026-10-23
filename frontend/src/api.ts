@@ -1,4 +1,5 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
+import { TownPlayback } from './history';
 import type { TownMap, World } from './types';
 
 const TOKEN = 'ai-town-token';
@@ -41,7 +42,7 @@ export async function rpc(cmd: Record<string, unknown>): Promise<Record<string, 
 
 export function useTown(): { world: World | null; map: TownMap | null; now: number; connected: boolean } {
   const [world, setWorld] = useState<World | null>(null);
-  const [anchor, setAnchor] = useState<{ nowMs: number; at: number } | null>(null);
+  const playback = useRef(new TownPlayback());
   const [map, setMap] = useState<TownMap | null>(null);
   const [now, setNow] = useState(0);
   const [connected, setConnected] = useState(false);
@@ -69,8 +70,13 @@ export function useTown(): { world: World | null; map: TownMap | null; now: numb
       ws.onopen = () => setConnected(true);
       ws.onmessage = (ev) => {
         const next = JSON.parse(String(ev.data)) as World;
-        setWorld(next);
-        setAnchor({ nowMs: next.nowMs, at: performance.now() });
+        try {
+          playback.current.receive(next, performance.now());
+        } catch (error) {
+          console.error('Invalid motion history', error);
+          playback.current.receive({...next,motionHistory:null,
+            players:next.players.map(player => ({...player,path:[]}))}, performance.now());
+        }
       };
       ws.onclose = () => {
         setConnected(false);
@@ -88,12 +94,14 @@ export function useTown(): { world: World | null; map: TownMap | null; now: numb
   useEffect(() => {
     let frame = 0;
     const tick = () => {
-      if (anchor) setNow(anchor.nowMs + (performance.now() - anchor.at));
+      const sample = playback.current.sample(performance.now());
+      setWorld(sample.world);
+      setNow(sample.now);
       frame = requestAnimationFrame(tick);
     };
     frame = requestAnimationFrame(tick);
     return () => cancelAnimationFrame(frame);
-  }, [anchor]);
+  }, []);
 
   return { world, map, now, connected };
 }

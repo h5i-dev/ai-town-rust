@@ -1,0 +1,7 @@
+Command: h5i app prove
+Build completed successfully (1732 jobs).
+
+$ lake env lean /home/ht2673/Dev/ai-town-rust/proofs/.lake/h5i/Gate.lean
+gate: 91 theorems in 1 modules checked against propext, Classical.choice, Quot.sound
+
+ai-town-rust: proofs ok
