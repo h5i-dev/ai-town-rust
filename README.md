@@ -39,29 +39,20 @@ cargo run -p ai-town-server
 ```
 
 AI Town reads no provider keys; Gemini, NVIDIA, and other credentials belong in
-the proxy. For example, [h5i-ai-gateway](https://github.com/h5i-dev/h5i-ai-gateway)
-(see its `examples/config.yaml`) can expose `town-model`:
+the proxy. For a quick local test, `examples/llm-proxy.py` (Python standard
+library only) serves `town-model` on port 4000:
 
 ```bash
-# in an h5i-ai-gateway checkout
-cargo build --release -p gateway-server
-cat > town.yaml <<'YAML'
-model_list:
-  - model_name: town-model
-    litellm_params:
-      model: gemini/gemini-3.1-flash-lite   # or nvidia_nim/google/diffusiongemma-26b-a4b-it
-      api_key: os.environ/GEMINI_API_KEY    # or os.environ/NVIDIA_NIM_API_KEY
-general_settings:
-  master_key: os.environ/LITELLM_MASTER_KEY
-YAML
-export LITELLM_MASTER_KEY=sk-town GEMINI_API_KEY=...
-/dev/shm/h5i-ai-gateway/target/release/h5i-gateway --config town.yaml --port 4000
+GEMINI_API_KEY=... python3 examples/llm-proxy.py gemini    # gemini-3.1-flash-lite
+NVIDIA_API_KEY=... python3 examples/llm-proxy.py nvidia    # google/diffusiongemma-26b-a4b-it
 ```
 
-Then run the backend with `LLM_API_KEY=sk-town`. The build directory is set in
-the gateway's `.cargo/config.toml`. See [inference server setup](docs/LLM.md)
-for the API contract, verified models, and migration from the old `NVIDIA_*`
-settings.
+Then start the backend with the two `LLM_*` settings above (no `LLM_API_KEY`
+unless you pass `--token`). `--model` picks another upstream model. For real
+deployments use a full proxy such as
+[LiteLLM](https://docs.litellm.ai/docs/proxy/docker_quick_start). See
+[inference server setup](docs/LLM.md) for the API contract, verified models, and
+migration from the old `NVIDIA_*` settings.
 
 ## Town demo
 

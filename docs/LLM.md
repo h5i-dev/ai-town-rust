@@ -6,7 +6,11 @@ backend at it. That server owns provider selection, upstream credentials,
 provider-specific options, retries, and model routing. The frontend never needs
 model credentials.
 
-For example, [LiteLLM Proxy](https://docs.litellm.ai/docs/proxy/docker_quick_start)
+For local testing, `examples/llm-proxy.py gemini|nvidia` is a small
+standard-library proxy that maps `town-model` to a Gemini or NVIDIA NIM model and
+holds the provider key; `--help` lists its options. It has no retries,
+streaming, or rate limiting. For other setups,
+[LiteLLM Proxy](https://docs.litellm.ai/docs/proxy/docker_quick_start)
 can expose an OpenAI-compatible endpoint for upstream APIs. Follow its setup
 instructions, configure your chosen provider there, and expose a model alias such
 as `town-model`. Any server implementing the contract below can be used;
